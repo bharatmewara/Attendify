@@ -126,10 +126,11 @@ router.post('/requests', authenticate, tenantIsolation, async (req, res) => {
     }
 
     const result = await query(
-      `INSERT INTO leave_requests (employee_id, company_id, leave_type_id, start_date, end_date, total_days, reason, document_url)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      `INSERT INTO leave_requests (
+        employee_id, company_id, leave_type_id, start_date, end_date, total_days, reason, document_url, status
+       ) VALUES ($1::int, $2::int, $3::int, $4::date, $5::date, $6::decimal, $7::text, $8::text, 'pending')
        RETURNING *`,
-      [employeeId, req.companyId, leave_type_id, start_date, end_date, totalDays, reason, document_url]
+      [employeeId, req.companyId, leave_type_id, start_date, end_date, totalDays, reason, document_url || null]
     );
 
     await logAudit({
@@ -167,9 +168,21 @@ router.post('/requests/admin', authenticate, authorize('company_admin', 'super_a
     const result = await query(
       `INSERT INTO leave_requests (
         employee_id, company_id, leave_type_id, start_date, end_date, total_days, reason, document_url, status, approved_by, approved_at
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, CASE WHEN $9::text = 'approved' THEN NOW() ELSE NULL END)
+       ) VALUES ($1::int, $2::int, $3::int, $4::date, $5::date, $6::decimal, $7::text, $8::text, $9::text, $10::int, $11::timestamptz)
        RETURNING *`,
-      [employee_id, req.companyId, leave_type_id, start_date, end_date, totalDays, reason, document_url || null, status, status === 'approved' ? req.user.id : null],
+      [
+        employee_id,
+        req.companyId,
+        leave_type_id,
+        start_date,
+        end_date,
+        totalDays,
+        reason,
+        document_url || null,
+        status,
+        status === 'approved' ? req.user.id : null,
+        status === 'approved' ? new Date() : null,
+      ],
     );
 
     if (status === 'approved') {

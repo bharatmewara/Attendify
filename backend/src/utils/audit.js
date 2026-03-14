@@ -14,7 +14,7 @@ export const logAudit = async ({
   try {
     await query(
       `INSERT INTO audit_logs (company_id, user_id, action, entity_type, entity_id, old_values, new_values, ip_address, user_agent)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+       VALUES ($1::int, $2::int, $3::text, $4::text, $5::int, $6::jsonb, $7::jsonb, $8::text, $9::text)`,
       [
         companyId,
         userId,

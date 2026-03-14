@@ -122,7 +122,7 @@ router.post('/calculate', authenticate, authorize('company_admin', 'super_admin'
           employee_id, company_id, month, year, basic_salary, total_allowances, total_deductions,
           late_penalties, early_leave_penalties, gross_salary, net_salary, working_days,
           present_days, absent_days, leave_days, status, processed_by, processed_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 'processed', $16, NOW())
+        ) VALUES ($1::int, $2::int, $3::int, $4::int, $5::decimal, $6::decimal, $7::decimal, $8::decimal, $9::decimal, $10::decimal, $11::decimal, $12::int, $13::int, $14::int, $15::int, 'processed', $16::int, NOW())
         ON CONFLICT (employee_id, month, year) 
         DO UPDATE SET 
           basic_salary = EXCLUDED.basic_salary,

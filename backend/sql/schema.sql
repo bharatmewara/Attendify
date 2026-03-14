@@ -175,6 +175,11 @@ CREATE TABLE IF NOT EXISTS employees (
   joining_date DATE NOT NULL,
   employment_type VARCHAR(50) CHECK (employment_type IN ('full_time', 'part_time', 'contract', 'intern')),
   status VARCHAR(50) DEFAULT 'active' CHECK (status IN ('active', 'inactive', 'terminated')),
+  aadhar_number VARCHAR(12),
+  pan_number VARCHAR(10),
+  bank_account_number VARCHAR(50),
+  bank_name VARCHAR(100),
+  bank_ifsc VARCHAR(11),
   profile_photo_url TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW(),
@@ -354,6 +359,28 @@ CREATE TABLE IF NOT EXISTS leave_requests (
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- ============================================
+-- LEAVE REQUESTS TRIGGERS
+-- ============================================
+CREATE OR REPLACE FUNCTION set_leave_request_timestamps()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.status = 'approved' AND (TG_OP = 'INSERT' OR (TG_OP = 'UPDATE' AND OLD.status != 'approved')) AND NEW.approved_at IS NULL THEN
+        NEW.approved_at = NOW();
+    ELSIF NEW.status = 'pending' THEN
+        NEW.approved_at = NULL;
+    END IF;
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_leave_request_timestamps ON leave_requests;
+CREATE TRIGGER trg_leave_request_timestamps
+BEFORE INSERT OR UPDATE ON leave_requests
+FOR EACH ROW
+EXECUTE FUNCTION set_leave_request_timestamps();
 
 -- ============================================
 -- 17. SALARY STRUCTURES

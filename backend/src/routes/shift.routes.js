@@ -51,7 +51,7 @@ router.put('/:id', authenticate, authorize('company_admin', 'super_admin'), tena
       `UPDATE shifts 
        SET name = $1, start_time = $2, end_time = $3, working_days = $4, grace_period_minutes = $5,
            late_penalty_per_minute = $6, early_leave_penalty_per_minute = $7, is_active = $8
-       WHERE id = $9 AND ($10::int IS NULL OR company_id = $10)
+       WHERE id = $9::int AND ($10::int IS NULL OR company_id = $10::int)
        RETURNING *`,
       [name, start_time, end_time, JSON.stringify(working_days), grace_period_minutes, late_penalty_per_minute, early_leave_penalty_per_minute, is_active, id, req.companyId]
     );
