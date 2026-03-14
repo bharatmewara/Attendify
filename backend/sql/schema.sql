@@ -9,6 +9,8 @@
 -- DROP TABLE IF EXISTS payroll_calculations CASCADE;
 -- DROP TABLE IF EXISTS salary_structures CASCADE;
 -- DROP TABLE IF EXISTS hr_documents CASCADE;
+-- DROP TABLE IF EXISTS holidays CASCADE;
+-- DROP TABLE IF EXISTS attendance_regularization_requests CASCADE;
 -- DROP TABLE IF EXISTS leave_requests CASCADE;
 -- DROP TABLE IF EXISTS leave_balances CASCADE;
 -- DROP TABLE IF EXISTS leave_types CASCADE;
@@ -280,6 +282,25 @@ CREATE TABLE IF NOT EXISTS network_policies (
 );
 
 -- ============================================
+-- 13B. ATTENDANCE REGULARIZATION REQUESTS (ER)
+-- ============================================
+CREATE TABLE IF NOT EXISTS attendance_regularization_requests (
+  id SERIAL PRIMARY KEY,
+  employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+  company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  work_date DATE NOT NULL,
+  punch_in_time TIME,
+  punch_out_time TIME,
+  reason TEXT NOT NULL,
+  status VARCHAR(50) DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
+  approved_by INTEGER REFERENCES users(id),
+  approved_at TIMESTAMPTZ,
+  rejection_reason TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ============================================
 -- 14. LEAVE TYPES
 -- ============================================
 CREATE TABLE IF NOT EXISTS leave_types (
@@ -428,6 +449,20 @@ CREATE TABLE IF NOT EXISTS audit_logs (
 );
 
 -- ============================================
+-- 22. HOLIDAYS
+-- ============================================
+CREATE TABLE IF NOT EXISTS holidays (
+  id SERIAL PRIMARY KEY,
+  company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  name VARCHAR(100) NOT NULL,
+  holiday_date DATE NOT NULL,
+  description TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(company_id, holiday_date)
+);
+
+-- ============================================
 -- INDEXES for Performance
 -- ============================================
 CREATE INDEX IF NOT EXISTS idx_users_company_id ON users(company_id);
@@ -443,6 +478,9 @@ CREATE INDEX IF NOT EXISTS idx_payroll_employee_month_year ON payroll_calculatio
 CREATE INDEX IF NOT EXISTS idx_audit_logs_company ON audit_logs(company_id);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_user ON audit_logs(user_id);
 CREATE INDEX IF NOT EXISTS idx_network_policies_company ON network_policies(company_id);
+CREATE INDEX IF NOT EXISTS idx_holidays_company_date ON holidays(company_id, holiday_date);
+CREATE INDEX IF NOT EXISTS idx_attendance_er_employee ON attendance_regularization_requests(employee_id);
+CREATE INDEX IF NOT EXISTS idx_attendance_er_company_status ON attendance_regularization_requests(company_id, status);
 
 -- ============================================
 -- SEED DATA

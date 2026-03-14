@@ -108,17 +108,23 @@ export default function EmployeeAttendance() {
 
   const getRecordForDate = (date) => {
     if (!date) return null;
-    const dateStr = date.toLocaleDateString('en-CA');
-    return records.find(r => r.work_date.split('T')[0] === dateStr || new Date(r.work_date).toLocaleDateString('en-CA') === dateStr);
+    const dateStr = typeof date === 'string' ? date : date.toLocaleDateString('en-CA');
+    return records.find(r => {
+      const rDate = r.work_date.split('T')[0];
+      return rDate === dateStr;
+    });
   };
 
   const getHolidayForDate = (date) => {
     if (!date) return null;
-    const dateStr = date.toLocaleDateString ? date.toLocaleDateString('en-CA') : date;
-    return holidays.find(h => h.holiday_date.split('T')[0] === dateStr || new Date(h.holiday_date).toLocaleDateString('en-CA') === dateStr);
+    const dateStr = typeof date === 'string' ? date : date.toLocaleDateString('en-CA');
+    return holidays.find(h => {
+      const hDate = h.holiday_date.split('T')[0];
+      return hDate === dateStr;
+    });
   };
 
-  const selectedRecord = getRecordForDate(new Date(selectedDate));
+  const selectedRecord = getRecordForDate(selectedDate);
   const selectedHoliday = getHolidayForDate(selectedDate);
 
   // Upcoming holidays in next 30 days
@@ -176,12 +182,15 @@ export default function EmployeeAttendance() {
                 <IconButton onClick={handleNextMonth}><ChevronRight /></IconButton>
               </Box>
 
-              <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: { xs: 1, md: 1.5 } }}>
+              <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: { xs: 1, md: 1.5 }, mb: 1 }}>
                 {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => (
                   <Box key={day} sx={{ textAlign: 'center', py: 1.5, bgcolor: 'rgba(0,0,0,0.02)', borderRadius: 2 }}>
-                    <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'text.secondary', textTransform: 'uppercase' }}>{day}</Typography>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 800, color: 'text.secondary', textTransform: 'uppercase', fontSize: '0.75rem' }}>{day}</Typography>
                   </Box>
                 ))}
+              </Box>
+
+              <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: { xs: 1, md: 1.5 } }}>
                 {days.map((day, idx) => {
                   if (!day) return (
                     <Box key={`blank-${idx}`} sx={{

@@ -167,7 +167,7 @@ router.post('/requests/admin', authenticate, authorize('company_admin', 'super_a
     const result = await query(
       `INSERT INTO leave_requests (
         employee_id, company_id, leave_type_id, start_date, end_date, total_days, reason, document_url, status, approved_by, approved_at
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, CASE WHEN $9 = 'approved' THEN NOW() ELSE NULL END)
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, CASE WHEN $9::text = 'approved' THEN NOW() ELSE NULL END)
        RETURNING *`,
       [employee_id, req.companyId, leave_type_id, start_date, end_date, totalDays, reason, document_url || null, status, status === 'approved' ? req.user.id : null],
     );
