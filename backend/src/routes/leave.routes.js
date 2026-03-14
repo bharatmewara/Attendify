@@ -273,4 +273,29 @@ router.get('/balance/:employeeId', authenticate, authorize('company_admin', 'sup
   }
 });
 
+// Assign or Update leave balance (for admin)
+router.post('/balance', authenticate, authorize('company_admin', 'super_admin'), tenantIsolation, async (req, res) => {
+  const { employee_id, leave_type_id, days_to_add } = req.body;
+  const currentYear = new Date().getFullYear();
+
+  try {
+    // We update by adding days_to_add to existing total_days and remaining_days
+    const result = await query(
+      `INSERT INTO leave_balances (employee_id, leave_type_id, year, total_days, remaining_days, used_days)
+       VALUES ($1, $2, $3, $4, $4, 0)
+       ON CONFLICT (employee_id, leave_type_id, year)
+       DO UPDATE SET 
+         total_days = leave_balances.total_days + EXCLUDED.total_days,
+         remaining_days = leave_balances.remaining_days + EXCLUDED.remaining_days,
+         updated_at = NOW()
+       RETURNING *`,
+      [employee_id, leave_type_id, currentYear, days_to_add]
+    );
+
+    res.status(200).json(result.rows[0]);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
 export default router;

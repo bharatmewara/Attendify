@@ -47,8 +47,15 @@ const typeInitial = {
   requires_document: false,
 };
 
+const shellCardSx = {
+  borderRadius: 3,
+  border: '1px solid rgba(99, 102, 241, 0.12)',
+  boxShadow: '0 18px 40px rgba(15, 23, 42, 0.08)',
+};
+
 export default function LeaveManagement() {
   const { user } = useAuth();
+  const isEmployee = user?.role === 'employee';
   const [tabValue, setTabValue] = useState(0);
   const [employees, setEmployees] = useState([]);
   const [leaveRequests, setLeaveRequests] = useState([]);
@@ -57,21 +64,19 @@ export default function LeaveManagement() {
   const [selectedEmployeeId, setSelectedEmployeeId] = useState('');
   const [openRequestDialog, setOpenRequestDialog] = useState(false);
   const [openTypeDialog, setOpenTypeDialog] = useState(false);
+  const [openAssignDialog, setOpenAssignDialog] = useState(false);
   const [requestForm, setRequestForm] = useState(requestInitial);
   const [typeForm, setTypeForm] = useState(typeInitial);
+  const [assignForm, setAssignForm] = useState({ employee_id: '', leave_type_id: '', days_to_add: 0 });
   const [message, setMessage] = useState({ type: '', text: '' });
 
   const loadData = async () => {
     try {
       const requestsPromise = apiRequest('/leave/requests');
       const typesPromise = apiRequest('/leave/types');
-      const employeePromise = user.role !== 'employee' ? apiRequest('/employees') : Promise.resolve([]);
+      const employeePromise = isEmployee ? Promise.resolve([]) : apiRequest('/employees');
       const balancePromise =
-        user.role === 'employee'
-          ? apiRequest('/leave/balance')
-          : selectedEmployeeId
-          ? apiRequest(`/leave/balance/${selectedEmployeeId}`)
-          : Promise.resolve([]);
+        isEmployee ? apiRequest('/leave/balance') : selectedEmployeeId ? apiRequest(`/leave/balance/${selectedEmployeeId}`) : Promise.resolve([]);
 
       const [requestsData, typesData, employeesData, balanceData] = await Promise.all([
         requestsPromise,
@@ -91,7 +96,7 @@ export default function LeaveManagement() {
 
   useEffect(() => {
     loadData();
-  }, [selectedEmployeeId, user.role]);
+  }, [selectedEmployeeId, isEmployee]);
 
   const pendingRequests = leaveRequests.filter((item) => item.status === 'pending');
   const approvedRequests = leaveRequests.filter((item) => item.status === 'approved');
@@ -110,7 +115,7 @@ export default function LeaveManagement() {
 
   const handleApplyLeave = async () => {
     try {
-      if (user.role === 'employee') {
+      if (isEmployee) {
         await apiRequest('/leave/requests', { method: 'POST', body: requestForm });
       } else {
         await apiRequest('/leave/requests/admin', { method: 'POST', body: requestForm });
@@ -153,176 +158,274 @@ export default function LeaveManagement() {
     }
   };
 
+  const handleAssignBalance = async () => {
+    try {
+      if (!assignForm.employee_id || !assignForm.leave_type_id || !assignForm.days_to_add) {
+         setMessage({ type: 'error', text: 'All fields are required and days must be greater than 0.' });
+         return;
+      }
+      await apiRequest('/leave/balance', {
+        method: 'POST',
+        body: assignForm,
+      });
+      setOpenAssignDialog(false);
+      setAssignForm({ employee_id: '', leave_type_id: '', days_to_add: 0 });
+      setMessage({ type: 'success', text: 'Leave balance assigned successfully.' });
+      loadData();
+    } catch (error) {
+      setMessage({ type: 'error', text: error.message });
+    }
+  };
+
   return (
-    <Box sx={{ p: 3 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'end', mb: 3 }}>
-        <Box>
-          <Typography variant="h4" fontWeight={800}>Leave Management</Typography>
-          <Typography color="text.secondary">Policy setup, leave requests, approvals, and live employee balances in one panel.</Typography>
-        </Box>
-        <Box sx={{ display: 'flex', gap: 1.25 }}>
-          {user.role !== 'employee' ? (
-            <Button variant="outlined" onClick={() => setOpenTypeDialog(true)}>
-              Add Leave Type
-            </Button>
-          ) : null}
-          <Button variant="contained" startIcon={<Add />} onClick={() => {
-            setRequestForm({ ...requestInitial, employee_id: selectedEmployeeId || '' });
-            setOpenRequestDialog(true);
-          }}>
-            Apply Leave
-          </Button>
-        </Box>
-      </Box>
+    <Box sx={{ px: { xs: 2, md: 4 }, py: { xs: 2, md: 3 } }}>
+      <Box sx={{ maxWidth: 1400, mx: 'auto' }}>
+        <Card
+          sx={{
+            ...shellCardSx,
+            mb: 3,
+            overflow: 'hidden',
+            background: isEmployee
+              ? 'linear-gradient(135deg, #0f766e 0%, #0f766e 35%, #2563eb 100%)'
+              : 'linear-gradient(135deg, #111827 0%, #312e81 55%, #4f46e5 100%)',
+            color: '#fff',
+          }}
+        >
+          <CardContent sx={{ p: { xs: 3, md: 4 } }}>
+            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 2, justifyContent: 'space-between', alignItems: { xs: 'flex-start', md: 'center' } }}>
+              <Box>
+                <Typography variant="h4" sx={{ fontWeight: 800, mb: 1 }}>
+                  {isEmployee ? 'My Leave Dashboard' : 'Leave Management'}
+                </Typography>
+                <Typography sx={{ maxWidth: 620, color: 'rgba(255,255,255,0.8)' }}>
+                  {isEmployee
+                    ? 'Apply for leave, watch approval status, and track your remaining balance in one place.'
+                    : 'Manage leave policies, approvals, and employee balances with a clean review workflow.'}
+                </Typography>
+              </Box>
+              <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 1.25 }}>
+                {!isEmployee ? (
+                  <>
+                    <Button variant="outlined" onClick={() => setOpenAssignDialog(true)} sx={{ color: '#fff', borderColor: 'rgba(255,255,255,0.4)', '&:hover': { borderColor: '#fff', bgcolor: 'rgba(255,255,255,0.1)' } }}>
+                      Assign Balance
+                    </Button>
+                    <Button variant="contained" onClick={() => setOpenTypeDialog(true)} sx={{ bgcolor: '#fff', color: '#312e81', '&:hover': { bgcolor: '#eef2ff' } }}>
+                      Add Leave Type
+                    </Button>
+                  </>
+                ) : null}
+                <Button
+                  variant="contained"
+                  startIcon={<Add />}
+                  onClick={() => {
+                    setRequestForm({ ...requestInitial, employee_id: selectedEmployeeId || '' });
+                    setOpenRequestDialog(true);
+                  }}
+                  sx={{ bgcolor: isEmployee ? '#f59e0b' : '#22c55e', '&:hover': { bgcolor: isEmployee ? '#d97706' : '#16a34a' } }}
+                >
+                  Apply Leave
+                </Button>
+              </Box>
+            </Box>
+          </CardContent>
+        </Card>
 
-      {message.text ? (
-        <Alert severity={message.type || 'info'} sx={{ mb: 2 }} onClose={() => setMessage({ type: '', text: '' })}>
-          {message.text}
-        </Alert>
-      ) : null}
+        {message.text ? (
+          <Alert severity={message.type || 'info'} sx={{ mb: 2.5, borderRadius: 3 }} onClose={() => setMessage({ type: '', text: '' })}>
+            {message.text}
+          </Alert>
+        ) : null}
 
-      <Grid container spacing={2} sx={{ mb: 3 }}>
-        {stats.map((stat) => (
-          <Grid item xs={12} sm={6} md={3} key={stat.label}>
-            <Card sx={{ borderRadius: 4 }}>
-              <CardContent>
-                <Typography color="text.secondary">{stat.label}</Typography>
-                <Typography variant="h4" fontWeight={800}>{stat.value}</Typography>
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2, 1fr)', sm: 'repeat(4, 1fr)' }, gap: 2.5, mb: 3 }}>
+          {stats.map((stat) => (
+            <Card key={stat.label} sx={{ ...shellCardSx, height: '100%', background: 'linear-gradient(180deg, #ffffff 0%, #f8faff 100%)' }}>
+              <CardContent sx={{ p: 2.5, display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
+                <Typography color="text.secondary" sx={{ mb: 1, fontWeight: 600 }}>{stat.label}</Typography>
+                <Typography variant="h3" sx={{ fontWeight: 800, lineHeight: 1, color: '#0f172a' }}>{stat.value}</Typography>
               </CardContent>
             </Card>
-          </Grid>
-        ))}
-      </Grid>
+          ))}
+        </Box>
 
-      <Grid container spacing={3}>
-        <Grid item xs={12} lg={4}>
-          <Card sx={{ borderRadius: 4, mb: 3 }}>
-            <CardContent>
-              <Typography variant="h6" fontWeight={700} sx={{ mb: 2 }}>Leave Balance</Typography>
-              {user.role !== 'employee' ? (
-                <TextField
-                  fullWidth
-                  select
-                  label="Employee"
-                  value={selectedEmployeeId}
-                  onChange={(e) => setSelectedEmployeeId(e.target.value)}
-                  sx={{ mb: 2 }}
-                >
-                  <MenuItem value="">Select employee</MenuItem>
-                  {employees.map((employee) => (
-                    <MenuItem key={employee.id} value={employee.id}>
-                      {employee.first_name} {employee.last_name} ({employee.employee_code})
-                    </MenuItem>
-                  ))}
-                </TextField>
-              ) : null}
-              <Box sx={{ display: 'grid', gap: 1.5 }}>
-                {leaveBalance.map((balance) => (
-                  <Paper key={balance.id} variant="outlined" sx={{ p: 2, borderRadius: 3 }}>
-                    <Typography fontWeight={700}>{balance.leave_type_name}</Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      {balance.remaining_days} remaining of {balance.total_days} days
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      Used: {balance.used_days || 0}
-                    </Typography>
-                  </Paper>
-                ))}
-                {leaveBalance.length === 0 ? (
-                  <Typography color="text.secondary">
-                    {user.role === 'employee' ? 'No leave balance found.' : 'Select an employee to inspect leave balances.'}
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: 'repeat(2, 1fr)' }, gap: 2.5 }}>
+          <Box sx={{ gridColumn: { xs: '1 / -1' } }}>
+            <Card sx={shellCardSx}>
+              <CardContent sx={{ p: 0 }}>
+                <Box sx={{ px: 3, pt: 3, pb: 2.25, borderBottom: '1px solid rgba(148, 163, 184, 0.18)' }}>
+                  <Typography variant="h6" sx={{ fontWeight: 800, mb: 0.5 }}>
+                    {isEmployee ? 'My Leave Requests' : 'Leave Request Queue'}
                   </Typography>
-                ) : null}
-              </Box>
-            </CardContent>
-          </Card>
-
-          <Card sx={{ borderRadius: 4 }}>
-            <CardContent>
-              <Typography variant="h6" fontWeight={700} sx={{ mb: 2 }}>Leave Policies</Typography>
-              <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 3 }}>
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Name</TableCell>
-                      <TableCell>Code</TableCell>
-                      <TableCell>Days</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {leaveTypes.map((type) => (
-                      <TableRow key={type.id}>
-                        <TableCell>{type.name}</TableCell>
-                        <TableCell>{type.code}</TableCell>
-                        <TableCell>{type.days_per_year}</TableCell>
+                  <Typography variant="body2" color="text.secondary">
+                    {isEmployee ? 'Track the approval status of your submitted leave requests.' : 'Approve or reject pending requests and review history.'}
+                  </Typography>
+                </Box>
+                <Box sx={{ px: 2, pt: 1.5 }}>
+                  <Tabs value={tabValue} onChange={(_, value) => setTabValue(value)}>
+                    <Tab label={`Pending (${pendingRequests.length})`} sx={{ fontWeight: 600 }} />
+                    <Tab label={`Approved (${approvedRequests.length})`} sx={{ fontWeight: 600 }} />
+                    <Tab label={`Rejected (${rejectedRequests.length})`} sx={{ fontWeight: 600 }} />
+                  </Tabs>
+                </Box>
+                <TableContainer component={Paper} elevation={0} sx={{ boxShadow: 'none' }}>
+                  <Table>
+                    <TableHead>
+                      <TableRow sx={{ bgcolor: 'rgba(0,0,0,0.02)' }}>
+                        {!isEmployee ? <TableCell sx={{ fontWeight: 700 }}>Employee</TableCell> : null}
+                        <TableCell sx={{ fontWeight: 700 }}>Leave Type</TableCell>
+                        <TableCell sx={{ fontWeight: 700 }}>Dates</TableCell>
+                        <TableCell sx={{ fontWeight: 700 }}>Days</TableCell>
+                        <TableCell sx={{ fontWeight: 700 }}>Reason</TableCell>
+                        <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
+                        {!isEmployee && tabValue === 0 ? <TableCell align="right" sx={{ fontWeight: 700 }}>Actions</TableCell> : null}
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        <Grid item xs={12} lg={8}>
-          <Card sx={{ borderRadius: 4 }}>
-            <CardContent>
-              <Tabs value={tabValue} onChange={(_, value) => setTabValue(value)} sx={{ mb: 2 }}>
-                <Tab label={`Pending (${pendingRequests.length})`} />
-                <Tab label={`Approved (${approvedRequests.length})`} />
-                <Tab label={`Rejected (${rejectedRequests.length})`} />
-              </Tabs>
-
-              <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 3 }}>
-                <Table>
-                  <TableHead>
-                    <TableRow>
-                      {user.role !== 'employee' ? <TableCell>Employee</TableCell> : null}
-                      <TableCell>Leave Type</TableCell>
-                      <TableCell>Dates</TableCell>
-                      <TableCell>Days</TableCell>
-                      <TableCell>Reason</TableCell>
-                      <TableCell>Status</TableCell>
-                      {user.role !== 'employee' && tabValue === 0 ? <TableCell>Actions</TableCell> : null}
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {activeList.map((leave) => (
-                      <TableRow key={leave.id} hover>
-                        {user.role !== 'employee' ? <TableCell>{leave.first_name} {leave.last_name}</TableCell> : null}
-                        <TableCell>{leave.leave_type_name}</TableCell>
-                        <TableCell>
-                          {new Date(leave.start_date).toLocaleDateString()} to {new Date(leave.end_date).toLocaleDateString()}
-                        </TableCell>
-                        <TableCell>{leave.total_days}</TableCell>
-                        <TableCell>{leave.reason}</TableCell>
-                        <TableCell>
-                          <Chip label={leave.status} size="small" color={leave.status === 'approved' ? 'success' : leave.status === 'rejected' ? 'error' : 'default'} />
-                        </TableCell>
-                        {user.role !== 'employee' && tabValue === 0 ? (
-                          <TableCell>
-                            <Button size="small" startIcon={<Check />} color="success" onClick={() => handleApproveReject(leave.id, 'approved')}>
-                              Approve
-                            </Button>
-                            <Button size="small" startIcon={<Close />} color="error" onClick={() => handleApproveReject(leave.id, 'rejected')}>
-                              Reject
-                            </Button>
+                    </TableHead>
+                    <TableBody>
+                      {activeList.length ? (
+                        activeList.map((leave) => (
+                          <TableRow key={leave.id} hover>
+                            {!isEmployee ? <TableCell sx={{ fontWeight: 600 }}>{leave.first_name} {leave.last_name}</TableCell> : null}
+                            <TableCell>{leave.leave_type_name}</TableCell>
+                            <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                              {new Date(leave.start_date).toLocaleDateString()} - {new Date(leave.end_date).toLocaleDateString()}
+                            </TableCell>
+                            <TableCell>{leave.total_days}</TableCell>
+                            <TableCell sx={{ maxWidth: 200, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={leave.reason}>
+                              {leave.reason}
+                            </TableCell>
+                            <TableCell>
+                              <Chip label={leave.status} size="small" color={leave.status === 'approved' ? 'success' : leave.status === 'rejected' ? 'error' : 'default'} sx={{ textTransform: 'capitalize', fontWeight: 600, px: 1 }} />
+                            </TableCell>
+                            {!isEmployee && tabValue === 0 ? (
+                              <TableCell align="right">
+                                <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
+                                  <Button size="small" variant="contained" startIcon={<Check />} color="success" onClick={() => handleApproveReject(leave.id, 'approved')} sx={{ borderRadius: 2, textTransform: 'none', boxShadow: 'none' }}>
+                                    Approve
+                                  </Button>
+                                  <Button size="small" variant="outlined" startIcon={<Close />} color="error" onClick={() => handleApproveReject(leave.id, 'rejected')} sx={{ borderRadius: 2, textTransform: 'none' }}>
+                                    Reject
+                                  </Button>
+                                </Box>
+                              </TableCell>
+                            ) : null}
+                          </TableRow>
+                        ))
+                      ) : (
+                        <TableRow>
+                          <TableCell colSpan={isEmployee ? 5 : 7} align="center" sx={{ py: 6, color: 'text.secondary' }}>
+                            <Box sx={{ color: 'text.disabled', mb: 1.5 }}>
+                              <Check sx={{ fontSize: 40, opacity: 0.5 }} />
+                            </Box>
+                            No requests found in this tab.
                           </TableCell>
-                        ) : null}
-                      </TableRow>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </CardContent>
+            </Card>
+          </Box>
+
+          <Box>
+            <Card sx={{ ...shellCardSx, height: '100%' }}>
+              <CardContent sx={{ p: 4 }}>
+                <Typography variant="h6" sx={{ fontWeight: 800, mb: 2 }}>
+                  {isEmployee ? 'My Leave Balance' : 'Leave Balance Search'}
+                </Typography>
+                {!isEmployee ? (
+                  <TextField
+                    fullWidth
+                    select
+                    label="Select Employee"
+                    value={selectedEmployeeId}
+                    onChange={(e) => setSelectedEmployeeId(e.target.value)}
+                    sx={{ mb: 2.5 }}
+                  >
+                    <MenuItem value="">Select an employee...</MenuItem>
+                    {employees.map((employee) => (
+                      <MenuItem key={employee.id} value={employee.id}>
+                        {employee.first_name} {employee.last_name} ({employee.employee_code})
+                      </MenuItem>
                     ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
+                  </TextField>
+                ) : null}
+                <Box sx={{ display: 'grid', gap: 1.5 }}>
+                  {leaveBalance.length ? (
+                    leaveBalance.map((balance) => (
+                      <Paper key={balance.id} variant="outlined" sx={{ p: 2, borderRadius: 3, boxShadow: 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Box>
+                          <Typography sx={{ fontWeight: 700 }}>{balance.leave_type_name}</Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            Used: {balance.used_days || 0}
+                          </Typography>
+                        </Box>
+                        <Box sx={{ textAlign: 'right' }}>
+                          <Typography variant="h6" color="primary" sx={{ fontWeight: 800, lineHeight: 1 }}>
+                            {balance.remaining_days}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            of {balance.total_days} days
+                          </Typography>
+                        </Box>
+                      </Paper>
+                    ))
+                  ) : (
+                    <Box sx={{ textAlign: 'center', py: 3, color: 'text.secondary', bgcolor: 'rgba(0,0,0,0.02)', borderRadius: 3 }}>
+                      <Typography variant="body2">
+                        {isEmployee 
+                           ? 'No leave balance found.' 
+                           : selectedEmployeeId
+                             ? 'No leave balance found for selected employee.'
+                             : 'Select an employee to inspect leave balances.'}
+                      </Typography>
+                    </Box>
+                  )}
+                </Box>
+              </CardContent>
+            </Card>
+          </Box>
+
+          <Box>
+            <Card sx={{ ...shellCardSx, height: '100%' }}>
+              <CardContent sx={{ p: 0 }}>
+                <Box sx={{ px: 3, pt: 3, pb: 2.25, borderBottom: '1px solid rgba(148, 163, 184, 0.18)' }}>
+                  <Typography variant="h6" sx={{ fontWeight: 800 }}>Leave Policies</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {isEmployee ? 'Policies available for your leave applications.' : 'Configured leave types for the company.'}
+                  </Typography>
+                </Box>
+                <TableContainer component={Paper} elevation={0} sx={{ boxShadow: 'none' }}>
+                  <Table size="medium">
+                    <TableHead>
+                      <TableRow sx={{ bgcolor: 'rgba(0,0,0,0.02)' }}>
+                        <TableCell sx={{ fontWeight: 700 }}>Policy Name</TableCell>
+                        <TableCell sx={{ fontWeight: 700 }}>Code</TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 700 }}>Days / Year</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {leaveTypes.map((type) => (
+                        <TableRow key={type.id} hover>
+                          <TableCell sx={{ fontWeight: 600 }}>{type.name}</TableCell>
+                          <TableCell>
+                            <Chip label={type.code} size="small" variant="outlined" sx={{ fontWeight: 600 }} />
+                          </TableCell>
+                          <TableCell align="right" sx={{ fontWeight: 800 }}>{type.days_per_year}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </CardContent>
+            </Card>
+          </Box>
+        </Box>
+      </Box>
 
       <Dialog open={openRequestDialog} onClose={() => setOpenRequestDialog(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Apply for Leave</DialogTitle>
         <DialogContent>
-          {user.role !== 'employee' ? (
+          {!isEmployee ? (
             <TextField fullWidth select label="Employee" value={requestForm.employee_id} onChange={(e) => setRequestForm({ ...requestForm, employee_id: e.target.value })} margin="normal">
               {employees.map((employee) => (
                 <MenuItem key={employee.id} value={employee.id}>
@@ -346,7 +449,7 @@ export default function LeaveManagement() {
               <TextField fullWidth label="End Date" type="date" InputLabelProps={{ shrink: true }} value={requestForm.end_date} onChange={(e) => setRequestForm({ ...requestForm, end_date: e.target.value })} />
             </Grid>
           </Grid>
-          {user.role !== 'employee' ? (
+          {!isEmployee ? (
             <TextField fullWidth select label="Initial Status" value={requestForm.status} onChange={(e) => setRequestForm({ ...requestForm, status: e.target.value })} margin="normal">
               <MenuItem value="pending">Pending Approval</MenuItem>
               <MenuItem value="approved">Approve Immediately</MenuItem>
@@ -383,6 +486,31 @@ export default function LeaveManagement() {
         <DialogActions>
           <Button onClick={() => setOpenTypeDialog(false)}>Cancel</Button>
           <Button onClick={handleCreateType} variant="contained">Create Policy</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={openAssignDialog} onClose={() => setOpenAssignDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Assign Leave Balance</DialogTitle>
+        <DialogContent>
+          <TextField fullWidth select label="Employee" value={assignForm.employee_id} onChange={(e) => setAssignForm({ ...assignForm, employee_id: e.target.value })} margin="normal">
+            {employees.map((employee) => (
+              <MenuItem key={employee.id} value={employee.id}>
+                {employee.first_name} {employee.last_name} ({employee.employee_code})
+              </MenuItem>
+            ))}
+          </TextField>
+          <TextField fullWidth select label="Leave Type" value={assignForm.leave_type_id} onChange={(e) => setAssignForm({ ...assignForm, leave_type_id: e.target.value })} margin="normal">
+            {leaveTypes.map((type) => (
+              <MenuItem key={type.id} value={type.id}>
+                {type.name} ({type.code})
+              </MenuItem>
+            ))}
+          </TextField>
+          <TextField fullWidth label="Days to Add" type="number" value={assignForm.days_to_add} onChange={(e) => setAssignForm({ ...assignForm, days_to_add: Number(e.target.value) })} margin="normal" helperText="Total days and remaining days will be increased by this amount." />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenAssignDialog(false)}>Cancel</Button>
+          <Button onClick={handleAssignBalance} variant="contained">Assign</Button>
         </DialogActions>
       </Dialog>
     </Box>

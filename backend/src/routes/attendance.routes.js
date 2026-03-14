@@ -5,6 +5,12 @@ import { logAudit } from '../utils/audit.js';
 import { enforcePunchIp } from '../middleware/networkPolicy.js';
 
 const router = express.Router();
+const combineDateTime = (workDate, time) => {
+  if (!workDate || !time) return null;
+  const dateTimeStr = `${workDate}T${time}:00`;
+  const date = new Date(dateTimeStr);
+  return isNaN(date.getTime()) ? null : date;
+};
 
 // Punch in
 router.post('/punch-in', authenticate, tenantIsolation, enforcePunchIp, async (req, res) => {
@@ -280,6 +286,188 @@ router.get('/summary', authenticate, tenantIsolation, async (req, res) => {
 
     const result = await query(queryText, params);
     res.json(result.rows[0]);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Get attendance regularization requests
+router.get('/regularization-requests', authenticate, tenantIsolation, async (req, res) => {
+  try {
+    let queryText = `
+      SELECT arr.*, e.first_name, e.last_name, e.employee_code
+      FROM attendance_regularization_requests arr
+      JOIN employees e ON arr.employee_id = e.id
+      WHERE ($1::int IS NULL OR arr.company_id = $1)
+    `;
+    const params = [req.companyId];
+
+    if (req.user.role === 'employee') {
+      const empResult = await query('SELECT id FROM employees WHERE user_id = $1', [req.user.id]);
+      if (empResult.rows.length === 0) {
+        return res.status(404).json({ message: 'Employee profile not found' });
+      }
+      queryText += ` AND arr.employee_id = $2`;
+      params.push(empResult.rows[0].id);
+    }
+
+    queryText += ' ORDER BY arr.created_at DESC';
+
+    const result = await query(queryText, params);
+    res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Create attendance regularization request
+router.post('/regularization-requests', authenticate, authorize('employee'), tenantIsolation, async (req, res) => {
+  const { work_date, punch_in_time, punch_out_time, reason } = req.body;
+
+  try {
+    if (!work_date || !reason) {
+      return res.status(400).json({ message: 'work_date and reason are required' });
+    }
+
+    const today = new Date().toISOString().split('T')[0];
+    if (work_date > today) {
+      return res.status(400).json({ message: 'ER request can only be raised for past or current dates' });
+    }
+
+    if (punch_in_time && punch_out_time && combineDateTime(work_date, punch_out_time) <= combineDateTime(work_date, punch_in_time)) {
+      return res.status(400).json({ message: 'punch_out_time must be later than punch_in_time' });
+    }
+
+    const empResult = await query('SELECT id FROM employees WHERE user_id = $1', [req.user.id]);
+    if (empResult.rows.length === 0) {
+      return res.status(404).json({ message: 'Employee profile not found' });
+    }
+
+    const employeeId = empResult.rows[0].id;
+    const duplicateCheck = await query(
+      `SELECT id
+       FROM attendance_regularization_requests
+       WHERE employee_id = $1 AND work_date = $2 AND status = 'pending'
+       LIMIT 1`,
+      [employeeId, work_date],
+    );
+
+    if (duplicateCheck.rows.length > 0) {
+      return res.status(400).json({ message: 'A pending ER request already exists for this date' });
+    }
+
+    const result = await query(
+      `INSERT INTO attendance_regularization_requests (
+         employee_id, company_id, work_date, punch_in_time, punch_out_time, reason
+       ) VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING *`,
+      [employeeId, req.companyId, work_date, punch_in_time || null, punch_out_time || null, reason],
+    );
+
+    await logAudit({
+      companyId: req.companyId,
+      userId: req.user.id,
+      action: 'CREATE_ATTENDANCE_ER',
+      entityType: 'attendance_regularization',
+      entityId: result.rows[0].id,
+      newValues: result.rows[0],
+      ipAddress: req.ip,
+    });
+
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Approve or reject attendance regularization request
+router.put('/regularization-requests/:id', authenticate, authorize('company_admin', 'super_admin'), tenantIsolation, async (req, res) => {
+  const { status, rejection_reason } = req.body;
+
+  try {
+    if (!['approved', 'rejected'].includes(status)) {
+      return res.status(400).json({ message: 'status must be approved or rejected' });
+    }
+
+    const requestResult = await query(
+      `SELECT *
+       FROM attendance_regularization_requests
+       WHERE id = $1 AND ($2::int IS NULL OR company_id = $2)`,
+      [req.params.id, req.companyId],
+    );
+
+    if (requestResult.rows.length === 0) {
+      return res.status(404).json({ message: 'ER request not found' });
+    }
+
+    const regularization = requestResult.rows[0];
+    if (!regularization.work_date) {
+      return res.status(400).json({ message: 'Invalid work_date in ER request' });
+    }
+    if (regularization.status !== 'pending') {
+      return res.status(400).json({ message: 'Only pending ER requests can be updated' });
+    }
+
+    if (status === 'rejected' && !rejection_reason) {
+      return res.status(400).json({ message: 'rejection_reason is required when rejecting an ER request' });
+    }
+
+    if (status === 'approved') {
+      const punchInAt = regularization.punch_in_time ? combineDateTime(regularization.work_date, regularization.punch_in_time) : null;
+      const punchOutAt = regularization.punch_out_time ? combineDateTime(regularization.work_date, regularization.punch_out_time) : null;
+      const totalHours = (punchInAt && punchOutAt) ? ((punchOutAt - punchInAt) / (1000 * 60 * 60)).toFixed(2) : null;
+
+      if (punchInAt || punchOutAt || totalHours !== null) {
+        await query(
+          `INSERT INTO attendance_records (
+             employee_id, company_id, work_date, punch_in_time, punch_out_time, total_hours, status, source, notes, approved_by
+           ) VALUES ($1, $2, $3, $4, $5, $6, 'present', 'web', $7, $8)
+           ON CONFLICT (employee_id, work_date)
+           DO UPDATE SET
+             punch_in_time = COALESCE(EXCLUDED.punch_in_time, attendance_records.punch_in_time),
+             punch_out_time = COALESCE(EXCLUDED.punch_out_time, attendance_records.punch_out_time),
+             total_hours = COALESCE(EXCLUDED.total_hours, attendance_records.total_hours),
+             status = CASE WHEN attendance_records.status = 'on_leave' THEN attendance_records.status ELSE 'present' END,
+             notes = EXCLUDED.notes,
+             approved_by = EXCLUDED.approved_by,
+             updated_at = NOW()`,
+          [
+            regularization.employee_id,
+            regularization.company_id,
+            regularization.work_date,
+            punchInAt,
+            punchOutAt,
+            totalHours,
+            `Attendance ER approved: ${regularization.reason}`,
+            req.user.id,
+          ],
+        );
+      }
+    }
+
+    const updateResult = await query(
+      `UPDATE attendance_regularization_requests
+       SET status = $1,
+           rejection_reason = $2,
+           approved_by = $3,
+           approved_at = NOW(),
+           updated_at = NOW()
+       WHERE id = $4
+       RETURNING *`,
+      [status, status === 'rejected' ? rejection_reason : null, req.user.id, req.params.id],
+    );
+
+    await logAudit({
+      companyId: req.companyId,
+      userId: req.user.id,
+      action: status === 'approved' ? 'APPROVE_ATTENDANCE_ER' : 'REJECT_ATTENDANCE_ER',
+      entityType: 'attendance_regularization',
+      entityId: Number(req.params.id),
+      newValues: updateResult.rows[0],
+      ipAddress: req.ip,
+    });
+
+    res.json(updateResult.rows[0]);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

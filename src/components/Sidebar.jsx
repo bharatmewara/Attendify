@@ -21,6 +21,7 @@ const Sidebar = ({ mobileOpen, onClose }) => {
         { label: 'Dashboard', to: '/app/dashboard' },
         { label: 'Employees', to: '/app/employees' },
         { label: 'Attendance', to: '/app/attendance' },
+        { label: 'Attendance ER', to: '/app/attendance-er' },
         { label: 'Leave', to: '/app/leave' },
         { label: 'Shifts', to: '/app/shifts' },
         { label: 'Payroll', to: '/app/payroll' },
@@ -30,6 +31,7 @@ const Sidebar = ({ mobileOpen, onClose }) => {
       return [
         { label: 'Dashboard', to: '/app/dashboard' },
         { label: 'My Attendance', to: '/app/attendance' },
+        { label: 'My ER Requests', to: '/app/attendance-er' },
         { label: 'My Leave', to: '/app/leave' },
       ];
     }

@@ -7,6 +7,15 @@ import { logAudit } from '../utils/audit.js';
 const router = express.Router();
 
 const nullable = (value) => (value === '' || value === undefined ? null : value);
+const sanitizeDocuments = (documents = []) =>
+  (Array.isArray(documents) ? documents : [])
+    .filter((document) => document?.document_name && document?.file_url)
+    .map((document) => ({
+      document_type: document.document_type || 'other',
+      document_name: document.document_name,
+      file_url: document.file_url,
+      file_size: Number(document.file_size) || null,
+    }));
 
 // Get all employees
 router.get('/', authenticate, tenantIsolation, async (req, res) => {
@@ -179,7 +188,8 @@ router.post('/', authenticate, authorize('company_admin', 'super_admin'), tenant
   const {
     email, password, employee_code, first_name, last_name, date_of_birth, gender,
     phone, emergency_contact, emergency_contact_name, address, city, state, country,
-    postal_code, department_id, designation_id, manager_id, joining_date, employment_type
+    postal_code, department_id, designation_id, manager_id, joining_date, employment_type,
+    aadhar_number, pan_number, bank_account_number, bank_name, bank_ifsc, documents = [],
   } = req.body;
 
   try {
@@ -198,17 +208,20 @@ router.post('/', authenticate, authorize('company_admin', 'super_admin'), tenant
       `INSERT INTO employees (
         user_id, company_id, employee_code, first_name, last_name, date_of_birth, gender,
         phone, emergency_contact, emergency_contact_name, address, city, state, country,
-        postal_code, department_id, designation_id, manager_id, joining_date, employment_type
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+        postal_code, department_id, designation_id, manager_id, joining_date, employment_type,
+        aadhar_number, pan_number, bank_account_number, bank_name, bank_ifsc
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
       RETURNING *`,
       [
         userId, req.companyId, employee_code, first_name, last_name, nullable(date_of_birth), nullable(gender),
         nullable(phone), nullable(emergency_contact), nullable(emergency_contact_name), nullable(address), nullable(city), nullable(state), nullable(country),
-        nullable(postal_code), nullable(department_id), nullable(designation_id), nullable(manager_id), joining_date, employment_type
+        nullable(postal_code), nullable(department_id), nullable(designation_id), nullable(manager_id), joining_date, employment_type,
+        nullable(aadhar_number), nullable(pan_number), nullable(bank_account_number), nullable(bank_name), nullable(bank_ifsc),
       ]
     );
 
     const employee = empResult.rows[0];
+    const sanitizedDocuments = sanitizeDocuments(documents);
 
     // Initialize leave balances
     const leaveTypes = await query('SELECT * FROM leave_types WHERE company_id = $1 AND is_active = true', [req.companyId]);
@@ -219,6 +232,14 @@ router.post('/', authenticate, authorize('company_admin', 'super_admin'), tenant
         `INSERT INTO leave_balances (employee_id, leave_type_id, year, total_days, remaining_days)
          VALUES ($1, $2, $3, $4, $4)`,
         [employee.id, leaveType.id, currentYear, leaveType.days_per_year]
+      );
+    }
+
+    for (const document of sanitizedDocuments) {
+      await query(
+        `INSERT INTO employee_documents (employee_id, company_id, document_type, document_name, file_url, file_size, uploaded_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [employee.id, req.companyId, document.document_type, document.document_name, document.file_url, document.file_size, req.user.id],
       );
     }
 
@@ -244,7 +265,8 @@ router.put('/:id', authenticate, authorize('company_admin', 'super_admin'), tena
   const {
     first_name, last_name, date_of_birth, gender, phone, emergency_contact,
     emergency_contact_name, address, city, state, country, postal_code,
-    department_id, designation_id, manager_id, employment_type, status
+    department_id, designation_id, manager_id, employment_type, status,
+    aadhar_number, pan_number, bank_account_number, bank_name, bank_ifsc,
   } = req.body;
 
   try {
@@ -254,13 +276,16 @@ router.put('/:id', authenticate, authorize('company_admin', 'super_admin'), tena
            emergency_contact = $6, emergency_contact_name = $7, address = $8, city = $9,
            state = $10, country = $11, postal_code = $12, department_id = $13,
            designation_id = $14, manager_id = $15, employment_type = $16, status = $17,
+           aadhar_number = $18, pan_number = $19, bank_account_number = $20, bank_name = $21, bank_ifsc = $22,
            updated_at = NOW()
-       WHERE id = $18 AND ($19::int IS NULL OR company_id = $19)
+       WHERE id = $23 AND ($24::int IS NULL OR company_id = $24)
       RETURNING *`,
       [
         first_name, last_name, nullable(date_of_birth), nullable(gender), nullable(phone), nullable(emergency_contact),
         nullable(emergency_contact_name), nullable(address), nullable(city), nullable(state), nullable(country), nullable(postal_code),
-        nullable(department_id), nullable(designation_id), nullable(manager_id), nullable(employment_type), nullable(status) || 'active', id, req.companyId
+        nullable(department_id), nullable(designation_id), nullable(manager_id), nullable(employment_type), nullable(status) || 'active',
+        nullable(aadhar_number), nullable(pan_number), nullable(bank_account_number), nullable(bank_name), nullable(bank_ifsc),
+        id, req.companyId,
       ]
     );
 
@@ -283,7 +308,17 @@ router.delete('/:id', authenticate, authorize('company_admin', 'super_admin'), t
       return res.status(404).json({ message: 'Employee not found' });
     }
 
+    await query('DELETE FROM employees WHERE id = $1', [req.params.id]);
     await query('DELETE FROM users WHERE id = $1', [empResult.rows[0].user_id]);
+
+    await logAudit({
+      companyId: req.companyId,
+      userId: req.user.id,
+      action: 'DELETE_EMPLOYEE',
+      entityType: 'employee',
+      entityId: req.params.id,
+      ipAddress: req.ip,
+    });
 
     res.json({ message: 'Employee deleted successfully' });
   } catch (error) {

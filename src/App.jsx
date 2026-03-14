@@ -11,9 +11,11 @@ import { useAuth } from './context/AuthContext';
 import SuperAdminDashboard from './pages/SuperAdmin/Dashboard';
 import CompanyAdminDashboard from './pages/CompanyAdmin/Dashboard';
 import EmployeeDashboard from './pages/Employee/Dashboard';
+import EmployeeAttendance from './pages/Employee/Attendance';
 import EmployeeManagement from './pages/CompanyAdmin/EmployeeManagement';
 import LeaveManagement from './pages/CompanyAdmin/LeaveManagement';
 import AttendanceManagement from './pages/CompanyAdmin/AttendanceManagement';
+import AttendanceRegularization from './pages/CompanyAdmin/AttendanceRegularization';
 import ShiftManagement from './pages/CompanyAdmin/ShiftManagement';
 import PayrollManagement from './pages/CompanyAdmin/PayrollManagement';
 import HRDocuments from './pages/CompanyAdmin/HRDocuments';
@@ -36,6 +38,16 @@ function DashboardRouter() {
   return <Navigate to="/auth/login" replace />;
 }
 
+function AttendanceRouter() {
+  const { user } = useAuth();
+
+  if (user?.role === 'employee') {
+    return <EmployeeAttendance />;
+  }
+
+  return <AttendanceManagement />;
+}
+
 function App() {
   return (
     <ThemeProvider theme={theme}>
@@ -53,7 +65,8 @@ function App() {
               <Route path="plans" element={<Plans />} />
               <Route path="analytics" element={<Analytics />} />
               <Route path="employees" element={<EmployeeManagement />} />
-              <Route path="attendance" element={<AttendanceManagement />} />
+              <Route path="attendance" element={<AttendanceRouter />} />
+              <Route path="attendance-er" element={<AttendanceRegularization />} />
               <Route path="leave" element={<LeaveManagement />} />
               <Route path="shifts" element={<ShiftManagement />} />
               <Route path="payroll" element={<PayrollManagement />} />
