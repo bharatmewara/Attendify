@@ -11,6 +11,7 @@ import documentsRoutes from './routes/documents.routes.js';
 import organizationRoutes from './routes/organization.routes.js';
 import attendanceRoutes from './routes/attendance.routes.js';
 import networkRoutes from './routes/network.routes.js';
+import holidaysRoutes from './routes/holidays.routes.js';
 
 const app = express();
 
@@ -37,6 +38,7 @@ app.use('/api/documents', documentsRoutes);
 app.use('/api/organization', organizationRoutes);
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/network-policies', networkRoutes);
+app.use('/api/holidays', holidaysRoutes);
 
 app.use('/api', (_req, res) => {
   res.status(404).json({ message: 'API route not found' });

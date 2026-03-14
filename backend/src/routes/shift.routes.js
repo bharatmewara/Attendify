@@ -109,4 +109,18 @@ router.get('/employee/:employeeId', authenticate, tenantIsolation, async (req, r
   }
 });
 
+// Delete shift
+router.delete('/:id', authenticate, authorize('company_admin', 'super_admin'), tenantIsolation, async (req, res) => {
+  try {
+    const result = await query(
+      'DELETE FROM shifts WHERE id = $1 AND ($2::int IS NULL OR company_id = $2) RETURNING id',
+      [req.params.id, req.companyId]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ message: 'Shift not found' });
+    res.json({ message: 'Shift deleted' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
 export default router;

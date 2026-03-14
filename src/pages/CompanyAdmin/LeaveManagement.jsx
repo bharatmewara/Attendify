@@ -24,7 +24,7 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import { Add, Check, Close } from '@mui/icons-material';
+import { Add, Check, Close, Delete } from '@mui/icons-material';
 import { apiRequest } from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
 
@@ -69,6 +69,7 @@ export default function LeaveManagement() {
   const [typeForm, setTypeForm] = useState(typeInitial);
   const [assignForm, setAssignForm] = useState({ employee_id: '', leave_type_id: '', days_to_add: 0 });
   const [message, setMessage] = useState({ type: '', text: '' });
+  const [deleteLeaveConfirm, setDeleteLeaveConfirm] = useState(null);
 
   const loadData = async () => {
     try {
@@ -177,6 +178,17 @@ export default function LeaveManagement() {
     }
   };
 
+  const handleDeleteLeave = async (id) => {
+    try {
+      await apiRequest(`/leave/requests/${id}`, { method: 'DELETE' });
+      setMessage({ type: 'success', text: 'Leave request deleted.' });
+      setDeleteLeaveConfirm(null);
+      loadData();
+    } catch (error) {
+      setMessage({ type: 'error', text: error.message });
+    }
+  };
+
   return (
     <Box sx={{ px: { xs: 2, md: 4 }, py: { xs: 2, md: 3 } }}>
       <Box sx={{ maxWidth: 1400, mx: 'auto' }}>
@@ -276,7 +288,7 @@ export default function LeaveManagement() {
                         <TableCell sx={{ fontWeight: 700 }}>Days</TableCell>
                         <TableCell sx={{ fontWeight: 700 }}>Reason</TableCell>
                         <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
-                        {!isEmployee && tabValue === 0 ? <TableCell align="right" sx={{ fontWeight: 700 }}>Actions</TableCell> : null}
+                        {!isEmployee ? <TableCell align="right" sx={{ fontWeight: 700 }}>Actions</TableCell> : null}
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -295,14 +307,21 @@ export default function LeaveManagement() {
                             <TableCell>
                               <Chip label={leave.status} size="small" color={leave.status === 'approved' ? 'success' : leave.status === 'rejected' ? 'error' : 'default'} sx={{ textTransform: 'capitalize', fontWeight: 600, px: 1 }} />
                             </TableCell>
-                            {!isEmployee && tabValue === 0 ? (
+                            {!isEmployee ? (
                               <TableCell align="right">
                                 <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
-                                  <Button size="small" variant="contained" startIcon={<Check />} color="success" onClick={() => handleApproveReject(leave.id, 'approved')} sx={{ borderRadius: 2, textTransform: 'none', boxShadow: 'none' }}>
-                                    Approve
-                                  </Button>
-                                  <Button size="small" variant="outlined" startIcon={<Close />} color="error" onClick={() => handleApproveReject(leave.id, 'rejected')} sx={{ borderRadius: 2, textTransform: 'none' }}>
-                                    Reject
+                                  {tabValue === 0 && (
+                                    <>
+                                      <Button size="small" variant="contained" startIcon={<Check />} color="success" onClick={() => handleApproveReject(leave.id, 'approved')} sx={{ borderRadius: 2, textTransform: 'none', boxShadow: 'none' }}>
+                                        Approve
+                                      </Button>
+                                      <Button size="small" variant="outlined" startIcon={<Close />} color="error" onClick={() => handleApproveReject(leave.id, 'rejected')} sx={{ borderRadius: 2, textTransform: 'none' }}>
+                                        Reject
+                                      </Button>
+                                    </>
+                                  )}
+                                  <Button size="small" variant="outlined" startIcon={<Delete />} color="error" onClick={() => setDeleteLeaveConfirm(leave)} sx={{ borderRadius: 2, textTransform: 'none' }}>
+                                    Delete
                                   </Button>
                                 </Box>
                               </TableCell>
@@ -511,6 +530,20 @@ export default function LeaveManagement() {
         <DialogActions>
           <Button onClick={() => setOpenAssignDialog(false)}>Cancel</Button>
           <Button onClick={handleAssignBalance} variant="contained">Assign</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete Leave Confirm Dialog */}
+      <Dialog open={Boolean(deleteLeaveConfirm)} onClose={() => setDeleteLeaveConfirm(null)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700 }}>Delete Leave Request</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Are you sure you want to delete the leave request for <strong>{deleteLeaveConfirm?.first_name} {deleteLeaveConfirm?.last_name}</strong> ({deleteLeaveConfirm?.leave_type_name})? This cannot be undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteLeaveConfirm(null)}>Cancel</Button>
+          <Button onClick={() => handleDeleteLeave(deleteLeaveConfirm?.id)} variant="contained" color="error">Delete</Button>
         </DialogActions>
       </Dialog>
     </Box>

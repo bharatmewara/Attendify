@@ -24,7 +24,7 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import { Add, Edit } from '@mui/icons-material';
+import { Add, Delete, Edit } from '@mui/icons-material';
 import { apiRequest } from '../../lib/api';
 
 const defaultShift = {
@@ -46,6 +46,7 @@ export default function ShiftManagement() {
   const [openDialog, setOpenDialog] = useState(false);
   const [openAssignDialog, setOpenAssignDialog] = useState(false);
   const [editingShiftId, setEditingShiftId] = useState(null);
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [message, setMessage] = useState({ type: '', text: '' });
   const [formData, setFormData] = useState(defaultShift);
   const [assignData, setAssignData] = useState({
@@ -122,6 +123,17 @@ export default function ShiftManagement() {
     setOpenDialog(true);
   };
 
+  const handleDelete = async (id) => {
+    try {
+      await apiRequest(`/shifts/${id}`, { method: 'DELETE' });
+      setMessage({ type: 'success', text: 'Shift deleted successfully.' });
+      setDeleteConfirm(null);
+      loadData();
+    } catch (error) {
+      setMessage({ type: 'error', text: error.message });
+    }
+  };
+
   return (
     <Box sx={{ p: 3 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'end', mb: 3 }}>
@@ -174,9 +186,10 @@ export default function ShiftManagement() {
                       <TableCell>Late: Rs. {shift.late_penalty_per_minute}/min | Early: Rs. {shift.early_leave_penalty_per_minute}/min</TableCell>
                       <TableCell><Chip size="small" label={shift.is_active ? 'Active' : 'Inactive'} color={shift.is_active ? 'success' : 'default'} /></TableCell>
                       <TableCell>
-                        <Button size="small" startIcon={<Edit />} onClick={() => openEditShift(shift)}>
-                          Edit
-                        </Button>
+                        <Box sx={{ display: 'flex', gap: 0.5 }}>
+                          <Button size="small" startIcon={<Edit />} onClick={() => openEditShift(shift)}>Edit</Button>
+                          <Button size="small" color="error" startIcon={<Delete />} onClick={() => setDeleteConfirm(shift)}>Delete</Button>
+                        </Box>
                       </TableCell>
                     </TableRow>
                   );
@@ -251,6 +264,18 @@ export default function ShiftManagement() {
         <DialogActions>
           <Button onClick={() => setOpenAssignDialog(false)}>Cancel</Button>
           <Button onClick={handleAssign} variant="contained">Assign</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete Confirm Dialog */}
+      <Dialog open={Boolean(deleteConfirm)} onClose={() => setDeleteConfirm(null)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700 }}>Delete Shift</DialogTitle>
+        <DialogContent>
+          <Typography>Are you sure you want to delete <strong>{deleteConfirm?.name}</strong>? This cannot be undone.</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteConfirm(null)}>Cancel</Button>
+          <Button onClick={() => handleDelete(deleteConfirm?.id)} variant="contained" color="error">Delete</Button>
         </DialogActions>
       </Dialog>
     </Box>

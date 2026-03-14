@@ -24,6 +24,7 @@ const Sidebar = ({ mobileOpen, onClose }) => {
         { label: 'Attendance ER', to: '/app/attendance-er' },
         { label: 'Leave', to: '/app/leave' },
         { label: 'Shifts', to: '/app/shifts' },
+        { label: 'Holidays', to: '/app/holidays' },
         { label: 'Payroll', to: '/app/payroll' },
         { label: 'Documents', to: '/app/documents' },
       ];

@@ -298,4 +298,18 @@ router.post('/balance', authenticate, authorize('company_admin', 'super_admin'),
   }
 });
 
+// Delete leave request (admin only)
+router.delete('/requests/:id', authenticate, authorize('company_admin', 'super_admin'), tenantIsolation, async (req, res) => {
+  try {
+    const result = await query(
+      'DELETE FROM leave_requests WHERE id = $1 AND ($2::int IS NULL OR company_id = $2) RETURNING id',
+      [req.params.id, req.companyId]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ message: 'Leave request not found' });
+    res.json({ message: 'Leave request deleted' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
 export default router;

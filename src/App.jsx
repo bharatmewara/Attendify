@@ -19,6 +19,7 @@ import AttendanceRegularization from './pages/CompanyAdmin/AttendanceRegularizat
 import ShiftManagement from './pages/CompanyAdmin/ShiftManagement';
 import PayrollManagement from './pages/CompanyAdmin/PayrollManagement';
 import HRDocuments from './pages/CompanyAdmin/HRDocuments';
+import HolidayManagement from './pages/CompanyAdmin/HolidayManagement';
 
 // Super Admin Pages
 import Companies from './pages/SuperAdmin/Companies';
@@ -71,6 +72,7 @@ function App() {
               <Route path="shifts" element={<ShiftManagement />} />
               <Route path="payroll" element={<PayrollManagement />} />
               <Route path="documents" element={<HRDocuments />} />
+              <Route path="holidays" element={<HolidayManagement />} />
               <Route index element={<Navigate to="dashboard" replace />} />
               <Route path="*" element={<Navigate to="dashboard" replace />} />
             </Route>

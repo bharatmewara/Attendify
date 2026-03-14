@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
   Box,
   Button,
   Card,
@@ -14,9 +15,10 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  Tooltip,
   Typography,
 } from '@mui/material';
-import { ChevronLeft, ChevronRight, Download, CalendarMonth } from '@mui/icons-material';
+import { ChevronLeft, ChevronRight, Download, BeachAccess } from '@mui/icons-material';
 import { apiRequest } from '../../lib/api';
 
 const EXPECTED_HOURS = 9;
@@ -29,6 +31,7 @@ const shellCardSx = {
 export default function EmployeeAttendance() {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [records, setRecords] = useState([]);
+  const [holidays, setHolidays] = useState([]);
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
 
   const loadData = async () => {
@@ -38,8 +41,12 @@ export default function EmployeeAttendance() {
       const startRecord = new Date(year, month - 1, 1).toLocaleDateString('en-CA');
       const endRecord = new Date(year, month, 0).toLocaleDateString('en-CA');
 
-      const res = await apiRequest(`/attendance/records?start_date=${startRecord}&end_date=${endRecord}`);
+      const [res, holidayRes] = await Promise.all([
+        apiRequest(`/attendance/records?start_date=${startRecord}&end_date=${endRecord}`),
+        apiRequest(`/holidays?year=${year}`),
+      ]);
       setRecords(res || []);
+      setHolidays(holidayRes || []);
     } catch (error) {
       console.error(error);
     }
@@ -105,11 +112,26 @@ export default function EmployeeAttendance() {
     return records.find(r => r.work_date.split('T')[0] === dateStr || new Date(r.work_date).toLocaleDateString('en-CA') === dateStr);
   };
 
+  const getHolidayForDate = (date) => {
+    if (!date) return null;
+    const dateStr = date.toLocaleDateString ? date.toLocaleDateString('en-CA') : date;
+    return holidays.find(h => h.holiday_date.split('T')[0] === dateStr || new Date(h.holiday_date).toLocaleDateString('en-CA') === dateStr);
+  };
+
   const selectedRecord = getRecordForDate(new Date(selectedDate));
+  const selectedHoliday = getHolidayForDate(selectedDate);
+
+  // Upcoming holidays in next 30 days
+  const upcomingHolidays = holidays.filter(h => {
+    const d = new Date(h.holiday_date);
+    const today = new Date();
+    const diff = Math.ceil((d - today) / (1000 * 60 * 60 * 24));
+    return diff >= 0 && diff <= 30;
+  });
 
   return (
     <Box sx={{ p: { xs: 2, md: 4 }, width: '100%', maxWidth: '100%' }}>
-      <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, justifyContent: 'space-between', alignItems: { xs: 'flex-start', md: 'center' }, mb: 4, gap: 2 }}>
+      <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, justifyContent: 'space-between', alignItems: { xs: 'flex-start', md: 'center' }, mb: 3, gap: 2 }}>
         <Box>
           <Typography variant="h4" sx={{ fontWeight: 800 }}>My Attendance</Typography>
           <Typography color="text.secondary">View your daily time logs, total hours, and variations.</Typography>
@@ -118,6 +140,28 @@ export default function EmployeeAttendance() {
           Download Sheet
         </Button>
       </Box>
+
+      {/* Upcoming Holidays Alert */}
+      {upcomingHolidays.length > 0 && (
+        <Alert
+          icon={<BeachAccess />}
+          severity="info"
+          sx={{ mb: 3, bgcolor: 'rgba(234,179,8,0.1)', color: '#854d0e', border: '1px solid rgba(234,179,8,0.3)', '& .MuiAlert-icon': { color: '#ca8a04' } }}
+        >
+          <strong>Upcoming Holidays:</strong>{' '}
+          {upcomingHolidays.map((h, i) => {
+            const d = new Date(h.holiday_date);
+            const daysLeft = Math.ceil((d - new Date()) / (1000 * 60 * 60 * 24));
+            return (
+              <span key={h.id}>
+                {i > 0 && ' • '}
+                <strong>{h.name}</strong> on {d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                {daysLeft === 0 ? ' (Today!)' : ` (in ${daysLeft} day${daysLeft > 1 ? 's' : ''})`}
+              </span>
+            );
+          })}
+        </Alert>
+      )}
 
       <Grid container spacing={4}>
         {/* Full Width Calendar */}
@@ -152,6 +196,7 @@ export default function EmployeeAttendance() {
                   const isSelected = selectedDate === dateStr;
                   const isToday = new Date().toLocaleDateString('en-CA') === dateStr;
                   const record = getRecordForDate(day);
+                  const holiday = getHolidayForDate(day);
                   
                   let bgcolor = '#fff';
                   let borderColor = 'rgba(0,0,0,0.08)';
@@ -160,6 +205,9 @@ export default function EmployeeAttendance() {
                   if (isSelected) {
                     borderColor = '#4f46e5';
                     bgcolor = 'rgba(79, 70, 229, 0.04)';
+                  } else if (holiday) {
+                    bgcolor = '#fefce8';
+                    borderColor = 'rgba(234,179,8,0.4)';
                   } else if (record) {
                     if (record.status === 'present') bgcolor = '#f0fdf4';
                     if (record.status === 'absent') bgcolor = '#fef2f2';
@@ -204,9 +252,21 @@ export default function EmployeeAttendance() {
                             sx={{ height: 20, minWidth: 20, '& .MuiChip-label': { px: 0.75, fontSize: '0.65rem' }, fontWeight: 800 }}
                           />
                         )}
+                        {holiday && (
+                          <Tooltip title={holiday.name}>
+                            <BeachAccess sx={{ fontSize: 16, color: '#ca8a04' }} />
+                          </Tooltip>
+                        )}
                       </Box>
 
-                      {record && record.punch_in_time && (
+                      {holiday && (
+                        <Box sx={{ mt: 'auto' }}>
+                          <Typography variant="caption" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: '#92400e', fontWeight: 700, fontSize: '0.7rem' }}>
+                            <BeachAccess sx={{ fontSize: 12 }} />{holiday.name}
+                          </Typography>
+                        </Box>
+                      )}
+                      {!holiday && record && record.punch_in_time && (
                         <Box sx={{ mt: 'auto', display: { xs: 'none', md: 'block' } }}>
                           <Typography variant="caption" sx={{ display: 'flex', justifyContent: 'space-between', color: 'text.secondary', fontWeight: 500, fontSize: '0.7rem', mb: 0.25 }}>
                             <Box component="span" sx={{ color: 'success.main', fontWeight: 700 }}>In:</Box>
@@ -239,8 +299,13 @@ export default function EmployeeAttendance() {
             <CardContent>
               <Typography variant="h6" sx={{ fontWeight: 800, mb: 2 }}>{new Date(selectedDate).toLocaleDateString('default', { weekday: 'long', month: 'long', day: 'numeric' })}</Typography>
               
+              {selectedHoliday && (
+                <Alert icon={<BeachAccess />} severity="warning" sx={{ mb: 2, bgcolor: 'rgba(234,179,8,0.1)', color: '#854d0e', border: '1px solid rgba(234,179,8,0.3)', '& .MuiAlert-icon': { color: '#ca8a04' } }}>
+                  <strong>🎉 Holiday:</strong> {selectedHoliday.name}{selectedHoliday.description ? ` — ${selectedHoliday.description}` : ''}
+                </Alert>
+              )}
               {!selectedRecord ? (
-                <Typography color="text.secondary">No attendance record found for this date.</Typography>
+                <Typography color="text.secondary">{selectedHoliday ? 'No attendance logged — it\'s a holiday!' : 'No attendance record found for this date.'}</Typography>
               ) : (
                 <Grid container spacing={2}>
                   <Grid item xs={12} sm={6} md={2.4}>
