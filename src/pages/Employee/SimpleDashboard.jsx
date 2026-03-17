@@ -11,6 +11,7 @@ import {
   Paper,
   Stack,
   Typography,
+  Snackbar,
 } from '@mui/material';
 import { AccessTime, EventAvailable, Bolt, ArrowForward } from '@mui/icons-material';
 import { apiRequest } from '../../lib/api';
@@ -68,11 +69,17 @@ export default function EmployeeDashboard() {
 
   return (
     <Box sx={{ p: 4, maxWidth: 1200, mx: 'auto' }}>
-      {message.text && (
-        <Alert severity={message.type} sx={{ mb: 3 }} onClose={() => setMessage({})}>
+      <Snackbar 
+        open={Boolean(message.text)} 
+        autoHideDuration={6000} 
+        onClose={() => setMessage({})}
+        anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+        sx={{ zIndex: 9999 }}
+      >
+        <Alert severity={message.type || 'info'} variant="filled" sx={{ width: '100%', borderRadius: 2, boxShadow: 3 }}>
           {message.text}
         </Alert>
-      )}
+      </Snackbar>
 
       {/* Hero Punch Section */}
       <Card sx={{ ...shellCardSx, mb: 4, p: 4, textAlign: 'center', bgcolor: 'gradient1.main' || '#f0f9ff' }}>

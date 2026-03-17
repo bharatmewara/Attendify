@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import { query } from '../db.js';
 import { authenticate, authorize, requireCompanyContext, tenantIsolation } from '../middleware/auth.middleware.js';
 import { logAudit } from '../utils/audit.js';
+import { sendEmail } from '../utils/email.js';
 
 const router = express.Router();
 
@@ -238,7 +239,7 @@ router.post('/', authenticate, authorize('company_admin', 'super_admin'), tenant
     email, password, employee_code, first_name, last_name, date_of_birth, gender,
     phone, emergency_contact, emergency_contact_name, address, city, state, country,
     postal_code, department_id, designation_id, manager_id, joining_date, employment_type,
-    aadhar_number, pan_number, bank_account_number, bank_name, bank_ifsc, documents = [],
+    aadhar_number, pan_number, bank_account_number, bank_name, bank_ifsc, offer_letter_title, offer_letter_content, documents = [],
   } = req.body;
 
   try {
@@ -302,9 +303,64 @@ router.post('/', authenticate, authorize('company_admin', 'super_admin'), tenant
       ipAddress: req.ip,
     });
 
+    try {
+      const subject = 'Welcome to Attendify!';
+      let text = `Hi ${first_name},\n\nYour employee account is created.\nEmail: ${email}\nPassword: ${password}\nJoining Date: ${joining_date || 'N/A'}\n\nPlease login and complete your profile.\n\nRegards,\nAttendify`;
+      if (offer_letter_title || offer_letter_content) {
+        text += `\n\n--- Offer Letter ---\nTitle: ${offer_letter_title || 'Offer Letter'}\n${offer_letter_content || ''}`;
+      }
+
+      await sendEmail({
+        to: email,
+        subject,
+        text,
+      });
+    } catch (mailError) {
+      console.error('Employee onboarding email failed', mailError);
+    }
+
     res.status(201).json(employee);
   } catch (error) {
     console.error('Error fetching employees:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Send onboarding email to employee (offer letter/joining/credentials)
+router.post('/:id/send-onboarding', authenticate, authorize('company_admin', 'super_admin'), tenantIsolation, requireCompanyContext, async (req, res) => {
+  const { id } = req.params;
+  const { subject, message, include_credentials = false } = req.body;
+
+  if (!subject || !message) {
+    return res.status(400).json({ message: 'subject and message are required' });
+  }
+
+  try {
+    const empResult = await query(
+      `SELECT e.first_name, e.last_name, e.joining_date, u.email, u.password_hash FROM employees e JOIN users u ON e.user_id = u.id WHERE e.id = $1 AND e.company_id = $2`,
+      [id, req.companyId]
+    );
+
+    if (empResult.rows.length === 0) {
+      return res.status(404).json({ message: 'Employee not found' });
+    }
+
+    const employee = empResult.rows[0];
+    let body = `Hi ${employee.first_name || 'Employee'},\n\n${message}`;
+    if (include_credentials) {
+      body += `\n\nLogin: ${employee.email}\nPassword: (the password set by admin or user)`;
+    }
+    body += '\n\nRegards,\nAttendify';
+
+    await sendEmail({
+      to: employee.email,
+      subject,
+      text: body,
+    });
+
+    res.json({ message: 'Onboarding email sent to employee.' });
+  } catch (error) {
+    console.error('Onboarding email failed', error);
     res.status(500).json({ message: error.message });
   }
 });

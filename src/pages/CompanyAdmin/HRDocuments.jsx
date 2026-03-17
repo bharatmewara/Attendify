@@ -23,6 +23,7 @@ import {
   Tabs,
   TextField,
   Typography,
+  Snackbar,
 } from '@mui/material';
 import { Add, Download } from '@mui/icons-material';
 import { apiRequest } from '../../lib/api';
@@ -137,11 +138,17 @@ export default function HRDocuments() {
         </Button>
       </Box>
 
-      {message.text ? (
-        <Alert severity={message.type || 'info'} sx={{ mb: 2 }} onClose={() => setMessage({ type: '', text: '' })}>
+      <Snackbar 
+        open={Boolean(message.text)} 
+        autoHideDuration={6000} 
+        onClose={() => setMessage({ type: '', text: '' })}
+        anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+        sx={{ zIndex: 9999 }}
+      >
+        <Alert severity={message.type || 'info'} variant="filled" sx={{ width: '100%', borderRadius: 2, boxShadow: 3 }}>
           {message.text}
         </Alert>
-      ) : null}
+      </Snackbar>
 
       <Tabs value={activeTab} onChange={(e, newValue) => setActiveTab(newValue)} sx={{ mb: 3 }}>
         <Tab label="HR Generated Documents" />

@@ -21,15 +21,24 @@ router.get('/', authenticate, tenantIsolation, async (req, res) => {
 router.post('/', authenticate, authorize('company_admin', 'super_admin'), tenantIsolation, requireCompanyContext, async (req, res) => {
   const {
     name, start_time, end_time, working_days, grace_period_minutes,
-    late_penalty_per_minute, early_leave_penalty_per_minute
+    late_penalty_per_minute, early_leave_penalty_per_minute,
+    min_hours_full_day, min_hours_half_day, max_punch_in_time
   } = req.body;
 
   try {
     const result = await query(
-      `INSERT INTO shifts (company_id, name, start_time, end_time, working_days, grace_period_minutes, late_penalty_per_minute, early_leave_penalty_per_minute)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-       RETURNING *`,
-      [req.companyId, name, start_time, end_time, JSON.stringify(working_days), grace_period_minutes, late_penalty_per_minute, early_leave_penalty_per_minute]
+      `INSERT INTO shifts (
+        company_id, name, start_time, end_time, working_days, grace_period_minutes, 
+        late_penalty_per_minute, early_leave_penalty_per_minute,
+        min_hours_full_day, min_hours_half_day, max_punch_in_time
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      RETURNING *`,
+      [
+        req.companyId, name, start_time, end_time, JSON.stringify(working_days), grace_period_minutes, 
+        late_penalty_per_minute, early_leave_penalty_per_minute,
+        min_hours_full_day || 8.0, min_hours_half_day || 4.0, max_punch_in_time || null
+      ]
     );
 
     res.status(201).json(result.rows[0]);
@@ -43,17 +52,24 @@ router.put('/:id', authenticate, authorize('company_admin', 'super_admin'), tena
   const { id } = req.params;
   const {
     name, start_time, end_time, working_days, grace_period_minutes,
-    late_penalty_per_minute, early_leave_penalty_per_minute, is_active
+    late_penalty_per_minute, early_leave_penalty_per_minute, is_active,
+    min_hours_full_day, min_hours_half_day, max_punch_in_time
   } = req.body;
 
   try {
     const result = await query(
       `UPDATE shifts 
        SET name = $1, start_time = $2, end_time = $3, working_days = $4, grace_period_minutes = $5,
-           late_penalty_per_minute = $6, early_leave_penalty_per_minute = $7, is_active = $8
-       WHERE id = $9::int AND ($10::int IS NULL OR company_id = $10::int)
+           late_penalty_per_minute = $6, early_leave_penalty_per_minute = $7, is_active = $8,
+           min_hours_full_day = $9, min_hours_half_day = $10, max_punch_in_time = $11
+       WHERE id = $12::int AND ($13::int IS NULL OR company_id = $13::int)
        RETURNING *`,
-      [name, start_time, end_time, JSON.stringify(working_days), grace_period_minutes, late_penalty_per_minute, early_leave_penalty_per_minute, is_active, id, req.companyId]
+      [
+        name, start_time, end_time, JSON.stringify(working_days), grace_period_minutes, 
+        late_penalty_per_minute, early_leave_penalty_per_minute, is_active,
+        min_hours_full_day, min_hours_half_day, max_punch_in_time,
+        id, req.companyId
+      ]
     );
 
     if (result.rows.length === 0) {

@@ -14,6 +14,7 @@ import {
   Grid,
   MenuItem,
   Paper,
+  Snackbar,
   Switch,
   Table,
   TableBody,
@@ -35,6 +36,9 @@ const defaultShift = {
   grace_period_minutes: 15,
   late_penalty_per_minute: 0,
   early_leave_penalty_per_minute: 0,
+  min_hours_full_day: 8.0,
+  min_hours_half_day: 4.0,
+  max_punch_in_time: '',
   is_active: true,
 };
 
@@ -118,6 +122,9 @@ export default function ShiftManagement() {
       grace_period_minutes: Number(shift.grace_period_minutes || 0),
       late_penalty_per_minute: Number(shift.late_penalty_per_minute || 0),
       early_leave_penalty_per_minute: Number(shift.early_leave_penalty_per_minute || 0),
+      min_hours_full_day: Number(shift.min_hours_full_day || 8.0),
+      min_hours_half_day: Number(shift.min_hours_half_day || 4.0),
+      max_punch_in_time: shift.max_punch_in_time || '',
       is_active: Boolean(shift.is_active),
     });
     setOpenDialog(true);
@@ -153,11 +160,17 @@ export default function ShiftManagement() {
         </Box>
       </Box>
 
-      {message.text ? (
-        <Alert severity={message.type || 'info'} sx={{ mb: 2 }} onClose={() => setMessage({ type: '', text: '' })}>
+      <Snackbar 
+        open={Boolean(message.text)} 
+        autoHideDuration={6000} 
+        onClose={() => setMessage({ type: '', text: '' })}
+        anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+        sx={{ zIndex: 9999 }}
+      >
+        <Alert severity={message.type || 'info'} variant="filled" sx={{ width: '100%', borderRadius: 2, boxShadow: 3 }}>
           {message.text}
         </Alert>
-      ) : null}
+      </Snackbar>
 
       <Card sx={{ borderRadius: 4 }}>
         <CardContent>
@@ -234,6 +247,18 @@ export default function ShiftManagement() {
             </Grid>
             <Grid item xs={12} sm={4}>
               <TextField fullWidth label="Early Leave Penalty / min" type="number" value={formData.early_leave_penalty_per_minute} onChange={(e) => setFormData({ ...formData, early_leave_penalty_per_minute: Number(e.target.value) })} margin="normal" />
+            </Grid>
+            <Grid item xs={12}>
+              <Typography variant="subtitle2" sx={{ mt: 2, mb: 1, fontWeight: 700 }}>Attendance Rules</Typography>
+            </Grid>
+            <Grid item xs={12} sm={4}>
+              <TextField fullWidth label="Min Hours for Full Day" type="number" value={formData.min_hours_full_day} onChange={(e) => setFormData({ ...formData, min_hours_full_day: Number(e.target.value) })} margin="normal" />
+            </Grid>
+            <Grid item xs={12} sm={4}>
+              <TextField fullWidth label="Min Hours for Half Day" type="number" value={formData.min_hours_half_day} onChange={(e) => setFormData({ ...formData, min_hours_half_day: Number(e.target.value) })} margin="normal" />
+            </Grid>
+            <Grid item xs={12} sm={4}>
+              <TextField fullWidth label="Latest Punch-in Time" type="time" InputLabelProps={{ shrink: true }} value={formData.max_punch_in_time} onChange={(e) => setFormData({ ...formData, max_punch_in_time: e.target.value })} margin="normal" />
             </Grid>
           </Grid>
           <FormControlLabel control={<Switch checked={formData.is_active} onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })} />} label="Shift is active" sx={{ mt: 1 }} />

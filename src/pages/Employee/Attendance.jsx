@@ -221,6 +221,7 @@ export default function EmployeeAttendance() {
                     if (record.status === 'present') bgcolor = '#f0fdf4';
                     if (record.status === 'absent') bgcolor = '#fef2f2';
                     if (record.status === 'on_leave') bgcolor = '#fffbeb';
+                    if (record.status === 'half_day') bgcolor = '#fff7ed';
                   }
 
                   return (

@@ -1,6 +1,7 @@
 import express from 'express';
 import { query } from '../db.js';
 import { authenticate, authorize, requireCompanyContext, tenantIsolation } from '../middleware/auth.middleware.js';
+import { sendEmail } from '../utils/email.js';
 
 const router = express.Router();
 
@@ -31,7 +32,21 @@ router.post('/', authenticate, authorize('company_admin', 'super_admin'), tenant
        VALUES ($1, $2, $3, $4) RETURNING *`,
       [req.companyId, name, holiday_date, description]
     );
-    res.status(201).json(result.rows[0]);
+    const holiday = result.rows[0];
+    try {
+      const employeeResult = await query(
+        `SELECT u.email, e.first_name FROM employees e JOIN users u ON e.user_id = u.id WHERE e.company_id = $1 AND e.status = 'active'`,
+        [req.companyId]
+      );
+      const emails = employeeResult.rows.map((r) => r.email).filter(Boolean);
+      const subject = `Holiday Added: ${holiday.name} on ${new Date(holiday.holiday_date).toISOString().split('T')[0]}`;
+      const text = `Hello,\n\nA new holiday has been added: ${holiday.name} (${new Date(holiday.holiday_date).toISOString().split('T')[0]}).\n${holiday.description || ''}\n\nEnjoy your day off!\nAttendify`;
+      await Promise.allSettled(emails.map((email) => sendEmail({ to: email, subject, text })));
+    } catch (emailError) {
+      console.error('Holiday notification email failed', emailError);
+    }
+
+    res.status(201).json(holiday);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

@@ -6,9 +6,18 @@ import {
   Card,
   CardContent,
   Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Grid,
+  LinearProgress,
   MenuItem,
   Paper,
+  Snackbar,
+  Step,
+  StepLabel,
+  Stepper,
   Table,
   TableBody,
   TableCell,
@@ -20,7 +29,6 @@ import {
 } from '@mui/material';
 import { Download, Visibility } from '@mui/icons-material';
 import { apiRequest } from '../../lib/api';
-import EmployeeProfileDialog from '../../components/EmployeeProfileDialog';
 import { exportRowsToCsv } from '../../utils/fileExports';
 import NetworkPolicyManager from '../app/NetworkPolicyManager';
 import { useAuth } from '../../context/AuthContext';
@@ -31,7 +39,8 @@ export default function AttendanceManagement() {
   const [records, setRecords] = useState([]);
   const [summary, setSummary] = useState(null);
   const [employees, setEmployees] = useState([]);
-  const [profileEmployeeId, setProfileEmployeeId] = useState(null);
+  const [selectedRecord, setSelectedRecord] = useState(null);
+  const [recordStep, setRecordStep] = useState(0);
   const [filters, setFilters] = useState({
     start_date: new Date(new Date().setDate(1)).toISOString().split('T')[0],
     end_date: new Date().toISOString().split('T')[0],
@@ -75,6 +84,70 @@ export default function AttendanceManagement() {
     [summary],
   );
 
+  const recordSteps = ['Attendance Snapshot', 'Punch Timeline', 'Work Summary'];
+
+  const closeRecordDialog = () => {
+    setSelectedRecord(null);
+    setRecordStep(0);
+  };
+
+  const getStepContent = (step, record) => {
+    if (!record) return null;
+    if (step === 0) {
+      return (
+        <Box>
+          <Typography variant="subtitle2" sx={{ mb: 1 }}>Employee</Typography>
+          <Typography>{record.first_name} {record.last_name} ({record.employee_code || record.employee_id})</Typography>
+          <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>Date</Typography>
+          <Typography>{new Date(record.work_date).toLocaleDateString()}</Typography>
+          <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>Status</Typography>
+          <Chip label={record.status} size="small" color={record.status === 'present' ? 'success' : record.status === 'absent' ? 'error' : 'default'} />
+        </Box>
+      );
+    }
+    if (step === 1) {
+      return (
+        <Grid container spacing={2}>
+          <Grid item xs={12} md={6}>
+            <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+              <Typography variant="subtitle2">Punch In</Typography>
+              <Typography>{record.punch_in_time ? new Date(record.punch_in_time).toLocaleTimeString() : '-'}</Typography>
+            </Paper>
+          </Grid>
+          <Grid item xs={12} md={6}>
+            <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+              <Typography variant="subtitle2">Punch Out</Typography>
+              <Typography>{record.punch_out_time ? new Date(record.punch_out_time).toLocaleTimeString() : '-'}</Typography>
+            </Paper>
+          </Grid>
+          <Grid item xs={12} md={6}>
+            <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+              <Typography variant="subtitle2">Total Hours</Typography>
+              <Typography>{record.total_hours || '-'}</Typography>
+            </Paper>
+          </Grid>
+          <Grid item xs={12} md={6}>
+            <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+              <Typography variant="subtitle2">Late Minutes</Typography>
+              <Typography>{record.late_minutes || 0}</Typography>
+            </Paper>
+          </Grid>
+        </Grid>
+      );
+    }
+    return (
+      <Box>
+        <Typography variant="subtitle2">Compliance</Typography>
+        <Typography>Allowed Working Hours: {record.total_hours ? `${record.total_hours} hrs` : 'N/A'}</Typography>
+        <Typography sx={{ mt: 1 }}>Punch Status: {record.punch_in_time && record.punch_out_time ? 'Complete' : 'Incomplete'}</Typography>
+        <Typography sx={{ mt: 1 }}>Workday Ratio: {record.total_hours ? `${Math.min((record.total_hours / 9) * 100, 100).toFixed(0)}%` : '0%'}</Typography>
+      </Box>
+    );
+  };
+
+  const handleNext = () => setRecordStep((prev) => Math.min(prev + 1, recordSteps.length - 1));
+  const handleBack = () => setRecordStep((prev) => Math.max(prev - 1, 0));
+
   const handleExport = () => {
     exportRowsToCsv(
       records,
@@ -105,11 +178,17 @@ export default function AttendanceManagement() {
         </Button>
       </Box>
 
-      {message.text ? (
-        <Alert severity={message.type || 'info'} sx={{ mb: 2 }} onClose={() => setMessage({ type: '', text: '' })}>
+      <Snackbar 
+        open={Boolean(message.text)} 
+        autoHideDuration={6000} 
+        onClose={() => setMessage({ type: '', text: '' })}
+        anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+        sx={{ zIndex: 9999 }}
+      >
+        <Alert severity={message.type || 'info'} variant="filled" sx={{ width: '100%', borderRadius: 2, boxShadow: 3 }}>
           {message.text}
         </Alert>
-      ) : null}
+      </Snackbar>
 
       <Grid container spacing={2} sx={{ mb: 3 }}>
         {summaryCards.map((card) => (
@@ -202,7 +281,7 @@ export default function AttendanceManagement() {
                       <Chip label={record.status} size="small" color={record.status === 'present' ? 'success' : record.status === 'absent' ? 'error' : 'default'} />
                     </TableCell>
                     <TableCell>
-                      <Button size="small" startIcon={<Visibility />} onClick={() => setProfileEmployeeId(record.employee_id)}>
+                      <Button size="small" startIcon={<Visibility />} onClick={() => { setSelectedRecord(record); setRecordStep(0); }}>
                         View
                       </Button>
                     </TableCell>
@@ -214,7 +293,27 @@ export default function AttendanceManagement() {
         </CardContent>
       </Card>
 
-      <EmployeeProfileDialog open={Boolean(profileEmployeeId)} onClose={() => setProfileEmployeeId(null)} employeeId={profileEmployeeId} />
+      <Dialog open={Boolean(selectedRecord)} onClose={closeRecordDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          Attendance Record Details
+        </DialogTitle>
+        <DialogContent>
+          <Stepper activeStep={recordStep} alternativeLabel sx={{ mb: 2 }}>
+            {recordSteps.map((label) => (
+              <Step key={label}>
+                <StepLabel>{label}</StepLabel>
+              </Step>
+            ))}
+          </Stepper>
+          {getStepContent(recordStep, selectedRecord)}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={closeRecordDialog}>Close</Button>
+          <Box sx={{ flexGrow: 1 }} />
+          <Button onClick={handleBack} disabled={recordStep === 0}>Back</Button>
+          <Button onClick={handleNext} disabled={recordStep === recordSteps.length - 1}>Next</Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

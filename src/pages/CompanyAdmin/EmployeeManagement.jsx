@@ -149,6 +149,45 @@ const [openEditDialog, setOpenEditDialog] = useState(false);
     }
   };
 
+  const handleSendOnboardingEmail = async (emp) => {
+    try {
+      await apiRequest(`/employees/${emp.id}/send-onboarding`, {
+        method: 'POST',
+        body: {
+          subject: 'Welcome to the company! Your joining details',
+          message: `Dear ${emp.first_name},\n\nWelcome aboard! Your employee account has been created. Please login and complete your profile.\n\nRegards,\nHR Team`,
+          include_credentials: true,
+        },
+      });
+      setMessage(`Onboarding email sent to ${emp.first_name} ${emp.last_name}`);
+    } catch (error) {
+      setMessage(`error:${error.message}`);
+    }
+  };
+
+  const handleSalaryCreditEmail = async (emp) => {
+    try {
+      const monthValue = window.prompt('Enter payroll month (1-12):');
+      const yearValue = window.prompt('Enter payroll year (e.g. 2026):');
+      if (!monthValue || !yearValue) {
+        return;
+      }
+      const month = Number(monthValue);
+      const year = Number(yearValue);
+      if (!(month >= 1 && month <= 12) || !Number.isInteger(year)) {
+        setMessage('Invalid month/year');
+        return;
+      }
+      await apiRequest('/payroll/credit', {
+        method: 'POST',
+        body: { month, year, employee_id: emp.id, note: 'Salary credited via admin panel' },
+      });
+      setMessage(`Salary credit email sent to ${emp.first_name} ${emp.last_name}`);
+    } catch (error) {
+      setMessage(`error:${error.message}`);
+    }
+  };
+
   const handleOpenResetPassword = () => {
     setNewPassword('');
     setPasswordError('');
@@ -422,6 +461,16 @@ const [openEditDialog, setOpenEditDialog] = useState(false);
                           <Edit fontSize="small" />
                         </IconButton>
                       </Tooltip>
+                      <Tooltip title="Onboarding Email">
+                        <IconButton size="small" color="info" onClick={() => handleSendOnboardingEmail(emp)}>
+                          <Description fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Credit Salary & Email">
+                        <IconButton size="small" color="secondary" onClick={() => handleSalaryCreditEmail(emp)}>
+                          <AccountBalance fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
                       <Tooltip title="Delete">
                         <IconButton size="small" color="error" onClick={() => handleOpenDelete(emp)}>
                           <Delete fontSize="small" />
@@ -441,410 +490,90 @@ const [openEditDialog, setOpenEditDialog] = useState(false);
         <DialogTitle>
           <Typography variant="h6" component="div" sx={{ fontWeight: 600 }}>Add New Employee</Typography>
         </DialogTitle>
-        <DialogContent>
+        <DialogContent sx={{ maxHeight: '76vh', overflowY: 'auto', pt: 1 }}>
           <Grid container spacing={3} sx={{ mt: 1 }}>
-            {/* Basic Information */}
             <Grid item xs={12}>
-              <Typography variant="subtitle1" fontWeight={600} color="primary">
-                Basic Information
-              </Typography>
-              <Divider sx={{ mt: 1, mb: 2 }} />
-            </Grid>
-            
-            <Grid item xs={12} sm={6} md={4}>
-              <TextField
-                fullWidth
-                label="Employee Code *"
-                value={formData.employee_code}
-                onChange={(e) => setFormData({ ...formData, employee_code: e.target.value })}
-                error={!!errors.employee_code}
-                helperText={errors.employee_code}
-                required
-              />
-            </Grid>
-            <Grid item xs={12} sm={6} md={4}>
-              <TextField
-                fullWidth
-                label="Email *"
-                type="email"
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                error={!!errors.email}
-                helperText={errors.email}
-                required
-              />
-            </Grid>
-            <Grid item xs={12} sm={6} md={4}>
-              <TextField
-                fullWidth
-                label="Password *"
-                type={showPassword ? 'text' : 'password'}
-                value={formData.password}
-                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                error={!!errors.password}
-                helperText={errors.password}
-                required
-                InputProps={{
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      <IconButton
-                        aria-label="toggle password visibility"
-                        onClick={() => setShowPassword(!showPassword)}
-                        onMouseDown={(e) => e.preventDefault()}
-                        edge="end"
-                      >
-                        {showPassword ? <VisibilityOff /> : <Visibility />}
-                      </IconButton>
-                    </InputAdornment>
-                  ),
-                }}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6} md={4}>
-              <TextField
-                fullWidth
-                label="First Name *"
-                value={formData.first_name}
-                onChange={(e) => setFormData({ ...formData, first_name: e.target.value })}
-                error={!!errors.first_name}
-                helperText={errors.first_name}
-                required
-              />
-            </Grid>
-            <Grid item xs={12} sm={6} md={4}>
-              <TextField
-                fullWidth
-                label="Last Name *"
-                value={formData.last_name}
-                onChange={(e) => setFormData({ ...formData, last_name: e.target.value })}
-                error={!!errors.last_name}
-                helperText={errors.last_name}
-                required
-              />
-            </Grid>
-            <Grid item xs={12} sm={6} md={4}>
-              <TextField
-                fullWidth
-                label="Phone *"
-                value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                error={!!errors.phone}
-                helperText={errors.phone}
-                required
-              />
-            </Grid>
-            <Grid item xs={12} sm={6} md={4}>
-              <TextField
-                fullWidth
-                label="Date of Birth"
-                type="date"
-                InputLabelProps={{ shrink: true }}
-                value={formData.date_of_birth}
-                onChange={(e) => setFormData({ ...formData, date_of_birth: e.target.value })}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6} md={4}>
-              <TextField
-                fullWidth
-                select
-                label="Gender"
-                value={formData.gender}
-                onChange={(e) => setFormData({ ...formData, gender: e.target.value })}
-              >
-                <MenuItem value="male">Male</MenuItem>
-                <MenuItem value="female">Female</MenuItem>
-                <MenuItem value="other">Other</MenuItem>
-              </TextField>
-            </Grid>
-            <Grid item xs={12} sm={6} md={4}>
-              <TextField
-                fullWidth
-                label="Joining Date *"
-                type="date"
-                InputLabelProps={{ shrink: true }}
-                value={formData.joining_date}
-                onChange={(e) => setFormData({ ...formData, joining_date: e.target.value })}
-                error={!!errors.joining_date}
-                helperText={errors.joining_date}
-                required
-              />
-            </Grid>
-
-            {/* Employment Details */}
-            <Grid item xs={12}>
-              <Typography variant="subtitle1" fontWeight={600} color="primary" sx={{ mt: 2 }}>
-                Employment Details
-              </Typography>
-              <Divider sx={{ mt: 1, mb: 2 }} />
-            </Grid>
-
-            <Grid item xs={12} sm={6} md={4}>
-              <TextField
-                fullWidth
-                select
-                label="Department *"
-                value={formData.department_id}
-                onChange={(e) => setFormData({ ...formData, department_id: e.target.value })}
-                error={!!errors.department_id}
-                helperText={errors.department_id}
-                required
-                SelectProps={{
-                  MenuProps: {
-                    PaperProps: {
-                      style: {
-                        maxHeight: 300,
-                      },
-                    },
-                  },
-                }}
-              >
-                {departments.map((dept) => (
-                  <MenuItem key={dept.id} value={dept.id}>
-                    {dept.name}
-                  </MenuItem>
-                ))}
-              </TextField>
-            </Grid>
-            <Grid item xs={12} sm={6} md={4}>
-              <TextField
-                fullWidth
-                select
-                label="Designation *"
-                value={formData.designation_id}
-                onChange={(e) => setFormData({ ...formData, designation_id: e.target.value })}
-                error={!!errors.designation_id}
-                helperText={errors.designation_id}
-                required
-                SelectProps={{
-                  MenuProps: {
-                    PaperProps: {
-                      style: {
-                        maxHeight: 300,
-                      },
-                    },
-                  },
-                }}
-              >
-                {designations.map((desig) => (
-                  <MenuItem key={desig.id} value={desig.id}>
-                    {desig.title}
-                  </MenuItem>
-                ))}
-              </TextField>
-            </Grid>
-            <Grid item xs={12} sm={6} md={4}>
-              <TextField
-                fullWidth
-                select
-                label="Employment Type *"
-                value={formData.employment_type}
-                onChange={(e) => setFormData({ ...formData, employment_type: e.target.value })}
-              >
-                <MenuItem value="full_time">Full Time</MenuItem>
-                <MenuItem value="part_time">Part Time</MenuItem>
-                <MenuItem value="contract">Contract</MenuItem>
-                <MenuItem value="intern">Intern</MenuItem>
-              </TextField>
-            </Grid>
-
-            {/* Identity & Bank Details */}
-            <Grid item xs={12}>
-              <Typography variant="subtitle1" fontWeight={600} color="primary" sx={{ mt: 2 }}>
-                Identity & Bank Details
-              </Typography>
-              <Divider sx={{ mt: 1, mb: 2 }} />
-            </Grid>
-
-            <Grid item xs={12} sm={6} md={4}>
-              <TextField
-                fullWidth
-                label="Aadhar Number"
-                value={formData.aadhar_number}
-                onChange={(e) => setFormData({ ...formData, aadhar_number: e.target.value.replace(/\D/g, '').slice(0, 12) })}
-                error={!!errors.aadhar_number}
-                helperText={errors.aadhar_number || '12 digit Aadhar number'}
-                inputProps={{ maxLength: 12 }}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6} md={4}>
-              <TextField
-                fullWidth
-                label="PAN Number"
-                value={formData.pan_number}
-                onChange={(e) => setFormData({ ...formData, pan_number: e.target.value.toUpperCase() })}
-                error={!!errors.pan_number}
-                helperText={errors.pan_number || 'Format: ABCDE1234F'}
-                inputProps={{ maxLength: 10 }}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6} md={4}>
-              <TextField
-                fullWidth
-                label="Bank Account Number"
-                value={formData.bank_account_number}
-                onChange={(e) => setFormData({ ...formData, bank_account_number: e.target.value })}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6} md={4}>
-              <TextField
-                fullWidth
-                label="Bank Name"
-                value={formData.bank_name}
-                onChange={(e) => setFormData({ ...formData, bank_name: e.target.value })}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6} md={4}>
-              <TextField
-                fullWidth
-                label="IFSC Code"
-                value={formData.bank_ifsc}
-                onChange={(e) => setFormData({ ...formData, bank_ifsc: e.target.value.toUpperCase() })}
-                inputProps={{ maxLength: 11 }}
-              />
-            </Grid>
-
-            {/* Emergency Contact */}
-            <Grid item xs={12}>
-              <Typography variant="subtitle1" fontWeight={600} color="primary" sx={{ mt: 2 }}>
-                Emergency Contact
-              </Typography>
-              <Divider sx={{ mt: 1, mb: 2 }} />
-            </Grid>
-
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Emergency Contact Name"
-                value={formData.emergency_contact_name}
-                onChange={(e) => setFormData({ ...formData, emergency_contact_name: e.target.value })}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Emergency Contact Number"
-                value={formData.emergency_contact}
-                onChange={(e) => setFormData({ ...formData, emergency_contact: e.target.value })}
-              />
+              <Paper variant="outlined" sx={{ p: 2, mb: 2, borderRadius: 2, bgcolor: 'grey.50' }}>
+                <Box sx={{ borderLeft: '4px solid', borderColor: 'primary.main', pl: 1, mb: 1 }}>
+                  <Typography variant="h6" fontWeight={700} color="primary">Basic Information</Typography>
+                </Box>
+                <Divider sx={{ mb: 2 }} />
+                <Grid container spacing={2}>
+                  <Grid item xs={12} sm={6} md={4}>
+                    <TextField fullWidth label="Employee Code *" value={formData.employee_code} onChange={(e) => setFormData({ ...formData, employee_code: e.target.value })} error={!!errors.employee_code} helperText={errors.employee_code} required />
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={4}>
+                    <TextField fullWidth label="Email *" type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} error={!!errors.email} helperText={errors.email} required />
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={4}>
+                    <TextField fullWidth label="Password *" type={showPassword ? 'text' : 'password'} value={formData.password} onChange={(e) => setFormData({ ...formData, password: e.target.value })} error={!!errors.password} helperText={errors.password} required InputProps={{ endAdornment: (<InputAdornment position="end"><IconButton aria-label="toggle password visibility" onClick={() => setShowPassword(!showPassword)} onMouseDown={(e) => e.preventDefault()} edge="end">{showPassword ? <VisibilityOff /> : <Visibility />}</IconButton></InputAdornment>) }} />
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={4}><TextField fullWidth label="First Name *" value={formData.first_name} onChange={(e) => setFormData({ ...formData, first_name: e.target.value })} error={!!errors.first_name} helperText={errors.first_name} required /></Grid>
+                  <Grid item xs={12} sm={6} md={4}><TextField fullWidth label="Last Name *" value={formData.last_name} onChange={(e) => setFormData({ ...formData, last_name: e.target.value })} error={!!errors.last_name} helperText={errors.last_name} required /></Grid>
+                  <Grid item xs={12} sm={6} md={4}><TextField fullWidth label="Phone *" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} error={!!errors.phone} helperText={errors.phone} required /></Grid>
+                  <Grid item xs={12} sm={6} md={4}><TextField fullWidth label="Date of Birth" type="date" InputLabelProps={{ shrink: true }} value={formData.date_of_birth} onChange={(e) => setFormData({ ...formData, date_of_birth: e.target.value })} /></Grid>
+                  <Grid item xs={12} sm={6} md={4}><TextField fullWidth select label="Gender" value={formData.gender} onChange={(e) => setFormData({ ...formData, gender: e.target.value })}><MenuItem value="male">Male</MenuItem><MenuItem value="female">Female</MenuItem><MenuItem value="other">Other</MenuItem></TextField></Grid>
+                  <Grid item xs={12} sm={6} md={4}><TextField fullWidth label="Joining Date *" type="date" InputLabelProps={{ shrink: true }} value={formData.joining_date} onChange={(e) => setFormData({ ...formData, joining_date: e.target.value })} error={!!errors.joining_date} helperText={errors.joining_date} required /></Grid>
+                </Grid>
+              </Paper>
             </Grid>
 
             <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="Address"
-                multiline
-                rows={2}
-                value={formData.address}
-                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-              />
+              <Paper variant="outlined" sx={{ p: 2, mb: 2, borderRadius: 2, bgcolor: 'grey.50' }}>
+                <Box sx={{ borderLeft: '4px solid', borderColor: 'secondary.main', pl: 1, mb: 1 }}><Typography variant="h6" fontWeight={700} color="secondary">Employment Details</Typography></Box>
+                <Divider sx={{ mb: 2 }} />
+                <Grid container spacing={2}>
+                  <Grid item xs={12} sm={6} md={4}><TextField fullWidth select label="Department *" value={formData.department_id} onChange={(e) => setFormData({ ...formData, department_id: e.target.value })} error={!!errors.department_id} helperText={errors.department_id} required SelectProps={{ MenuProps: { PaperProps: { style: { maxHeight: 300 }}}}}>{departments.map((dept) => (<MenuItem key={dept.id} value={dept.id}>{dept.name}</MenuItem>))}</TextField></Grid>
+                  <Grid item xs={12} sm={6} md={4}><TextField fullWidth select label="Designation *" value={formData.designation_id} onChange={(e) => setFormData({ ...formData, designation_id: e.target.value })} error={!!errors.designation_id} helperText={errors.designation_id} required SelectProps={{ MenuProps: { PaperProps: { style: { maxHeight: 300 }}}}}>{designations.map((desig) => (<MenuItem key={desig.id} value={desig.id}>{desig.title}</MenuItem>))}</TextField></Grid>
+                  <Grid item xs={12} sm={6} md={4}><TextField fullWidth select label="Employment Type *" value={formData.employment_type} onChange={(e) => setFormData({ ...formData, employment_type: e.target.value })}><MenuItem value="full_time">Full Time</MenuItem><MenuItem value="part_time">Part Time</MenuItem><MenuItem value="contract">Contract</MenuItem><MenuItem value="intern">Intern</MenuItem></TextField></Grid>
+                </Grid>
+              </Paper>
             </Grid>
 
-            {/* Document Upload Section */}
             <Grid item xs={12}>
-              <Typography variant="subtitle1" fontWeight={600} color="primary" sx={{ mt: 2 }}>
-                Document Upload
-              </Typography>
-              <Divider sx={{ mt: 1, mb: 2 }} />
+              <Paper variant="outlined" sx={{ p: 2, mb: 2, borderRadius: 2, bgcolor: 'grey.50' }}>
+                <Box sx={{ borderLeft: '4px solid', borderColor: 'info.main', pl: 1, mb: 1 }}><Typography variant="h6" fontWeight={700} color="info">Identity & Bank Details</Typography></Box>
+                <Divider sx={{ mb: 2 }} />
+                <Grid container spacing={2}>
+                  <Grid item xs={12} sm={6} md={4}><TextField fullWidth label="Aadhar Number" value={formData.aadhar_number} onChange={(e) => setFormData({ ...formData, aadhar_number: e.target.value.replace(/\D/g, '').slice(0, 12) })} error={!!errors.aadhar_number} helperText={errors.aadhar_number || '12 digit Aadhar number'} inputProps={{ maxLength: 12 }} /></Grid>
+                  <Grid item xs={12} sm={6} md={4}><TextField fullWidth label="PAN Number" value={formData.pan_number} onChange={(e) => setFormData({ ...formData, pan_number: e.target.value.toUpperCase() })} error={!!errors.pan_number} helperText={errors.pan_number || 'Format: ABCDE1234F'} inputProps={{ maxLength: 10 }} /></Grid>
+                  <Grid item xs={12} sm={6} md={4}><TextField fullWidth label="Bank Account Number" value={formData.bank_account_number} onChange={(e) => setFormData({ ...formData, bank_account_number: e.target.value })} /></Grid>
+                  <Grid item xs={12} sm={6} md={4}><TextField fullWidth label="Bank Name" value={formData.bank_name} onChange={(e) => setFormData({ ...formData, bank_name: e.target.value })} /></Grid>
+                  <Grid item xs={12} sm={6} md={4}><TextField fullWidth label="IFSC Code" value={formData.bank_ifsc} onChange={(e) => setFormData({ ...formData, bank_ifsc: e.target.value.toUpperCase() })} inputProps={{ maxLength: 11 }} /></Grid>
+                </Grid>
+              </Paper>
             </Grid>
 
-            <Grid item xs={12} sm={6} md={4}>
-              <Button
-                fullWidth
-                variant="outlined"
-                component="label"
-                startIcon={<Upload />}
-                sx={{ height: 56 }}
-              >
-                Upload Aadhar Card
-                <input
-                  type="file"
-                  hidden
-                  accept=".pdf,.jpg,.jpeg,.png"
-                  onChange={(e) => handleFileUpload(e, 'aadhar')}
-                />
-              </Button>
+            <Grid item xs={12}>
+              <Paper variant="outlined" sx={{ p: 2, mb: 2, borderRadius: 2, bgcolor: 'grey.50' }}>
+                <Box sx={{ borderLeft: '4px solid', borderColor: 'success.main', pl: 1, mb: 1 }}><Typography variant="h6" fontWeight={700} color="success">Emergency Contact</Typography></Box>
+                <Divider sx={{ mb: 2 }} />
+                <Grid container spacing={2}>
+                  <Grid item xs={12} sm={6}><TextField fullWidth label="Emergency Contact Name" value={formData.emergency_contact_name} onChange={(e) => setFormData({ ...formData, emergency_contact_name: e.target.value })} /></Grid>
+                  <Grid item xs={12} sm={6}><TextField fullWidth label="Emergency Contact Number" value={formData.emergency_contact} onChange={(e) => setFormData({ ...formData, emergency_contact: e.target.value })} /></Grid>
+                  <Grid item xs={12}><TextField fullWidth label="Address" multiline rows={2} value={formData.address} onChange={(e) => setFormData({ ...formData, address: e.target.value })} /></Grid>
+                </Grid>
+              </Paper>
             </Grid>
 
-            <Grid item xs={12} sm={6} md={4}>
-              <Button
-                fullWidth
-                variant="outlined"
-                component="label"
-                startIcon={<Upload />}
-                sx={{ height: 56 }}
-              >
-                Upload PAN Card
-                <input
-                  type="file"
-                  hidden
-                  accept=".pdf,.jpg,.jpeg,.png"
-                  onChange={(e) => handleFileUpload(e, 'pan')}
-                />
-              </Button>
+            <Grid item xs={12}>
+              <Paper variant="outlined" sx={{ p: 2, mb: 2, borderRadius: 2, bgcolor: 'grey.50' }}>
+                <Box sx={{ borderLeft: '4px solid', borderColor: 'warning.main', pl: 1, mb: 1 }}><Typography variant="h6" fontWeight={700} color="warning">Document Upload</Typography></Box>
+                <Divider sx={{ mb: 2 }} />
+                <Grid container spacing={2}>
+                  <Grid item xs={12} sm={6} md={4}><Button fullWidth variant="outlined" component="label" startIcon={<Upload />} sx={{ height: 56 }}>Upload Aadhar Card<input type="file" hidden accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => handleFileUpload(e, 'aadhar')} /></Button></Grid>
+                  <Grid item xs={12} sm={6} md={4}><Button fullWidth variant="outlined" component="label" startIcon={<Upload />} sx={{ height: 56 }}>Upload PAN Card<input type="file" hidden accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => handleFileUpload(e, 'pan')} /></Button></Grid>
+                  <Grid item xs={12} sm={6} md={4}><TextField fullWidth label="Other Document Name" value={customDocName} onChange={(e) => setCustomDocName(e.target.value)} placeholder="Example: Driving License" /></Grid>
+                  <Grid item xs={12} sm={6} md={4}><Button fullWidth variant="outlined" component="label" startIcon={<AttachFile />} sx={{ height: 56 }} disabled={!customDocName.trim()}>Upload Other Document<input type="file" hidden accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" onChange={handleCustomDocUpload} /></Button></Grid>
+                  {uploadedDocs.length > 0 && (<Grid item xs={12}><Card variant="outlined"><CardContent><Typography variant="subtitle2" fontWeight={600} sx={{ mb: 2 }}>Uploaded Documents</Typography><List dense>{uploadedDocs.map((doc, index) => (<ListItem key={index}><ListItemText primary={doc.document_name} secondary={doc.file_name}/><ListItemSecondaryAction><IconButton edge="end" onClick={() => removeDocument(index)}><Close /></IconButton></ListItemSecondaryAction></ListItem>))}</List></CardContent></Card></Grid>)}
+                </Grid>
+              </Paper>
             </Grid>
-
-            <Grid item xs={12} sm={6} md={4}>
-              <TextField
-                fullWidth
-                label="Other Document Name"
-                value={customDocName}
-                onChange={(e) => setCustomDocName(e.target.value)}
-                placeholder="Example: Driving License"
-              />
-            </Grid>
-
-            <Grid item xs={12} sm={6} md={4}>
-              <Button
-                fullWidth
-                variant="outlined"
-                component="label"
-                startIcon={<AttachFile />}
-                sx={{ height: 56 }}
-                disabled={!customDocName.trim()}
-              >
-                Upload Other Document
-                <input
-                  type="file"
-                  hidden
-                  accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
-                  onChange={handleCustomDocUpload}
-                />
-              </Button>
-            </Grid>
-
-            {uploadedDocs.length > 0 && (
-              <Grid item xs={12}>
-                <Card variant="outlined">
-                  <CardContent>
-                    <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 2 }}>
-                      Uploaded Documents
-                    </Typography>
-                    <List dense>
-                      {uploadedDocs.map((doc, index) => (
-                        <ListItem key={index}>
-                          <ListItemText
-                            primary={doc.document_name}
-                            secondary={doc.file_name}
-                          />
-                          <ListItemSecondaryAction>
-                            <IconButton edge="end" onClick={() => removeDocument(index)}>
-                              <Close />
-                            </IconButton>
-                          </ListItemSecondaryAction>
-                        </ListItem>
-                      ))}
-                    </List>
-                  </CardContent>
-                </Card>
-              </Grid>
-            )}
           </Grid>
         </DialogContent>
         <DialogActions sx={{ p: 3 }}>
           <Button onClick={() => setOpenDialog(false)}>Cancel</Button>
-          <Button onClick={handleSubmit} variant="contained">
-            Create Employee
-          </Button>
+          <Button onClick={handleSubmit} variant="contained">Create Employee</Button>
         </DialogActions>
       </Dialog>
 
@@ -853,117 +582,48 @@ const [openEditDialog, setOpenEditDialog] = useState(false);
         <DialogTitle>
           <Typography variant="h6" component="div" sx={{ fontWeight: 600 }}>Edit Employee</Typography>
         </DialogTitle>
-        <DialogContent>
+        <DialogContent sx={{ maxHeight: '66vh', overflowY: 'auto', pt: 1 }}>
           <Grid container spacing={2} sx={{ mt: 1 }}>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="First Name"
-                value={editFormData.first_name}
-                onChange={(e) => setEditFormData({ ...editFormData, first_name: e.target.value })}
-              />
+            <Grid item xs={12}>
+              <Paper variant="outlined" sx={{ p: 2, mb: 2, borderRadius: 2, bgcolor: 'grey.50' }}>
+                <Box sx={{ borderLeft: '4px solid', borderColor: 'primary.main', pl: 1, mb: 1 }}><Typography variant="h6" fontWeight={700}>Basic Information</Typography></Box>
+                <Divider sx={{ mb: 2 }} />
+                <Grid container spacing={2}>
+                  <Grid item xs={12} sm={6}><TextField fullWidth label="First Name" value={editFormData.first_name} onChange={(e) => setEditFormData({ ...editFormData, first_name: e.target.value })} /></Grid>
+                  <Grid item xs={12} sm={6}><TextField fullWidth label="Last Name" value={editFormData.last_name} onChange={(e) => setEditFormData({ ...editFormData, last_name: e.target.value })} /></Grid>
+                  <Grid item xs={12} sm={6}><TextField fullWidth label="Phone" value={editFormData.phone} onChange={(e) => setEditFormData({ ...editFormData, phone: e.target.value })} /></Grid>
+                  <Grid item xs={12} sm={6}><TextField fullWidth label="Aadhar Number" value={editFormData.aadhar_number} onChange={(e) => setEditFormData({ ...editFormData, aadhar_number: e.target.value })} /></Grid>
+                  <Grid item xs={12} sm={6}><TextField fullWidth label="PAN Number" value={editFormData.pan_number} onChange={(e) => setEditFormData({ ...editFormData, pan_number: e.target.value.toUpperCase() })} /></Grid>
+                </Grid>
+              </Paper>
             </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Last Name"
-                value={editFormData.last_name}
-                onChange={(e) => setEditFormData({ ...editFormData, last_name: e.target.value })}
-              />
+            <Grid item xs={12}>
+              <Paper variant="outlined" sx={{ p: 2, mb: 2, borderRadius: 2, bgcolor: 'grey.50' }}>
+                <Box sx={{ borderLeft: '4px solid', borderColor: 'secondary.main', pl: 1, mb: 1 }}><Typography variant="h6" fontWeight={700}>Employment Details</Typography></Box>
+                <Divider sx={{ mb: 2 }} />
+                <Grid container spacing={2}>
+                  <Grid item xs={12} sm={6}><TextField fullWidth select label="Department" value={editFormData.department_id} onChange={(e) => setEditFormData({ ...editFormData, department_id: e.target.value })} SelectProps={{ MenuProps: { PaperProps: { style: { maxHeight: 300 }}}}}>{departments.map((dept) => (<MenuItem key={dept.id} value={dept.id}>{dept.name}</MenuItem>))}</TextField></Grid>
+                  <Grid item xs={12} sm={6}><TextField fullWidth select label="Designation" value={editFormData.designation_id} onChange={(e) => setEditFormData({ ...editFormData, designation_id: e.target.value })} SelectProps={{ MenuProps: { PaperProps: { style: { maxHeight: 300 }}}}}>{designations.map((desig) => (<MenuItem key={desig.id} value={desig.id}>{desig.title}</MenuItem>))}</TextField></Grid>
+                  <Grid item xs={12} sm={6}><TextField fullWidth select label="Employment Type" value={editFormData.employment_type} onChange={(e) => setEditFormData({ ...editFormData, employment_type: e.target.value })}><MenuItem value="full_time">Full Time</MenuItem><MenuItem value="part_time">Part Time</MenuItem><MenuItem value="contract">Contract</MenuItem><MenuItem value="intern">Intern</MenuItem></TextField></Grid>
+                </Grid>
+              </Paper>
             </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Phone"
-                value={editFormData.phone}
-                onChange={(e) => setEditFormData({ ...editFormData, phone: e.target.value })}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Aadhar Number"
-                value={editFormData.aadhar_number}
-                onChange={(e) => setEditFormData({ ...editFormData, aadhar_number: e.target.value })}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="PAN Number"
-                value={editFormData.pan_number}
-                onChange={(e) => setEditFormData({ ...editFormData, pan_number: e.target.value.toUpperCase() })}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                select
-                label="Department"
-                value={editFormData.department_id}
-                onChange={(e) => setEditFormData({ ...editFormData, department_id: e.target.value })}
-                SelectProps={{
-                  MenuProps: {
-                    PaperProps: {
-                      style: {
-                        maxHeight: 300,
-                      },
-                    },
-                  },
-                }}
-              >
-                {departments.map((dept) => (
-                  <MenuItem key={dept.id} value={dept.id}>
-                    {dept.name}
-                  </MenuItem>
-                ))}
-              </TextField>
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                select
-                label="Designation"
-                value={editFormData.designation_id}
-                onChange={(e) => setEditFormData({ ...editFormData, designation_id: e.target.value })}
-                SelectProps={{
-                  MenuProps: {
-                    PaperProps: {
-                      style: {
-                        maxHeight: 300,
-                      },
-                    },
-                  },
-                }}
-              >
-                {designations.map((desig) => (
-                  <MenuItem key={desig.id} value={desig.id}>
-                    {desig.title}
-                  </MenuItem>
-                ))}
-              </TextField>
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                select
-                label="Employment Type"
-                value={editFormData.employment_type}
-                onChange={(e) => setEditFormData({ ...editFormData, employment_type: e.target.value })}
-              >
-                <MenuItem value="full_time">Full Time</MenuItem>
-                <MenuItem value="part_time">Part Time</MenuItem>
-                <MenuItem value="contract">Contract</MenuItem>
-                <MenuItem value="intern">Intern</MenuItem>
-              </TextField>
+            <Grid item xs={12}>
+              <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, bgcolor: 'grey.50' }}>
+                <Box sx={{ borderLeft: '4px solid', borderColor: 'info.main', pl: 1, mb: 1 }}><Typography variant="h6" fontWeight={700}>Identity & Bank Details</Typography></Box>
+                <Divider sx={{ mb: 2 }} />
+                <Grid container spacing={2}>
+                  <Grid item xs={12} sm={6}><TextField fullWidth label="Aadhar Number" value={editFormData.aadhar_number} onChange={(e) => setEditFormData({ ...editFormData, aadhar_number: e.target.value })} /></Grid>
+                  <Grid item xs={12} sm={6}><TextField fullWidth label="PAN Number" value={editFormData.pan_number} onChange={(e) => setEditFormData({ ...editFormData, pan_number: e.target.value.toUpperCase() })} /></Grid>
+                  <Grid item xs={12} sm={6}><TextField fullWidth label="Bank Name" value={editFormData.bank_name} onChange={(e) => setEditFormData({ ...editFormData, bank_name: e.target.value })} /></Grid>
+                </Grid>
+              </Paper>
             </Grid>
           </Grid>
         </DialogContent>
         <DialogActions sx={{ p: 3 }}>
           <Button onClick={() => setOpenEditDialog(false)}>Cancel</Button>
-          <Button onClick={handleEdit} variant="contained">
-            Update Employee
-          </Button>
+          <Button onClick={handleEdit} variant="contained">Update Employee</Button>
         </DialogActions>
       </Dialog>
 
@@ -978,9 +638,7 @@ const [openEditDialog, setOpenEditDialog] = useState(false);
         </DialogContent>
         <DialogActions sx={{ p: 3 }}>
           <Button onClick={() => setOpenDeleteDialog(false)}>Cancel</Button>
-          <Button onClick={handleDelete} variant="contained" color="error">
-            Delete Employee
-          </Button>
+          <Button onClick={handleDelete} variant="contained" color="error">Delete Employee</Button>
         </DialogActions>
       </Dialog>
       {/* View Employee Details Dialog */}

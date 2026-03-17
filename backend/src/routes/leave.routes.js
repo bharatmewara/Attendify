@@ -2,6 +2,7 @@ import express from 'express';
 import { query } from '../db.js';
 import { authenticate, authorize, requireCompanyContext, tenantIsolation } from '../middleware/auth.middleware.js';
 import { logAudit } from '../utils/audit.js';
+import { sendEmail } from '../utils/email.js';
 
 const router = express.Router();
 
@@ -143,6 +144,43 @@ router.post('/requests', authenticate, tenantIsolation, async (req, res) => {
       ipAddress: req.ip,
     });
 
+    // Send notification emails: to employee and company admin(s)
+    try {
+      const employeeResult = await query(
+        `SELECT u.email, e.first_name, e.last_name
+         FROM employees e
+         JOIN users u ON e.user_id = u.id
+         WHERE e.id = $1 AND e.company_id = $2`,
+        [employeeId, req.companyId]
+      );
+      const employee = employeeResult.rows[0];
+
+      const adminResult = await query(
+        `SELECT u.email FROM users u WHERE u.company_id = $1 AND u.role IN ('company_admin', 'super_admin') AND u.is_active = true`,
+        [req.companyId]
+      );
+      const adminEmails = adminResult.rows.map((r) => r.email).join(',');
+
+      const subject = `Leave Request Submitted: ${result.rows[0].total_days} day(s)`;
+      const body = `Hi ${employee.first_name},\n\nYour leave request from ${start_date} to ${end_date} has been submitted and is pending approval.\n\nReason: ${reason || 'No reason provided'}\n\nThanks,\nAttendify`; 
+
+      await sendEmail({
+        to: employee.email,
+        subject,
+        text: body,
+      });
+
+      if (adminEmails) {
+        await sendEmail({
+          to: adminEmails,
+          subject: `Leave request pending approval: ${employee.first_name} ${employee.last_name}`,
+          text: `A leave request has been submitted by ${employee.first_name} ${employee.last_name} (${employee.email}).\n\nFrom: ${start_date}\nTo: ${end_date}\nTotal Days: ${result.rows[0].total_days}\nReason: ${reason || 'No reason provided'}`,
+        });
+      }
+    } catch (emailError) {
+      console.error('Leave application email send failed', emailError);
+    }
+
     res.status(201).json(result.rows[0]);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -238,6 +276,32 @@ router.put('/requests/:id', authenticate, authorize('company_admin', 'super_admi
       newValues: result.rows[0],
       ipAddress: req.ip,
     });
+
+    try {
+      const employeeResult = await query(
+        `SELECT u.email, e.first_name, e.last_name
+         FROM employees e
+         JOIN users u ON e.user_id = u.id
+         WHERE e.id = $1 AND e.company_id = $2`,
+        [leave.employee_id, req.companyId]
+      );
+      if (employeeResult.rows.length) {
+        const employee = employeeResult.rows[0];
+        const formatDate = (v) => (v ? new Date(v).toISOString().split('T')[0] : 'N/A');
+        const subject = status === 'approved' ? 'Leave Request Approved' : 'Leave Request Rejected';
+        const text = `Hi ${employee.first_name},\n\nYour leave request from ${formatDate(leave.start_date)} to ${formatDate(leave.end_date)} has been ${status}.${
+          status === 'rejected' ? ` Reason: ${rejection_reason || 'Not specified'}` : ''
+        }\n\nRegards,\nAttendify`;
+
+        await sendEmail({
+          to: employee.email,
+          subject,
+          text,
+        });
+      }
+    } catch (emailError) {
+      console.error('Leave approval/rejection email failed', emailError);
+    }
 
     res.json(result.rows[0]);
   } catch (error) {

@@ -22,6 +22,7 @@ import {
   Alert,
   Tabs,
   Tab,
+  Snackbar,
 } from '@mui/material';
 import { Add, Check, Close } from '@mui/icons-material';
 import { apiRequest } from '../../lib/api';
@@ -125,15 +126,17 @@ export default function AttendanceRegularization() {
         )}
       </Box>
 
-      {message && (
-        <Alert 
-          severity={message.includes('success') ? 'success' : 'error'} 
-          sx={{ mb: 2 }} 
-          onClose={() => setMessage('')}
-        >
+      <Snackbar 
+        open={Boolean(message)} 
+        autoHideDuration={6000} 
+        onClose={() => setMessage('')}
+        anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+        sx={{ zIndex: 9999 }}
+      >
+        <Alert severity={message.includes('success') ? 'success' : 'error'} variant="filled" sx={{ width: '100%', borderRadius: 2, boxShadow: 3 }}>
           {message}
         </Alert>
-      )}
+      </Snackbar>
 
       <Card sx={{ borderRadius: 2 }}>
         <CardContent>

@@ -13,6 +13,7 @@ import {
   Stack,
   TextField,
   Typography,
+  Snackbar,
 } from '@mui/material';
 import SecurityRoundedIcon from '@mui/icons-material/SecurityRounded';
 import ShieldMoonRoundedIcon from '@mui/icons-material/ShieldMoonRounded';
@@ -117,7 +118,17 @@ const LoginPage = () => {
               </Typography>
 
               <Stack spacing={2}>
-                {error ? <Alert severity="error">{error}</Alert> : null}
+                <Snackbar 
+                  open={Boolean(error)} 
+                  autoHideDuration={6000} 
+                  onClose={() => setError('')}
+                  anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+                  sx={{ zIndex: 9999 }}
+                >
+                  <Alert severity="error" variant="filled" sx={{ width: '100%', borderRadius: 2, boxShadow: 3 }}>
+                    {error}
+                  </Alert>
+                </Snackbar>
                 <TextField fullWidth label="Work Email" type="email" value={form.email} onChange={onInput('email')} required />
                 <TextField
                   fullWidth

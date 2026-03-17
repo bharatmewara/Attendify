@@ -20,6 +20,7 @@ import {
   TableRow,
   TextField,
   Typography,
+  Snackbar,
 } from '@mui/material';
 import { Calculate, Download } from '@mui/icons-material';
 import { apiRequest } from '../../lib/api';
@@ -161,11 +162,17 @@ export default function PayrollManagement() {
         </Box>
       </Box>
 
-      {message.text ? (
-        <Alert severity={message.type || 'info'} sx={{ mb: 2 }} onClose={() => setMessage({ type: '', text: '' })}>
+      <Snackbar 
+        open={Boolean(message.text)} 
+        autoHideDuration={6000} 
+        onClose={() => setMessage({ type: '', text: '' })}
+        anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+        sx={{ zIndex: 9999 }}
+      >
+        <Alert severity={message.type || 'info'} variant="filled" sx={{ width: '100%', borderRadius: 2, boxShadow: 3 }}>
           {message.text}
         </Alert>
-      ) : null}
+      </Snackbar>
 
       <Grid container spacing={2} sx={{ mb: 3 }}>
         <Grid item xs={12} md={3}>

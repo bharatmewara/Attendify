@@ -19,6 +19,7 @@ import {
   Divider,
   IconButton,
   Paper,
+  Snackbar,
 } from '@mui/material';
 import {
   Add,
@@ -210,15 +211,17 @@ export default function PlansPage() {
         </Button>
       </Box>
 
-      {message && (
-        <Alert 
-          severity="info" 
-          sx={{ mb: 3, borderRadius: 2 }} 
-          onClose={() => setMessage('')}
-        >
+      <Snackbar 
+        open={Boolean(message)} 
+        autoHideDuration={6000} 
+        onClose={() => setMessage('')}
+        anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+        sx={{ zIndex: 9999 }}
+      >
+        <Alert severity={message.includes('success') ? 'success' : 'error'} variant="filled" sx={{ width: '100%', borderRadius: 2, boxShadow: 3 }}>
           {message}
         </Alert>
-      )}
+      </Snackbar>
 
       <Grid container spacing={3}>
         {plans.map((plan, index) => (

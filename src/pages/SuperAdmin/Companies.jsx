@@ -28,6 +28,7 @@ import {
   Select,
   FormControl,
   InputLabel,
+  Snackbar,
 } from '@mui/material';
 import {
   Add,
@@ -301,15 +302,17 @@ export default function CompaniesPage() {
         </Button>
       </Box>
 
-      {message && (
-        <Alert 
-          severity="info" 
-          sx={{ mb: 3, borderRadius: 2 }} 
-          onClose={() => setMessage('')}
-        >
+      <Snackbar 
+        open={Boolean(message)} 
+        autoHideDuration={6000} 
+        onClose={() => setMessage('')}
+        anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+        sx={{ zIndex: 9999 }}
+      >
+        <Alert severity={message.includes('success') ? 'success' : 'error'} variant="filled" sx={{ width: '100%', borderRadius: 2, boxShadow: 3 }}>
           {message}
         </Alert>
-      )}
+      </Snackbar>
 
       <Card sx={{ borderRadius: 3, boxShadow: '0 4px 20px rgba(0,0,0,0.08)' }}>
         <CardContent sx={{ p: 0 }}>

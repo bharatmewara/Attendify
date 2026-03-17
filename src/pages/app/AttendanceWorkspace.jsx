@@ -10,6 +10,7 @@ import {
   Stack,
   TextField,
   Typography,
+  Snackbar,
 } from '@mui/material';
 import { useAuth } from '../../context/AuthContext';
 import { apiRequest } from '../../lib/api';
@@ -103,7 +104,17 @@ const AttendanceWorkspace = () => {
           </Stack>
         </Paper>
 
-        {feedback.message ? <Alert severity={feedback.type || 'info'} sx={{ mb: 2 }}>{feedback.message}</Alert> : null}
+        <Snackbar 
+          open={Boolean(feedback.message)} 
+          autoHideDuration={6000} 
+          onClose={() => setFeedback({ ...feedback, message: '' })}
+          anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+          sx={{ zIndex: 9999 }}
+        >
+          <Alert severity={feedback.type || 'info'} variant="filled" sx={{ width: '100%', borderRadius: 2, boxShadow: 3 }}>
+            {feedback.message}
+          </Alert>
+        </Snackbar>
 
         <Grid container spacing={2.5}>
           <Grid size={{ xs: 12, md: 6 }}>

@@ -3,6 +3,7 @@ import { query } from '../db.js';
 import { authenticate, authorize, tenantIsolation } from '../middleware/auth.middleware.js';
 import { logAudit } from '../utils/audit.js';
 import { enforcePunchIp } from '../middleware/networkPolicy.js';
+import { autoMarkAbsent } from '../utils/attendanceHelper.js';
 
 const router = express.Router();
 const combineDateTime = (workDate, time) => {
@@ -57,13 +58,23 @@ router.post('/punch-in', authenticate, tenantIsolation, enforcePunchIp, async (r
       if (punchInTime > graceTime) {
         lateMinutes = Math.floor((punchInTime - graceTime) / 60000);
       }
+
+      // Max Punch-in Time Check
+      if (shift.max_punch_in_time) {
+        const [maxH, maxM] = shift.max_punch_in_time.split(':');
+        const maxPunchIn = new Date();
+        maxPunchIn.setHours(parseInt(maxH), parseInt(maxM), 0, 0);
+        if (punchInTime > maxPunchIn) {
+          return res.status(400).json({ message: `Punch-in allowed only before ${shift.max_punch_in_time}` });
+        }
+      }
     }
 
     const result = await query(
       `INSERT INTO attendance_records (employee_id, company_id, work_date, punch_in_time, late_minutes, status, source, punch_in_location)
        VALUES ($1::int, $2::int, $3::date, $4::timestamptz, $5::int, 'present', 'web', $6::text)
        ON CONFLICT (employee_id, work_date) 
-       DO UPDATE SET punch_in_time = EXCLUDED.punch_in_time, late_minutes = EXCLUDED.late_minutes, punch_in_location = EXCLUDED.punch_in_location
+       DO UPDATE SET punch_in_time = EXCLUDED.punch_in_time, late_minutes = EXCLUDED.late_minutes, punch_in_location = EXCLUDED.punch_in_location, status = 'present'
        RETURNING *`,
       [employeeId, req.companyId, today, punchInTime, lateMinutes, location]
     );
@@ -134,12 +145,24 @@ router.post('/punch-out', authenticate, tenantIsolation, async (req, res) => {
       }
     }
 
+    // Determine status based on hours rules
+    let finalStatus = 'present';
+    if (shiftResult.rows.length > 0) {
+      const shift = shiftResult.rows[0];
+      const hours = parseFloat(totalHours);
+      if (hours < (shift.min_hours_half_day || 4)) {
+        finalStatus = 'absent';
+      } else if (hours < (shift.min_hours_full_day || 8)) {
+        finalStatus = 'half_day';
+      }
+    }
+
     const result = await query(
       `UPDATE attendance_records 
-       SET punch_out_time = $1::timestamptz, total_hours = $2::decimal, early_leave_minutes = $3::int, punch_out_location = $4::text, updated_at = NOW()
-       WHERE employee_id = $5::int AND work_date = $6::date
+       SET punch_out_time = $1::timestamptz, total_hours = $2::decimal, early_leave_minutes = $3::int, punch_out_location = $4::text, status = $5, updated_at = NOW()
+       WHERE employee_id = $6::int AND work_date = $7::date
        RETURNING *`,
-      [punchOutTime, totalHours, earlyLeaveMinutes, location, employeeId, today]
+      [punchOutTime, totalHours, earlyLeaveMinutes, location, finalStatus, employeeId, today]
     );
 
     await logAudit({
@@ -182,6 +205,16 @@ router.get('/records', authenticate, tenantIsolation, async (req, res) => {
   const { start_date, end_date, employee_id, status } = req.query;
 
   try {
+    // Automatically mark absent for missing days in the past within this range
+    if (start_date && end_date) {
+      let targetEmpId = employee_id;
+      if (req.user.role === 'employee') {
+        const empResult = await query('SELECT id FROM employees WHERE user_id = $1', [req.user.id]);
+        targetEmpId = empResult.rows[0]?.id;
+      }
+      await autoMarkAbsent(req.companyId, targetEmpId, start_date, end_date);
+    }
+
     let queryText = `
       SELECT ar.*, e.first_name, e.last_name, e.employee_code
       FROM attendance_records ar

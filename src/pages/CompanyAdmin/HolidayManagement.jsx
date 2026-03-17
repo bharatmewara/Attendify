@@ -21,6 +21,7 @@ import {
   Tooltip,
   Typography,
   Paper,
+  Snackbar,
 } from '@mui/material';
 import { Add, Delete, Edit, CalendarMonth } from '@mui/icons-material';
 import { apiRequest } from '../../lib/api';
@@ -121,11 +122,17 @@ export default function HolidayManagement() {
         </Button>
       </Box>
 
-      {message.text && (
-        <Alert severity={message.type || 'info'} sx={{ mb: 3 }} onClose={() => setMessage({ type: '', text: '' })}>
+      <Snackbar 
+        open={Boolean(message.text)} 
+        autoHideDuration={6000} 
+        onClose={() => setMessage({ type: '', text: '' })}
+        anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+        sx={{ zIndex: 9999 }}
+      >
+        <Alert severity={message.type || 'info'} variant="filled" sx={{ width: '100%', borderRadius: 2, boxShadow: 3 }}>
           {message.text}
         </Alert>
-      )}
+      </Snackbar>
 
       {/* Upcoming Holidays Banner */}
       {upcoming.length > 0 && (

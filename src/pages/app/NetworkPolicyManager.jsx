@@ -9,6 +9,7 @@ import {
   Switch,
   TextField,
   Typography,
+  Snackbar,
 } from '@mui/material';
 import { useAuth } from '../../context/AuthContext';
 import { apiRequest } from '../../lib/api';
@@ -72,8 +73,29 @@ const NetworkPolicyManager = () => {
 
   return (
     <Stack spacing={2}>
-      {message ? <Alert severity="success">{message}</Alert> : null}
-      {error ? <Alert severity="error">{error}</Alert> : null}
+      <Snackbar 
+        open={Boolean(message)} 
+        autoHideDuration={6000} 
+        onClose={() => setMessage('')}
+        anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+        sx={{ zIndex: 9999 }}
+      >
+        <Alert severity="success" variant="filled" sx={{ width: '100%', borderRadius: 2, boxShadow: 3 }}>
+          {message}
+        </Alert>
+      </Snackbar>
+
+      <Snackbar 
+        open={Boolean(error)} 
+        autoHideDuration={6000} 
+        onClose={() => setError('')}
+        anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+        sx={{ zIndex: 9999 }}
+      >
+        <Alert severity="error" variant="filled" sx={{ width: '100%', borderRadius: 2, boxShadow: 3 }}>
+          {error}
+        </Alert>
+      </Snackbar>
       <Paper component="form" onSubmit={onCreate} sx={{ p: 2.5, borderRadius: 3 }}>
         <Typography variant="h6" fontWeight={700} mb={1.5}>
           Add Allowed Office Network

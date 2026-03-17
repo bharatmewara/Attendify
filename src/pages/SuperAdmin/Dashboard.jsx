@@ -30,6 +30,7 @@ import {
   InputLabel,
   Select,
   MenuItem,
+  Snackbar,
 } from '@mui/material';
 import {
   Business,
@@ -261,11 +262,17 @@ export default function SuperAdminDashboard() {
         Super Admin Dashboard
       </Typography>
 
-      {message && (
-        <Alert severity="info" sx={{ mb: 2 }} onClose={() => setMessage('')}>
+      <Snackbar 
+        open={Boolean(message)} 
+        autoHideDuration={6000} 
+        onClose={() => setMessage('')}
+        anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+        sx={{ zIndex: 9999 }}
+      >
+        <Alert severity={message.includes('success') ? 'success' : 'error'} variant="filled" sx={{ width: '100%', borderRadius: 2, boxShadow: 3 }}>
           {message}
         </Alert>
-      )}
+      </Snackbar>
 
       <Grid container spacing={3} sx={{ mb: 4 }}>
         {statCards.map((stat, index) => (

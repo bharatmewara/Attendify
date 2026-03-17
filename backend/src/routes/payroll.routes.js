@@ -1,6 +1,8 @@
 import express from 'express';
 import { query } from '../db.js';
 import { authenticate, authorize, requireCompanyContext, tenantIsolation } from '../middleware/auth.middleware.js';
+import { autoMarkAbsent } from '../utils/attendanceHelper.js';
+import { sendEmail } from '../utils/email.js';
 
 const router = express.Router();
 
@@ -49,6 +51,11 @@ router.post('/calculate', authenticate, authorize('company_admin', 'super_admin'
   const { month, year, employee_id } = req.body;
 
   try {
+    // Before calculating, run auto-mark absent for the entire month for all employees (or the specific one)
+    const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+    const endDate = new Date(year, month, 0).toISOString().split('T')[0];
+    await autoMarkAbsent(req.companyId, employee_id || null, startDate, endDate);
+
     let employeeIds = [];
     
     if (employee_id) {
@@ -150,6 +157,49 @@ router.post('/calculate', authenticate, authorize('company_admin', 'super_admin'
     }
 
     res.json({ message: 'Payroll calculated successfully', count: results.length, data: results });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Credit salary and send email notification
+router.post('/credit', authenticate, authorize('company_admin', 'super_admin'), tenantIsolation, requireCompanyContext, async (req, res) => {
+  const { month, year, employee_id, note } = req.body;
+
+  if (!month || !year || !employee_id) {
+    return res.status(400).json({ message: 'month, year, and employee_id are required' });
+  }
+
+  try {
+    const payResult = await query(
+      `SELECT pc.*, e.first_name, e.last_name, u.email
+       FROM payroll_calculations pc
+       JOIN employees e ON pc.employee_id = e.id
+       JOIN users u ON e.user_id = u.id
+       WHERE pc.employee_id = $1 AND pc.month = $2 AND pc.year = $3 AND pc.company_id = $4`,
+      [employee_id, month, year, req.companyId]
+    );
+
+    if (payResult.rows.length === 0) {
+      return res.status(404).json({ message: 'Payroll record not found for given employee/month/year' });
+    }
+
+    const payroll = payResult.rows[0];
+    await query(
+      `UPDATE payroll_calculations SET status = 'paid', processed_at = NOW() WHERE id = $1`,
+      [payroll.id]
+    );
+
+    const subject = `Salary credited for ${month}/${year}`;
+    const text = `Hello ${payroll.first_name},\n\nYour salary for ${month}/${year} has been credited. Net salary: ₹${payroll.net_salary}.\n${note ? `Note: ${note}\n` : ''}\nThank you for your effort!\nAttendify`;
+
+    try {
+      await sendEmail({ to: payroll.email, subject, text });
+    } catch (emailError) {
+      console.error('Salary credit email failed', emailError);
+    }
+
+    res.json({ message: 'Salary marked as paid and email notification sent', payroll_id: payroll.id });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
