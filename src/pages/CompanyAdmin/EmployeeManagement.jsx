@@ -28,9 +28,30 @@ import {
   ListItem,
   ListItemText,
   ListItemSecondaryAction,
+  Tabs,
+  Tab,
+  Stack,
+  Badge,
 } from '@mui/material';
-import { Add, Edit, Visibility, Delete, Upload, AttachFile, Close } from '@mui/icons-material';
+import { 
+  Add, 
+  Edit, 
+  Visibility, 
+  Delete, 
+  Upload, 
+  AttachFile, 
+  Close,
+  Person,
+  AccountBalance,
+  Description,
+  EventAvailable,
+  Assessment,
+  Assignment,
+  Download,
+  VisibilityOff,
+} from '@mui/icons-material';
 import { apiRequest } from '../../lib/api';
+import { InputAdornment } from '@mui/material';
 
 const fileToDataUrl = (file) =>
   new Promise((resolve, reject) => {
@@ -48,8 +69,16 @@ export default function EmployeeManagement() {
 const [openEditDialog, setOpenEditDialog] = useState(false);
   const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
   const [selectedEmployee, setSelectedEmployee] = useState(null);
+  const [openViewDialog, setOpenViewDialog] = useState(false);
+  const [viewProfile, setViewProfile] = useState(null);
+  const [activeTab, setActiveTab] = useState(0);
   const [message, setMessage] = useState('');
   const [errors, setErrors] = useState({});
+  const [showPassword, setShowPassword] = useState(false);
+  const [openResetPasswordDialog, setOpenResetPasswordDialog] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
   const [uploadedDocs, setUploadedDocs] = useState([]);
   const [customDocName, setCustomDocName] = useState('');
   const [formData, setFormData] = useState({
@@ -105,6 +134,46 @@ const [openEditDialog, setOpenEditDialog] = useState(false);
       setDesignations(desigData);
     } catch (error) {
       setMessage(error.message);
+    }
+  };
+
+  const handleOpenView = async (emp) => {
+    try {
+      setSelectedEmployee(emp);
+      const data = await apiRequest(`/employees/${emp.id}/profile`);
+      setViewProfile(data);
+      setOpenViewDialog(true);
+      setActiveTab(0);
+    } catch (error) {
+      setMessage(`error:${error.message}`);
+    }
+  };
+
+  const handleOpenResetPassword = () => {
+    setNewPassword('');
+    setPasswordError('');
+    setOpenResetPasswordDialog(true);
+  };
+
+  const handleCloseResetPassword = () => {
+    setOpenResetPasswordDialog(false);
+  };
+
+  const handleConfirmResetPassword = async () => {
+    if (newPassword.length < 6) {
+      setPasswordError('Password must be at least 6 characters');
+      return;
+    }
+    
+    try {
+      await apiRequest(`/employees/${selectedEmployee.id}/password`, {
+        method: 'PUT',
+        body: { newPassword },
+      });
+      setMessage('Password reset successfully');
+      handleCloseResetPassword();
+    } catch (error) {
+      setPasswordError(error.message);
     }
   };
 
@@ -314,7 +383,7 @@ const [openEditDialog, setOpenEditDialog] = useState(false);
                 <TableRow sx={{ bgcolor: 'grey.50' }}>
                   <TableCell sx={{ fontWeight: 600 }}>Code</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Name</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Email</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Login ID</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Department</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Designation</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Type</TableCell>
@@ -327,7 +396,9 @@ const [openEditDialog, setOpenEditDialog] = useState(false);
                   <TableRow key={emp.id} sx={{ '&:hover': { bgcolor: 'grey.50' } }}>
                     <TableCell>{emp.employee_code}</TableCell>
                     <TableCell>{`${emp.first_name} ${emp.last_name}`}</TableCell>
-                    <TableCell>{emp.email}</TableCell>
+                    <TableCell>
+                      {emp.email ? `${emp.email.split('@')[0].slice(0, 3)}***@${emp.email.split('@')[1]}` : 'N/A'}
+                    </TableCell>
                     <TableCell>{emp.department_name || 'N/A'}</TableCell>
                     <TableCell>{emp.designation_title || 'N/A'}</TableCell>
                     <TableCell>
@@ -342,7 +413,7 @@ const [openEditDialog, setOpenEditDialog] = useState(false);
                     </TableCell>
                     <TableCell>
                       <Tooltip title="View Details">
-                        <IconButton size="small" color="primary">
+                        <IconButton size="small" color="primary" onClick={() => handleOpenView(emp)}>
                           <Visibility fontSize="small" />
                         </IconButton>
                       </Tooltip>
@@ -368,7 +439,7 @@ const [openEditDialog, setOpenEditDialog] = useState(false);
       {/* Add Employee Dialog */}
       <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="lg" fullWidth>
         <DialogTitle>
-          <Typography variant="h6" fontWeight={600}>Add New Employee</Typography>
+          <Typography variant="h6" component="div" sx={{ fontWeight: 600 }}>Add New Employee</Typography>
         </DialogTitle>
         <DialogContent>
           <Grid container spacing={3} sx={{ mt: 1 }}>
@@ -407,12 +478,26 @@ const [openEditDialog, setOpenEditDialog] = useState(false);
               <TextField
                 fullWidth
                 label="Password *"
-                type="password"
+                type={showPassword ? 'text' : 'password'}
                 value={formData.password}
                 onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                 error={!!errors.password}
                 helperText={errors.password}
                 required
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton
+                        aria-label="toggle password visibility"
+                        onClick={() => setShowPassword(!showPassword)}
+                        onMouseDown={(e) => e.preventDefault()}
+                        edge="end"
+                      >
+                        {showPassword ? <VisibilityOff /> : <Visibility />}
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                }}
               />
             </Grid>
             <Grid item xs={12} sm={6} md={4}>
@@ -766,7 +851,7 @@ const [openEditDialog, setOpenEditDialog] = useState(false);
       {/* Edit Employee Dialog - Similar structure with edit fields */}
       <Dialog open={openEditDialog} onClose={() => setOpenEditDialog(false)} maxWidth="md" fullWidth>
         <DialogTitle>
-          <Typography variant="h6" fontWeight={600}>Edit Employee</Typography>
+          <Typography variant="h6" component="div" sx={{ fontWeight: 600 }}>Edit Employee</Typography>
         </DialogTitle>
         <DialogContent>
           <Grid container spacing={2} sx={{ mt: 1 }}>
@@ -896,6 +981,299 @@ const [openEditDialog, setOpenEditDialog] = useState(false);
           <Button onClick={handleDelete} variant="contained" color="error">
             Delete Employee
           </Button>
+        </DialogActions>
+      </Dialog>
+      {/* View Employee Details Dialog */}
+      <Dialog open={openViewDialog} onClose={() => setOpenViewDialog(false)} maxWidth="md" fullWidth>
+        <DialogTitle sx={{ p: 0 }}>
+          <Box sx={{ p: 2, bgcolor: 'primary.main', color: 'primary.contrastText', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Stack direction="row" spacing={2} alignItems="center">
+              <Person sx={{ fontSize: 32 }} />
+              <Box>
+                <Typography variant="h6" component="div" fontWeight={700}>
+                  {viewProfile?.employee?.first_name} {viewProfile?.employee?.last_name}
+                </Typography>
+                <Typography variant="caption">{viewProfile?.employee?.employee_code} • {viewProfile?.employee?.designation_title}</Typography>
+              </Box>
+            </Stack>
+            <IconButton color="inherit" onClick={() => setOpenViewDialog(false)}>
+              <Close />
+            </IconButton>
+          </Box>
+          <Tabs value={activeTab} onChange={(e, v) => setActiveTab(v)} variant="scrollable" scrollButtons="auto" sx={{ bgcolor: 'grey.100', borderBottom: 1, borderColor: 'divider' }}>
+            <Tab label="Profile" />
+            <Tab label="Bank & Legal" />
+            <Tab label="Attendance" />
+            <Tab label="Leave History" />
+            <Tab label="Documents" />
+            <Tab label="Salary & Shift" />
+          </Tabs>
+        </DialogTitle>
+        <DialogContent sx={{ mt: 2, minHeight: 400 }}>
+          {viewProfile && (
+            <>
+              {activeTab === 0 && (
+                <Grid container spacing={3}>
+                  <Grid item xs={12} md={6}>
+                    <Typography variant="overline" color="text.secondary">Full Name</Typography>
+                    <Typography variant="body1" fontWeight={600}>{viewProfile.employee.first_name} {viewProfile.employee.last_name}</Typography>
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <Typography variant="overline" color="text.secondary">Email Address</Typography>
+                    <Typography variant="body1" fontWeight={600}>{viewProfile.employee.email}</Typography>
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <Typography variant="overline" color="text.secondary">Phone</Typography>
+                    <Typography variant="body1" fontWeight={600}>{viewProfile.employee.phone || 'N/A'}</Typography>
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <Typography variant="overline" color="text.secondary">Authentication</Typography>
+                    <Button
+                      variant="outlined"
+                      onClick={handleOpenResetPassword}
+                    >
+                      Reset Password
+                    </Button>
+                  </Grid>
+                  <Grid item xs={12} md={4}>
+                    <Typography variant="overline" color="text.secondary">Department</Typography>
+                    <Typography variant="body1" fontWeight={600}>{viewProfile.employee.department_name}</Typography>
+                  </Grid>
+                  <Grid item xs={12} md={4}>
+                    <Typography variant="overline" color="text.secondary">Designation</Typography>
+                    <Typography variant="body1" fontWeight={600}>{viewProfile.employee.designation_title}</Typography>
+                  </Grid>
+                  <Grid item xs={12} md={4}>
+                    <Typography variant="overline" color="text.secondary">Date of Birth</Typography>
+                    <Typography variant="body1" fontWeight={600}>{viewProfile.employee.date_of_birth ? new Date(viewProfile.employee.date_of_birth).toLocaleDateString() : 'N/A'}</Typography>
+                  </Grid>
+                  <Grid item xs={12} md={4}>
+                    <Typography variant="overline" color="text.secondary">Gender</Typography>
+                    <Typography variant="body1" fontWeight={600} sx={{ textTransform: 'capitalize' }}>{viewProfile.employee.gender || 'N/A'}</Typography>
+                  </Grid>
+                  <Grid item xs={12} md={4}>
+                    <Typography variant="overline" color="text.secondary">Joining Date</Typography>
+                    <Typography variant="body1" fontWeight={600}>{new Date(viewProfile.employee.joining_date).toLocaleDateString()}</Typography>
+                  </Grid>
+                  <Grid item xs={12}>
+                    <Typography variant="overline" color="text.secondary">Address</Typography>
+                    <Typography variant="body1" fontWeight={600}>{viewProfile.employee.address || 'N/A'}</Typography>
+                  </Grid>
+                </Grid>
+              )}
+
+              {activeTab === 1 && (
+                <Grid container spacing={3}>
+                  <Grid item xs={12} md={6}>
+                    <Typography variant="overline" color="text.secondary">Bank Name</Typography>
+                    <Typography variant="body1" fontWeight={600} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}><AccountBalance fontSize="small" color="action" /> {viewProfile.employee.bank_name || 'Not provided'}</Typography>
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <Typography variant="overline" color="text.secondary">Account Number</Typography>
+                    <Typography variant="body1" fontWeight={600}>{viewProfile.employee.bank_account_number || 'Not provided'}</Typography>
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <Typography variant="overline" color="text.secondary">IFSC Code</Typography>
+                    <Typography variant="body1" fontWeight={600}>{viewProfile.employee.bank_ifsc || 'Not provided'}</Typography>
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <Divider sx={{ my: 1 }} />
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <Typography variant="overline" color="text.secondary">Aadhaar Number</Typography>
+                    <Typography variant="body1" fontWeight={600}>{viewProfile.employee.aadhar_number || 'Not provided'}</Typography>
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <Typography variant="overline" color="text.secondary">PAN Number</Typography>
+                    <Typography variant="body1" fontWeight={600}>{viewProfile.employee.pan_number || 'Not provided'}</Typography>
+                  </Grid>
+                </Grid>
+              )}
+
+              {activeTab === 2 && (
+                <Box>
+                  <Grid container spacing={2} sx={{ mb: 3 }}>
+                    <Grid item xs={4}>
+                      <Paper variant="outlined" sx={{ p: 2, textAlign: 'center' }}>
+                        <Typography variant="caption" display="block" color="text.secondary">Present</Typography>
+                        <Typography variant="h5" fontWeight={700} color="success.main">{viewProfile.attendance.summary.present_count}</Typography>
+                      </Paper>
+                    </Grid>
+                    <Grid item xs={4}>
+                      <Paper variant="outlined" sx={{ p: 2, textAlign: 'center' }}>
+                        <Typography variant="caption" display="block" color="text.secondary">Absent</Typography>
+                        <Typography variant="h5" fontWeight={700} color="error.main">{viewProfile.attendance.summary.absent_count}</Typography>
+                      </Paper>
+                    </Grid>
+                    <Grid item xs={4}>
+                      <Paper variant="outlined" sx={{ p: 2, textAlign: 'center' }}>
+                        <Typography variant="caption" display="block" color="text.secondary">On Leave</Typography>
+                        <Typography variant="h5" fontWeight={700} color="info.main">{viewProfile.attendance.summary.leave_count}</Typography>
+                      </Paper>
+                    </Grid>
+                  </Grid>
+                  <Typography variant="subtitle2" gutterBottom fontWeight={700}>Recent Logs</Typography>
+                  <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 300 }}>
+                    <Table size="small" stickyHeader>
+                      <TableHead><TableRow><TableCell>Date</TableCell><TableCell>Punch In</TableCell><TableCell>Punch Out</TableCell><TableCell>Status</TableCell></TableRow></TableHead>
+                      <TableBody>
+                        {viewProfile.attendance.records.map((rec) => (
+                          <TableRow key={rec.id}>
+                            <TableCell>{new Date(rec.work_date).toLocaleDateString()}</TableCell>
+                            <TableCell>{rec.punch_in ? new Date(`2000-01-01T${rec.punch_in}`).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-'}</TableCell>
+                            <TableCell>{rec.punch_out ? new Date(`2000-01-01T${rec.punch_out}`).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-'}</TableCell>
+                            <TableCell><Chip label={rec.status} size="small" variant="outlined" color={rec.status === 'present' ? 'success' : 'default'} /></TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Box>
+              )}
+
+              {activeTab === 3 && (
+                <Box>
+                  <Typography variant="subtitle2" gutterBottom fontWeight={700}>Leave Balances</Typography>
+                  <Stack direction="row" spacing={1} sx={{ mb: 3, overflowX: 'auto', pb: 1 }}>
+                    {viewProfile.leave.balances.map(bal => (
+                      <Paper key={bal.id} variant="outlined" sx={{ p: 1.5, minWidth: 120 }}>
+                        <Typography variant="caption" color="text.secondary">{bal.leave_type_name}</Typography>
+                        <Typography variant="h6" fontWeight={700}>{bal.remaining_days}/{bal.total_days}</Typography>
+                      </Paper>
+                    ))}
+                  </Stack>
+                  <Typography variant="subtitle2" gutterBottom fontWeight={700}>Recent Requests</Typography>
+                  <TableContainer component={Paper} variant="outlined">
+                    <Table size="small">
+                      <TableHead><TableRow><TableCell>Type</TableCell><TableCell>Dates</TableCell><TableCell>Status</TableCell></TableRow></TableHead>
+                      <TableBody>
+                        {viewProfile.leave.requests.map(req => (
+                          <TableRow key={req.id}>
+                            <TableCell>{req.leave_type_name}</TableCell>
+                            <TableCell>{new Date(req.start_date).toLocaleDateString()} - {new Date(req.end_date).toLocaleDateString()}</TableCell>
+                            <TableCell><Chip label={req.status} size="small" color={req.status === 'approved' ? 'success' : req.status === 'rejected' ? 'error' : 'warning'} /></TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Box>
+              )}
+
+              {activeTab === 4 && (
+                <Box>
+                  <Typography variant="subtitle2" gutterBottom fontWeight={700}>Submitted Documents</Typography>
+                  <Grid container spacing={2}>
+                    {viewProfile.documents?.length === 0 ? (
+                      <Grid item xs={12}><Typography color="text.secondary" align="center">No documents uploaded for this employee.</Typography></Grid>
+                    ) : (
+                      viewProfile.documents.map(doc => (
+                        <Grid item xs={12} sm={6} key={doc.id}>
+                          <Paper variant="outlined" sx={{ p: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <Stack direction="row" spacing={2} alignItems="center">
+                              <Description color="primary" />
+                              <Box>
+                                <Typography variant="body2" fontWeight={600}>{doc.document_name}</Typography>
+                                <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'capitalize' }}>{doc.document_type || 'other'}</Typography>
+                                <Typography variant="caption" color="text.secondary">
+                                  {new Date(doc.uploaded_at).toLocaleDateString()}
+                                </Typography>
+                              </Box>
+                            </Stack>
+                            <IconButton 
+                              color="primary" 
+                              onClick={() => window.open(doc.file_url, '_blank')} 
+                              size="small"
+                              disabled={!doc.file_url}
+                            >
+                              <Visibility />
+                            </IconButton>
+                          </Paper>
+                        </Grid>
+                      ))
+                    )}
+                    {viewProfile.documents?.length > 0 && (
+                      <Grid item xs={12}>
+                        <Typography variant="caption" color="text.secondary">
+                          Documents uploaded via Employee Management. View all in HR Documents page.
+                        </Typography>
+                      </Grid>
+                    )}
+                  </Grid>
+                </Box>
+              )}
+
+              {activeTab === 5 && (
+                <Grid container spacing={3}>
+                  <Grid item xs={12} md={6}>
+                    <Typography variant="subtitle2" color="primary" gutterBottom fontWeight={700}>Salary Structure</Typography>
+                    {viewProfile.salary ? (
+                      <Paper variant="outlined" sx={{ p: 2 }}>
+                        <Stack spacing={1}>
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography variant="body2">Basic Salary:</Typography><Typography variant="body2" fontWeight={700}>₹{viewProfile.salary.basic_salary}</Typography></Box>
+                          <Divider />
+                          <Typography variant="caption" color="text.secondary">Effective from: {new Date(viewProfile.salary.effective_from).toLocaleDateString()}</Typography>
+                        </Stack>
+                      </Paper>
+                    ) : <Typography color="text.secondary">No salary pattern set</Typography>}
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <Typography variant="subtitle2" color="primary" gutterBottom fontWeight={700}>Shift Details</Typography>
+                    {viewProfile.shift ? (
+                      <Paper variant="outlined" sx={{ p: 2 }}>
+                        <Stack spacing={1}>
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography variant="body2">Shift Name:</Typography><Typography variant="body2" fontWeight={700}>{viewProfile.shift.name}</Typography></Box>
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography variant="body2">Timings:</Typography><Typography variant="body2" fontWeight={700}>{viewProfile.shift.start_time} - {viewProfile.shift.end_time}</Typography></Box>
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography variant="body2">Working Days:</Typography><Typography variant="body2" sx={{ textAlign: 'right', fontSize: '0.75rem' }} fontWeight={600}>{Array.isArray(viewProfile.shift.working_days) ? viewProfile.shift.working_days.join(', ') : viewProfile.shift.working_days}</Typography></Box>
+                        </Stack>
+                      </Paper>
+                    ) : <Typography color="text.secondary">No shift assigned</Typography>}
+                  </Grid>
+                </Grid>
+              )}
+            </>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenViewDialog(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Reset Password Dialog */}
+      <Dialog open={openResetPasswordDialog} onClose={handleCloseResetPassword} maxWidth="sm" fullWidth>
+        <DialogTitle>Reset Password</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Resetting password for <strong>{selectedEmployee ? `${selectedEmployee.first_name} ${selectedEmployee.last_name}` : ''}</strong>.
+          </Typography>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="New Password"
+            type={showNewPassword ? 'text' : 'password'}
+            fullWidth
+            variant="standard"
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            error={!!passwordError}
+            helperText={passwordError}
+            InputProps={{
+              endAdornment: (
+                <InputAdornment position="end">
+                  <IconButton
+                    onClick={() => setShowNewPassword(!showNewPassword)}
+                    onMouseDown={(e) => e.preventDefault()}
+                  >
+                    {showNewPassword ? <VisibilityOff /> : <Visibility />}
+                  </IconButton>
+                </InputAdornment>
+              ),
+            }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseResetPassword}>Cancel</Button>
+          <Button onClick={handleConfirmResetPassword} variant="contained">Confirm</Button>
         </DialogActions>
       </Dialog>
     </Box>

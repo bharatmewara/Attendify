@@ -248,7 +248,7 @@ export default function AttendanceRegularization() {
       {/* Raise Request Dialog */}
       <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="sm" fullWidth>
         <DialogTitle>
-          <Typography variant="h6" fontWeight={600}>
+          <Typography variant="h6" component="div" sx={{ fontWeight: 600 }}>
             Raise Attendance Regularization Request
           </Typography>
         </DialogTitle>

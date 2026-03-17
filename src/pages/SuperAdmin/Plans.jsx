@@ -387,7 +387,7 @@ export default function PlansPage() {
       {/* Create/Edit Plan Dialog */}
       <Dialog open={openDialog} onClose={() => { setOpenDialog(false); setEditingPlan(null); }} maxWidth="md" fullWidth>
         <DialogTitle sx={{ pb: 1 }}>
-          <Typography variant="h5" fontWeight={600}>
+          <Typography variant="h5" component="div" fontWeight={600}>
             {editingPlan ? 'Edit' : 'Create'} Subscription Plan
           </Typography>
         </DialogTitle>

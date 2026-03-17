@@ -21,7 +21,10 @@ const sanitizeDocuments = (documents = []) =>
 router.get('/', authenticate, tenantIsolation, async (req, res) => {
   try {
     const result = await query(`
-      SELECT e.*, u.email, u.is_active, d.name as department_name, des.title as designation_title
+      SELECT 
+        e.id, e.employee_code, e.first_name, e.last_name, e.phone, e.joining_date, 
+        e.employment_type, e.status, e.department_id, e.designation_id,
+        u.email, u.is_active, d.name as department_name, des.title as designation_title
       FROM employees e
       JOIN users u ON e.user_id = u.id
       LEFT JOIN departments d ON e.department_id = d.id
@@ -32,6 +35,39 @@ router.get('/', authenticate, tenantIsolation, async (req, res) => {
 
     res.json(result.rows);
   } catch (error) {
+    console.error('Error fetching employees:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Get ALL employee documents for company (admin view)
+router.get('/documents', authenticate, authorize('company_admin', 'super_admin'), tenantIsolation, async (req, res) => {
+  try {
+    const { employee_id, document_type } = req.query;
+    let queryText = `
+      SELECT ed.*, e.first_name, e.last_name, e.employee_code, u.email as uploaded_by_email
+      FROM employee_documents ed
+      JOIN employees e ON ed.employee_id = e.id
+      LEFT JOIN users u ON ed.uploaded_by = u.id
+      WHERE ed.company_id = $1
+    `;
+    const params = [req.companyId];
+
+    if (employee_id) {
+      queryText += ` AND ed.employee_id = $${params.length + 1}`;
+      params.push(employee_id);
+    }
+    if (document_type) {
+      queryText += ` AND ed.document_type = $${params.length + 1}`;
+      params.push(document_type);
+    }
+
+    queryText += ' ORDER BY ed.uploaded_at DESC';
+
+    const result = await query(queryText, params);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching company documents:', error);
     res.status(500).json({ message: error.message });
   }
 });
@@ -40,7 +76,13 @@ router.get('/', authenticate, tenantIsolation, async (req, res) => {
 router.get('/:id', authenticate, tenantIsolation, async (req, res) => {
   try {
     const result = await query(`
-      SELECT e.*, u.email, u.is_active, d.name as department_name, des.title as designation_title
+      SELECT 
+        e.id, e.employee_code, e.first_name, e.last_name, e.date_of_birth, e.gender, 
+        e.phone, e.emergency_contact, e.emergency_contact_name, e.address, 
+        e.city, e.state, e.country, e.postal_code, e.department_id, e.designation_id, 
+        e.manager_id, e.joining_date, e.employment_type, e.status, 
+        e.aadhar_number, e.pan_number, e.bank_account_number, e.bank_name, e.bank_ifsc,
+        u.email, u.is_active, d.name as department_name, des.title as designation_title
       FROM employees e
       JOIN users u ON e.user_id = u.id
       LEFT JOIN departments d ON e.department_id = d.id
@@ -54,6 +96,7 @@ router.get('/:id', authenticate, tenantIsolation, async (req, res) => {
 
     res.json(result.rows[0]);
   } catch (error) {
+    console.error('Error fetching employees:', error);
     res.status(500).json({ message: error.message });
   }
 });
@@ -62,7 +105,13 @@ router.get('/:id', authenticate, tenantIsolation, async (req, res) => {
 router.get('/:id/profile', authenticate, tenantIsolation, async (req, res) => {
   try {
     const employeeResult = await query(
-      `SELECT e.*, u.email, u.is_active, d.name as department_name, des.title as designation_title
+      `SELECT 
+        e.id, e.user_id, e.employee_code, e.first_name, e.last_name, e.date_of_birth, e.gender, 
+        e.phone, e.emergency_contact, e.emergency_contact_name, e.address, 
+        e.city, e.state, e.country, e.postal_code, e.department_id, e.designation_id, 
+        e.manager_id, e.joining_date, e.employment_type, e.status, 
+        e.aadhar_number, e.pan_number, e.bank_account_number, e.bank_name, e.bank_ifsc,
+        u.email, u.is_active, d.name as department_name, des.title as designation_title
        FROM employees e
        JOIN users u ON e.user_id = u.id
        LEFT JOIN departments d ON e.department_id = d.id
@@ -131,10 +180,10 @@ router.get('/:id/profile', authenticate, tenantIsolation, async (req, res) => {
         ),
         query(
           `SELECT *
-           FROM hr_documents
-           WHERE employee_id = $1
-           ORDER BY generated_at DESC`,
-          [employee.id],
+           FROM employee_documents
+           WHERE employee_id = $1 AND company_id = $2
+           ORDER BY uploaded_at DESC`,
+          [employee.id, req.companyId],
         ),
         query(
           `SELECT *
@@ -197,7 +246,7 @@ router.post('/', authenticate, authorize('company_admin', 'super_admin'), tenant
 
     const userResult = await query(
       `INSERT INTO users (company_id, email, password_hash, role, is_active)
-       VALUES ($1, $2, $3, 'employee', true)
+       VALUES ($1::int, $2::text, $3::text, 'employee', true)
        RETURNING id`,
       [req.companyId, email.toLowerCase(), passwordHash]
     );
@@ -210,7 +259,7 @@ router.post('/', authenticate, authorize('company_admin', 'super_admin'), tenant
         phone, emergency_contact, emergency_contact_name, address, city, state, country,
         postal_code, department_id, designation_id, manager_id, joining_date, employment_type,
         aadhar_number, pan_number, bank_account_number, bank_name, bank_ifsc
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
+      ) VALUES ($1::int, $2::int, $3::text, $4::text, $5::text, $6::date, $7::text, $8::text, $9::text, $10::text, $11::text, $12::text, $13::text, $14::text, $15::text, $16::int, $17::int, $18::int, $19::date, $20::text, $21::text, $22::text, $23::text, $24::text, $25::text)
       RETURNING *`,
       [
         userId, req.companyId, employee_code, first_name, last_name, nullable(date_of_birth), nullable(gender),
@@ -230,7 +279,7 @@ router.post('/', authenticate, authorize('company_admin', 'super_admin'), tenant
     for (const leaveType of leaveTypes.rows) {
       await query(
         `INSERT INTO leave_balances (employee_id, leave_type_id, year, total_days, remaining_days)
-         VALUES ($1, $2, $3, $4, $4)`,
+         VALUES ($1::int, $2::int, $3::int, $4::decimal, $4::decimal)`,
         [employee.id, leaveType.id, currentYear, leaveType.days_per_year]
       );
     }
@@ -238,7 +287,7 @@ router.post('/', authenticate, authorize('company_admin', 'super_admin'), tenant
     for (const document of sanitizedDocuments) {
       await query(
         `INSERT INTO employee_documents (employee_id, company_id, document_type, document_name, file_url, file_size, uploaded_by)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+         VALUES ($1::int, $2::int, $3::text, $4::text, $5::text, $6::int, $7::int)`,
         [employee.id, req.companyId, document.document_type, document.document_name, document.file_url, document.file_size, req.user.id],
       );
     }
@@ -255,6 +304,7 @@ router.post('/', authenticate, authorize('company_admin', 'super_admin'), tenant
 
     res.status(201).json(employee);
   } catch (error) {
+    console.error('Error fetching employees:', error);
     res.status(500).json({ message: error.message });
   }
 });
@@ -272,13 +322,13 @@ router.put('/:id', authenticate, authorize('company_admin', 'super_admin'), tena
   try {
     const result = await query(
       `UPDATE employees 
-       SET first_name = $1, last_name = $2, date_of_birth = $3, gender = $4, phone = $5,
-           emergency_contact = $6, emergency_contact_name = $7, address = $8, city = $9,
-           state = $10, country = $11, postal_code = $12, department_id = $13,
-           designation_id = $14, manager_id = $15, employment_type = $16, status = $17,
-           aadhar_number = $18, pan_number = $19, bank_account_number = $20, bank_name = $21, bank_ifsc = $22,
+       SET first_name = $1::text, last_name = $2::text, date_of_birth = $3::date, gender = $4::text, phone = $5::text,
+           emergency_contact = $6::text, emergency_contact_name = $7::text, address = $8::text, city = $9::text,
+           state = $10::text, country = $11::text, postal_code = $12::text, department_id = $13::int,
+           designation_id = $14::int, manager_id = $15::int, employment_type = $16::text, status = $17::text,
+           aadhar_number = $18::text, pan_number = $19::text, bank_account_number = $20::text, bank_name = $21::text, bank_ifsc = $22::text,
            updated_at = NOW()
-       WHERE id = $23 AND ($24::int IS NULL OR company_id = $24)
+       WHERE id = $23::int AND ($24::int IS NULL OR company_id = $24::int)
       RETURNING *`,
       [
         first_name, last_name, nullable(date_of_birth), nullable(gender), nullable(phone), nullable(emergency_contact),
@@ -295,6 +345,7 @@ router.put('/:id', authenticate, authorize('company_admin', 'super_admin'), tena
 
     res.json(result.rows[0]);
   } catch (error) {
+    console.error('Error fetching employees:', error);
     res.status(500).json({ message: error.message });
   }
 });
@@ -322,11 +373,12 @@ router.delete('/:id', authenticate, authorize('company_admin', 'super_admin'), t
 
     res.json({ message: 'Employee deleted successfully' });
   } catch (error) {
+    console.error('Error fetching employees:', error);
     res.status(500).json({ message: error.message });
   }
 });
 
-// Get employee documents
+// Get employee documents (per employee)
 router.get('/:id/documents', authenticate, tenantIsolation, async (req, res) => {
   try {
     const result = await query(
@@ -336,6 +388,7 @@ router.get('/:id/documents', authenticate, tenantIsolation, async (req, res) => 
 
     res.json(result.rows);
   } catch (error) {
+    console.error('Error fetching employee documents:', error);
     res.status(500).json({ message: error.message });
   }
 });
@@ -350,6 +403,7 @@ router.get('/:id/assets', authenticate, tenantIsolation, async (req, res) => {
 
     res.json(result.rows);
   } catch (error) {
+    console.error('Error fetching employees:', error);
     res.status(500).json({ message: error.message });
   }
 });
@@ -368,7 +422,45 @@ router.post('/:id/assets', authenticate, authorize('company_admin', 'super_admin
 
     res.status(201).json(result.rows[0]);
   } catch (error) {
+    console.error('Error fetching employees:', error);
     res.status(500).json({ message: error.message });
+  }
+});
+
+// Reset employee password (for admins)
+router.put('/:id/password', authenticate, authorize('company_admin', 'super_admin'), tenantIsolation, async (req, res) => {
+  const { id } = req.params;
+  const { newPassword } = req.body;
+
+  if (!newPassword || newPassword.length < 6) {
+    return res.status(400).json({ message: 'Password must be at least 6 characters long' });
+  }
+
+  try {
+    const empResult = await query('SELECT user_id, company_id FROM employees WHERE id = $1 AND ($2::int IS NULL OR company_id = $2)', [id, req.companyId]);
+    
+    if (empResult.rows.length === 0) {
+      return res.status(404).json({ message: 'Employee not found' });
+    }
+
+    const { user_id: userId, company_id: companyId } = empResult.rows[0];
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+
+    await query('UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2', [passwordHash, userId]);
+
+    await logAudit({
+      companyId: companyId,
+      userId: req.user.id,
+      action: 'RESET_PASSWORD',
+      entityType: 'employee',
+      entityId: id,
+      ipAddress: req.ip,
+    });
+
+    res.json({ message: 'Password has been reset successfully.' });
+  } catch (error) {
+    console.error('Error resetting password:', error);
+    res.status(500).json({ message: 'Error resetting password' });
   }
 });
 

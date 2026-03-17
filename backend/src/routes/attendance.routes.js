@@ -61,7 +61,7 @@ router.post('/punch-in', authenticate, tenantIsolation, enforcePunchIp, async (r
 
     const result = await query(
       `INSERT INTO attendance_records (employee_id, company_id, work_date, punch_in_time, late_minutes, status, source, punch_in_location)
-       VALUES ($1, $2, $3, $4, $5, 'present', 'web', $6)
+       VALUES ($1::int, $2::int, $3::date, $4::timestamptz, $5::int, 'present', 'web', $6::text)
        ON CONFLICT (employee_id, work_date) 
        DO UPDATE SET punch_in_time = EXCLUDED.punch_in_time, late_minutes = EXCLUDED.late_minutes, punch_in_location = EXCLUDED.punch_in_location
        RETURNING *`,
@@ -136,8 +136,8 @@ router.post('/punch-out', authenticate, tenantIsolation, async (req, res) => {
 
     const result = await query(
       `UPDATE attendance_records 
-       SET punch_out_time = $1, total_hours = $2, early_leave_minutes = $3, punch_out_location = $4, updated_at = NOW()
-       WHERE employee_id = $5 AND work_date = $6
+       SET punch_out_time = $1::timestamptz, total_hours = $2::decimal, early_leave_minutes = $3::int, punch_out_location = $4::text, updated_at = NOW()
+       WHERE employee_id = $5::int AND work_date = $6::date
        RETURNING *`,
       [punchOutTime, totalHours, earlyLeaveMinutes, location, employeeId, today]
     );
@@ -233,12 +233,12 @@ router.post('/mark-absent', authenticate, authorize('company_admin', 'super_admi
     }
     const result = await query(
       `INSERT INTO attendance_records (employee_id, company_id, work_date, status)
-       SELECT e.id, $1, $2, 'absent'
+       SELECT e.id, $1::int, $2::date, 'absent'
        FROM employees e
-       WHERE e.company_id = $1 AND e.status = 'active'
+       WHERE e.company_id = $1::int AND e.status = 'active'
        AND NOT EXISTS (
          SELECT 1 FROM attendance_records ar 
-         WHERE ar.employee_id = e.id AND ar.work_date = $2
+         WHERE ar.employee_id = e.id AND ar.work_date = $2::date
        )
        RETURNING *`,
       [req.companyId, work_date]
@@ -359,7 +359,7 @@ router.post('/regularization-requests', authenticate, authorize('employee'), ten
     const result = await query(
       `INSERT INTO attendance_regularization_requests (
          employee_id, company_id, work_date, punch_in_time, punch_out_time, reason
-       ) VALUES ($1, $2, $3, $4, $5, $6)
+       ) VALUES ($1::int, $2::int, $3::date, $4::time, $5::time, $6::text)
        RETURNING *`,
       [employeeId, req.companyId, work_date, punch_in_time || null, punch_out_time || null, reason],
     );
@@ -421,7 +421,7 @@ router.put('/regularization-requests/:id', authenticate, authorize('company_admi
         await query(
           `INSERT INTO attendance_records (
              employee_id, company_id, work_date, punch_in_time, punch_out_time, total_hours, status, source, notes, approved_by
-           ) VALUES ($1, $2, $3, $4, $5, $6, 'present', 'web', $7, $8)
+           ) VALUES ($1::int, $2::int, $3::date, $4::timestamptz, $5::timestamptz, $6::decimal, 'present', 'web', $7::text, $8::int)
            ON CONFLICT (employee_id, work_date)
            DO UPDATE SET
              punch_in_time = COALESCE(EXCLUDED.punch_in_time, attendance_records.punch_in_time),

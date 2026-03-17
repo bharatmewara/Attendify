@@ -477,8 +477,8 @@ export default function CompaniesPage() {
         fullWidth
       >
         <DialogTitle sx={{ pb: 1 }}>
-          <Typography variant="h5" fontWeight={600}>
-            Add New Company
+          <Typography variant="h5" component="div" fontWeight={600}>
+            {selectedCompany ? 'Edit Company' : 'Add New Company'}
           </Typography>
         </DialogTitle>
         <DialogContent>
