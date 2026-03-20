@@ -41,8 +41,11 @@ import {
   Edit,
   Notifications as NotificationsIcon,
   LockReset,
+  LockOpen,
+  UploadFile,
 } from '@mui/icons-material';
 import { apiRequest } from '../../lib/api';
+import { useAuth } from '../../context/AuthContext';
 
 const getInitialCompanyFormData = () => ({
   company_name: '',
@@ -91,6 +94,13 @@ export default function CompaniesPage() {
     priority: 'normal',
   });
 
+  const [openAssignDialog, setOpenAssignDialog] = useState(false);
+  const [assignFormData, setAssignFormData] = useState({
+    plan_id: '',
+    billing_cycle: 'monthly',
+    payment_status: 'paid',
+  });
+
   async function loadData() {
     try {
       const [companiesData, plansData] = await Promise.all([
@@ -120,13 +130,28 @@ export default function CompaniesPage() {
     }
 
     try {
-      await apiRequest('/superadmin/companies', {
+      const newCompanyResponse = await apiRequest('/superadmin/companies', {
         method: 'POST',
-        body: formData,
+        body: { ...formData, plan_id: null }, // Create without initial plan
       });
+      
+      const newCompanyId = newCompanyResponse.id;
+      
+      // Assign subscription if plan selected
+      if (formData.plan_id) {
+        await apiRequest(`/superadmin/companies/${newCompanyId}/assign-subscription`, {
+          method: 'POST',
+          body: {
+            plan_id: formData.plan_id,
+            billing_cycle: formData.billing_cycle,
+            payment_status: formData.payment_status,
+          },
+        });
+      }
+      
       setOpenDialog(false);
       setFormData(getInitialCompanyFormData());
-      setMessage('Company created successfully');
+      setMessage('Company created' + (formData.plan_id ? ' and subscription assigned' : '') + ' successfully');
       loadData();
     } catch (error) {
       setMessage(error.message);
@@ -196,7 +221,7 @@ export default function CompaniesPage() {
         body: { is_active: !isActive },
       });
       setMessage(`Company ${!isActive ? 'activated' : 'deactivated'} successfully`);
-      loadData();
+      setCompanies(companies.map(c => c.id === companyId ? {...c, is_active: !isActive} : c));
       handleMenuClose();
     } catch (error) {
       setMessage(error.message);
@@ -259,6 +284,32 @@ export default function CompaniesPage() {
     setSelectedCompany(company);
     setOpenNotificationDialog(true);
     handleMenuClose();
+  };
+
+  const handleOpenAssignPlan = (company) => {
+    setSelectedCompany(company);
+    setAssignFormData({
+      plan_id: company.plan_id || '',
+      billing_cycle: company.billing_cycle || 'monthly',
+      payment_status: 'paid',
+    });
+    setOpenAssignDialog(true);
+    handleMenuClose();
+  };
+
+  const handleAssignPlan = async () => {
+    try {
+      await apiRequest(`/superadmin/companies/${selectedCompany.id}/assign-subscription`, {
+        method: 'POST',
+        body: assignFormData,
+      });
+      setMessage('Subscription assigned successfully');
+      setOpenAssignDialog(false);
+      setAssignFormData({ plan_id: '', billing_cycle: 'monthly', payment_status: 'paid' });
+      loadData();
+    } catch (error) {
+      setMessage(error.message);
+    }
   };
 
   const getStatusColor = (status) => {
@@ -343,12 +394,13 @@ export default function CompaniesPage() {
                       <Stack direction="row" spacing={2} alignItems="center">
                         <Avatar
                           sx={{
-                            bgcolor: 'primary.main',
                             width: 40,
                             height: 40,
                           }}
+                          src={company.logo ? company.logo : undefined}
+                          imgProps={{ referrerPolicy: "no-referrer" }}
                         >
-                          <Business />
+                          {company.logo ? null : <Business />}
                         </Avatar>
                         <Box>
                           <Typography variant="subtitle2" fontWeight={600}>
@@ -433,6 +485,10 @@ export default function CompaniesPage() {
           <Visibility sx={{ mr: 2 }} />
           View Subscription
         </MenuItem>
+        <MenuItem onClick={() => handleOpenAssignPlan(selectedCompany)}>
+          <Settings sx={{ mr: 2, color: 'primary.main' }} />
+          Assign/Change Plan
+        </MenuItem>
         <MenuItem onClick={() => handleOpenEdit(selectedCompany)}>
           <Edit sx={{ mr: 2 }} />
           Edit Company
@@ -444,6 +500,20 @@ export default function CompaniesPage() {
         <MenuItem onClick={() => handleOpenNotification(selectedCompany)}>
           <NotificationsIcon sx={{ mr: 2 }} />
           Send Notification
+        </MenuItem>
+        <MenuItem onClick={async () => {
+            try {
+              const response = await apiRequest(`/superadmin/companies/${selectedCompany.id}/impersonate`);
+              localStorage.setItem('attendify_token', response.token);
+              setMessage('Logged in as company admin');
+              window.location.href = '/app/company-dashboard';
+            } catch (error) {
+              setMessage(error.message || 'Impersonation failed');
+            }
+            handleMenuClose();
+          }}>
+          <LockOpen sx={{ mr: 2 }} />
+          Login as Admin
         </MenuItem>
         <Divider />
         <MenuItem
@@ -864,6 +934,85 @@ export default function CompaniesPage() {
         </DialogContent>
         <DialogActions sx={{ p: 2 }}>
           <Button onClick={() => setOpenSubscriptionDialog(false)} variant="outlined">Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Assign Plan Dialog - Step 3 */}
+      <Dialog open={openAssignDialog} onClose={() => setOpenAssignDialog(false)} maxWidth="md" fullWidth>
+        <DialogTitle sx={{ pb: 1 }}>
+          <Typography variant="h5" fontWeight={600}>
+            {selectedCompany?.plan_name ? 'Change' : 'Assign'} Subscription Plan
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Company: {selectedCompany?.company_name}
+          </Typography>
+        </DialogTitle>
+        <DialogContent>
+          <Grid container spacing={3} sx={{ mt: 1 }}>
+            <Grid item xs={12} md={6}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Subscription Plan</InputLabel>
+                <Select
+                  value={assignFormData.plan_id}
+                  label="Subscription Plan"
+                  onChange={(e) => setAssignFormData({ ...assignFormData, plan_id: e.target.value })}
+                >
+                  <MenuItem value=""><em>Select Plan</em></MenuItem>
+                  {plans.map((plan) => (
+                    <MenuItem key={plan.id} value={plan.id}>
+                      {plan.name} - {plan.employee_limit} employees
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} md={3}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Billing Cycle</InputLabel>
+                <Select
+                  value={assignFormData.billing_cycle}
+                  label="Billing Cycle"
+                  onChange={(e) => setAssignFormData({ ...assignFormData, billing_cycle: e.target.value })}
+                >
+                  <MenuItem value="monthly">Monthly</MenuItem>
+                  <MenuItem value="yearly">Yearly (save ~{Math.round((1 - (plans.find(p => p.id == assignFormData.plan_id)?.price_yearly || 0) / ((plans.find(p => p.id == assignFormData.plan_id)?.price_monthly || 1) * 12)) * 100) || 0}%)</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} md={3}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Payment Status</InputLabel>
+                <Select
+                  value={assignFormData.payment_status}
+                  label="Payment Status"
+                  onChange={(e) => setAssignFormData({ ...assignFormData, payment_status: e.target.value })}
+                >
+                  <MenuItem value="paid">Paid (Active)</MenuItem>
+                  <MenuItem value="unpaid">Unpaid (Pending)</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            {selectedCompany?.plan_name && (
+              <Grid item xs={12}>
+                <Alert severity="info">
+                  Current: {selectedCompany.plan_name} ({selectedCompany.billing_cycle}, ₹{selectedCompany.subscription_amount})
+                </Alert>
+              </Grid>
+            )}
+          </Grid>
+        </DialogContent>
+        <DialogActions sx={{ p: 3 }}>
+          <Button onClick={() => setOpenAssignDialog(false)} sx={{ borderRadius: 2 }}>
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleAssignPlan}
+            variant="contained"
+            disabled={!assignFormData.plan_id}
+            sx={{ borderRadius: 2, px: 4 }}
+          >
+            {selectedCompany?.plan_name ? 'Change Plan' : 'Assign Plan'}
+          </Button>
         </DialogActions>
       </Dialog>
 
