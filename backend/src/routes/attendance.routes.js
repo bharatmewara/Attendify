@@ -180,8 +180,7 @@ router.post('/punch-out', authenticate, tenantIsolation, async (req, res) => {
   }
 });
 
-// Get today's attendance status
-router.get('/today', authenticate, tenantIsolation, async (req, res) => {
+const getTodayAttendanceStatus = async (req, res) => {
   try {
     const empResult = await query('SELECT id FROM employees WHERE user_id = $1', [req.user.id]);
     if (empResult.rows.length === 0) {
@@ -198,7 +197,12 @@ router.get('/today', authenticate, tenantIsolation, async (req, res) => {
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
-});
+};
+
+// Get today's attendance status
+router.get('/today', authenticate, tenantIsolation, getTodayAttendanceStatus);
+// Backward-compatible alias used by some frontend builds
+router.get('/today-status', authenticate, tenantIsolation, getTodayAttendanceStatus);
 
 // Get attendance records
 router.get('/records', authenticate, tenantIsolation, async (req, res) => {
@@ -507,3 +511,4 @@ router.put('/regularization-requests/:id', authenticate, authorize('company_admi
 });
 
 export default router;
+

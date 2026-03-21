@@ -41,6 +41,12 @@ const ensureSchema = async () => {
     )
   `);
 
+  // Backward-compatible schema upgrades for older deployments.
+  await query(`ALTER TABLE incentive_configs ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true`)
+  await query(`ALTER TABLE incentive_configs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`)
+  await query(`ALTER TABLE incentive_requests ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`)
+  await query(`UPDATE incentive_configs SET is_active = true WHERE is_active IS NULL`)
+
   schemaReady = true;
 };
 

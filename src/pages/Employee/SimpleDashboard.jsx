@@ -27,12 +27,23 @@ export default function EmployeeDashboard() {
   const [leaveBalance, setLeaveBalance] = useState([]);
   const [upcomingHolidays, setUpcomingHolidays] = useState([]);
   const [message, setMessage] = useState({ type: '', text: '' });
+  
+  const fetchTodayAttendance = async () => {
+    try {
+      return await apiRequest('/attendance/today');
+    } catch (error) {
+      if (String(error?.message || '').includes('404')) {
+        return apiRequest('/attendance/today-status');
+      }
+      throw error;
+    }
+  };
 
   useEffect(() => {
     const loadData = async () => {
       try {
         const [attendanceData, balanceData] = await Promise.all([
-          apiRequest('/attendance/today'),
+          fetchTodayAttendance(),
           apiRequest('/leave/balance'),
         ]);
         setTodayAttendance(attendanceData);
@@ -59,7 +70,7 @@ export default function EmployeeDashboard() {
     try {
       await apiRequest('/attendance/punch-in', { method: 'POST', body: { location: 'Web Portal' } });
       setMessage({ type: 'success', text: 'Punch in recorded' });
-      const data = await apiRequest('/attendance/today');
+      const data = await fetchTodayAttendance();
       setTodayAttendance(data);
     } catch (error) {
       setMessage({ type: 'error', text: error.message });
@@ -70,7 +81,7 @@ export default function EmployeeDashboard() {
     try {
       await apiRequest('/attendance/punch-out', { method: 'POST', body: { location: 'Web Portal' } });
       setMessage({ type: 'success', text: 'Punch out recorded' });
-      const data = await apiRequest('/attendance/today');
+      const data = await fetchTodayAttendance();
       setTodayAttendance(data);
     } catch (error) {
       setMessage({ type: 'error', text: error.message });

@@ -46,8 +46,14 @@ export default function EmployeeIncentives() {
         apiRequest('/incentives/config'),
         apiRequest('/incentives/requests'),
       ]);
-      setConfigs(cfg || []);
+      const configList = Array.isArray(cfg) ? cfg : Array.isArray(cfg?.rows) ? cfg.rows : [];
+      setConfigs(configList);
       setRequests(req || []);
+      if (configList.length > 0) {
+        setRequestForm((prev) =>
+          prev.incentive_config_id ? prev : { ...prev, incentive_config_id: String(configList[0].id) },
+        );
+      }
     } catch (error) {
       setMessage({ type: 'error', text: error.message });
     }
@@ -58,6 +64,10 @@ export default function EmployeeIncentives() {
   }, []);
 
   const handleSubmit = async () => {
+    if (!requestForm.incentive_config_id) {
+      setMessage({ type: 'error', text: 'Please select an incentive slab.' });
+      return;
+    }
     try {
       await apiRequest('/incentives/requests', { method: 'POST', body: requestForm });
       setOpenRequestDialog(false);
@@ -129,8 +139,11 @@ export default function EmployeeIncentives() {
         <DialogTitle>Submit Incentive Request</DialogTitle>
         <DialogContent>
           <TextField fullWidth select label="Incentive Slab" margin="normal" value={requestForm.incentive_config_id} onChange={(e) => setRequestForm({ ...requestForm, incentive_config_id: e.target.value })}>
+            {configs.length === 0 ? (
+              <MenuItem value="" disabled>No incentive slab configured by admin</MenuItem>
+            ) : null}
             {configs.map((cfg) => (
-              <MenuItem key={cfg.id} value={cfg.id}>
+              <MenuItem key={cfg.id} value={String(cfg.id)}>
                 {cfg.incentive_type} - {Number(cfg.package_volume).toLocaleString()} - Incentive {cfg.incentive_amount}
               </MenuItem>
             ))}
@@ -145,7 +158,7 @@ export default function EmployeeIncentives() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenRequestDialog(false)}>Cancel</Button>
-          <Button variant="contained" onClick={handleSubmit}>Submit</Button>
+          <Button variant="contained" onClick={handleSubmit} disabled={configs.length === 0}>Submit</Button>
         </DialogActions>
       </Dialog>
     </Box>
