@@ -41,6 +41,8 @@ const initialForm = {
 };
 
 export default function HRDocuments() {
+  const { user } = useAuth();
+  const isSuperAdmin = user?.role === 'super_admin';
   const [activeTab, setActiveTab] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState(null);
@@ -78,12 +80,13 @@ const loadData = async () => {
     if (empFilters.employee_id) empParams.append('employee_id', empFilters.employee_id);
     if (empFilters.document_type) empParams.append('document_type', empFilters.document_type);
 
+    const companyPromise = isSuperAdmin ? Promise.resolve(null) : apiRequest('/organization/companies');
     const [hrDocsData, empDocsData, employeesData, templatesData, companyData] = await Promise.all([
       apiRequest(`/documents${hrParams.toString() ? `?${hrParams.toString()}` : ''}`),
       apiRequest(`/employees/documents${empParams.toString() ? `?${empParams.toString()}` : ''}`),
       apiRequest('/employees'),
       apiRequest('/documents/templates'),
-      apiRequest('/organization/companies'),
+      companyPromise,
     ]);
     setHrDocuments(hrDocsData);
     setEmployeeDocuments(empDocsData);
@@ -131,7 +134,13 @@ const loadDataSafe = async () => {
 
 useEffect(() => {
     loadDataSafe();
-  }, [hrFilters.employee_id, hrFilters.document_type, empFilters.employee_id, empFilters.document_type]);
+  }, [hrFilters.employee_id, hrFilters.document_type, empFilters.employee_id, empFilters.document_type, isSuperAdmin]);
+
+  useEffect(() => {
+    if (isSuperAdmin && activeTab > 1) {
+      setActiveTab(0);
+    }
+  }, [isSuperAdmin, activeTab]);
 
   const employeeMap = useMemo(
     () => Object.fromEntries(employees.map((employee) => [employee.id, employee])),
@@ -163,18 +172,25 @@ useEffect(() => {
 
   const handleDownload = async (document) => {
     const employee = employeeMap[document.employee_id];
-    const companyData = await apiRequest('/organization/companies');
+    let companyData = company;
+    if (!companyData && !isSuperAdmin) {
+      try {
+        companyData = await apiRequest('/organization/companies');
+      } catch {
+        companyData = null;
+      }
+    }
     const apiOrigin = API_BASE_URL.replace(/\/api$/, '');
     const html = buildDocumentHtml({
       title: document.title,
       employeeName: employee ? `${employee.first_name} ${employee.last_name}` : '',
-      companyName: companyData.company_name || 'Attendify',
-      companyLogo: companyData.logo ? `${apiOrigin}${companyData.logo}` : null,
-      companyAddress: companyData.address || '',
-      companyPhone: companyData.phone || '',
-      companyTel: companyData.tel_no || '',
-      companyEmail: companyData.email || '',
-      companyWebsite: companyData.website || '',
+      companyName: companyData?.company_name || 'Attendify',
+      companyLogo: companyData?.logo ? `${apiOrigin}${companyData.logo}` : null,
+      companyAddress: companyData?.address || '',
+      companyPhone: companyData?.phone || '',
+      companyTel: companyData?.tel_no || '',
+      companyEmail: companyData?.email || '',
+      companyWebsite: companyData?.website || '',
       content: document.content,
     });
     downloadBlob(html, `${document.document_type}-${document.id}.html`, 'text/html;charset=utf-8');
@@ -205,8 +221,13 @@ useEffect(() => {
         <Box>
           <Typography variant="h4" fontWeight={800}>HR Documents</Typography>
           <Typography color="text.secondary">Generate branded documents, monitor all employee paperwork, and deliver files directly to the employee dashboard.</Typography>
+          {isSuperAdmin && (
+            <Typography variant="body2" color="warning.main" sx={{ mt: 0.5 }}>
+              Super admin view is read-only here. Use company admin or impersonate a company to manage company details and generate documents.
+            </Typography>
+          )}
         </Box>
-        <Button variant="contained" startIcon={<Add />} onClick={() => setOpenDialog(true)}>
+        <Button variant="contained" startIcon={<Add />} onClick={() => setOpenDialog(true)} disabled={isSuperAdmin}>
           Generate Document
         </Button>
       </Box>
@@ -226,7 +247,7 @@ useEffect(() => {
       <Tabs value={activeTab} onChange={(e, newValue) => setActiveTab(newValue)} sx={{ mb: 3 }}>
         <Tab label="HR Generated Documents" />
         <Tab label="Employee Submitted Documents" />
-        <Tab label="Company Details" />
+        {!isSuperAdmin && <Tab label="Company Details" />}
       </Tabs>
 
       <Card sx={{ mb: 3, borderRadius: 4 }}>
@@ -303,8 +324,9 @@ useEffect(() => {
       <Card sx={{ borderRadius: 4 }}>
         <CardContent>
           <Typography variant="h6" fontWeight={700} sx={{ mb: 2 }}>
-            {activeTab === 2 ? 'Company Details' : activeTab === 0 ? 'HR Generated Documents' : 'Employee Submitted Documents'}
+            {!isSuperAdmin && activeTab === 2 ? 'Company Details' : activeTab === 0 ? 'HR Generated Documents' : 'Employee Submitted Documents'}
           </Typography>
+          {(!isSuperAdmin && activeTab === 2) ? null : (
           <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 3 }}>
             <Table>
               <TableHead>
@@ -351,7 +373,8 @@ useEffect(() => {
               </TableBody>
             </Table>
           </TableContainer>
-          {activeTab === 2 ? (
+          )}
+          {!isSuperAdmin && activeTab === 2 ? (
             <Box sx={{ mt: 2 }}>
               <Typography variant="h6" fontWeight={600} sx={{ mb: 2, pb: 1, borderBottom: 1, borderColor: 'divider' }}>
                 Company Information

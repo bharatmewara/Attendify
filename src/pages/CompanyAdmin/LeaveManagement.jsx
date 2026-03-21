@@ -57,6 +57,7 @@ const shellCardSx = {
 export default function LeaveManagement() {
   const { user } = useAuth();
   const isEmployee = user?.role === 'employee';
+  const companyContext = user?.company_id ? { company_id: user.company_id } : {};
   const [tabValue, setTabValue] = useState(0);
   const [employees, setEmployees] = useState([]);
   const [leaveRequests, setLeaveRequests] = useState([]);
@@ -124,7 +125,7 @@ export default function LeaveManagement() {
       if (isEmployee) {
         await apiRequest('/leave/requests', { method: 'POST', body: requestForm });
       } else {
-        await apiRequest('/leave/requests/admin', { method: 'POST', body: requestForm });
+        await apiRequest('/leave/requests/admin', { method: 'POST', body: { ...requestForm, ...companyContext } });
       }
 
       setOpenRequestDialog(false);
@@ -154,13 +155,13 @@ export default function LeaveManagement() {
       if (editingType) {
         await apiRequest(`/leave/types/${editingType.id}`, {
           method: 'PUT',
-          body: typeForm,
+          body: { ...typeForm, ...companyContext },
         });
         setMessage({ type: 'success', text: 'Leave policy updated successfully.' });
       } else {
         await apiRequest('/leave/types', {
           method: 'POST',
-          body: typeForm,
+          body: { ...typeForm, ...companyContext },
         });
         setMessage({ type: 'success', text: 'Leave policy created successfully.' });
       }
@@ -189,7 +190,7 @@ export default function LeaveManagement() {
 
   const handleDeleteType = async (typeId) => {
     try {
-      await apiRequest(`/leave/types/${typeId}`, { method: 'DELETE' });
+      await apiRequest(`/leave/types/${typeId}`, { method: 'DELETE', body: companyContext });
       setDeleteTypeConfirm(null);
       setMessage({ type: 'success', text: 'Leave policy deleted successfully.' });
       loadData();
