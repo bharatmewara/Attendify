@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Alert,
   Box,
@@ -26,7 +26,7 @@ const trustPoints = ['ISO 27001 Ready', 'SOC Controls', '99.99% Uptime SLA'];
 
 const LoginPage = () => {
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { login, isAuthenticated, loading: authLoading } = useAuth();
   const [form, setForm] = useState({ email: '', password: '', companyCode: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -35,6 +35,12 @@ const LoginPage = () => {
   const onInput = (field) => (event) => {
     setForm((prev) => ({ ...prev, [field]: event.target.value }));
   };
+
+  useEffect(() => {
+    if (!authLoading && isAuthenticated) {
+      navigate('/app/dashboard', { replace: true });
+    }
+  }, [isAuthenticated, authLoading, navigate]);
 
   const onSubmit = async (event) => {
     event.preventDefault();

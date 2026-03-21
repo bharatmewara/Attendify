@@ -72,9 +72,9 @@ function App() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <Router>
+      <Router basename={import.meta.env.BASE_URL}>
         <Routes>
-          <Route path="/" element={<Navigate to="/auth/login" replace />} />
+          <Route path="/" element={<Navigate to="/app/dashboard" replace />} />
           <Route path="/auth" element={<AuthLayout />}>
             <Route path="login" element={<Login />} />
           </Route>

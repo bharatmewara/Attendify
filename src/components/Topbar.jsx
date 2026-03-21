@@ -19,7 +19,7 @@ const Topbar = ({ title, subtitle, companyProfile }) => {
     try {
       const data = await apiRequest('/auth/impersonate-exit');
       setSessionToken(data.token);
-      window.location.href = '/app/dashboard';
+      navigate('/app/dashboard');
     } catch {
       logout();
       navigate('/auth/login');
@@ -82,3 +82,4 @@ const Topbar = ({ title, subtitle, companyProfile }) => {
 };
 
 export default Topbar;
+

@@ -347,7 +347,8 @@ export default function CompaniesPage() {
   const handleLoginAsCompanyAdmin = async () => {
     try {
       const response = await apiRequest(`/superadmin/companies/${selectedCompany.id}/impersonate`);
-      window.open(`/app/dashboard?token=${encodeURIComponent(response.token)}`, '_blank', 'noopener,noreferrer');
+      const impersonationUrl = `${window.location.origin}${import.meta.env.BASE_URL}?token=${encodeURIComponent(response.token)}`;
+      window.open(impersonationUrl, '_blank', 'noopener,noreferrer');
       setMessage('Company admin opened in a new tab');
     } catch (error) {
       setMessage(error.message || 'Impersonation failed');
@@ -1060,7 +1061,6 @@ export default function CompaniesPage() {
     </Box>
   );
 }
-
 
 
 

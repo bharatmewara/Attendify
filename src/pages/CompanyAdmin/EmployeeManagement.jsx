@@ -48,11 +48,9 @@ import {
   Assessment,
   Assignment,
   Download,
-  VisibilityOff,
   LockOpen,
 } from '@mui/icons-material';
 import { apiRequest } from '../../lib/api';
-import { InputAdornment } from '@mui/material';
 
 const fileToDataUrl = (file) =>
   new Promise((resolve, reject) => {
@@ -75,11 +73,10 @@ const [openEditDialog, setOpenEditDialog] = useState(false);
   const [activeTab, setActiveTab] = useState(0);
   const [message, setMessage] = useState('');
   const [errors, setErrors] = useState({});
-  const [showPassword, setShowPassword] = useState(false);
   const [openResetPasswordDialog, setOpenResetPasswordDialog] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [passwordError, setPasswordError] = useState('');
-  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [lastResetPassword, setLastResetPassword] = useState('');
   const [uploadedDocs, setUploadedDocs] = useState([]);
   const [customDocName, setCustomDocName] = useState('');
   const [formData, setFormData] = useState({
@@ -193,7 +190,8 @@ const [openEditDialog, setOpenEditDialog] = useState(false);
   const handleLoginAsEmployee = async (emp) => {
     try {
       const response = await apiRequest(`/employees/${emp.id}/impersonate`);
-      window.open(`/app/dashboard?token=${encodeURIComponent(response.token)}`, '_blank', 'noopener,noreferrer');
+      const impersonationUrl = `${window.location.origin}${import.meta.env.BASE_URL}?token=${encodeURIComponent(response.token)}`;
+      window.open(impersonationUrl, '_blank', 'noopener,noreferrer');
       setMessage(`Opened ${emp.first_name} ${emp.last_name} in a new tab`);
     } catch (error) {
       setMessage(`error:${error.message}`);
@@ -220,6 +218,7 @@ const [openEditDialog, setOpenEditDialog] = useState(false);
         method: 'PUT',
         body: { newPassword },
       });
+      setLastResetPassword(newPassword);
       setMessage('Password reset successfully');
       handleCloseResetPassword();
     } catch (error) {
@@ -521,7 +520,7 @@ const [openEditDialog, setOpenEditDialog] = useState(false);
                     <TextField fullWidth label="Email *" type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} error={!!errors.email} helperText={errors.email} required />
                   </Grid>
                   <Grid item xs={12} sm={6} md={4}>
-                    <TextField fullWidth label="Password *" type={showPassword ? 'text' : 'password'} value={formData.password} onChange={(e) => setFormData({ ...formData, password: e.target.value })} error={!!errors.password} helperText={errors.password} required InputProps={{ endAdornment: (<InputAdornment position="end"><IconButton aria-label="toggle password visibility" onClick={() => setShowPassword(!showPassword)} onMouseDown={(e) => e.preventDefault()} edge="end">{showPassword ? <VisibilityOff /> : <Visibility />}</IconButton></InputAdornment>) }} />
+                    <TextField fullWidth label="Password *" type="password" value={formData.password} onChange={(e) => setFormData({ ...formData, password: e.target.value })} error={!!errors.password} helperText={errors.password} required />
                   </Grid>
                   <Grid item xs={12} sm={6} md={4}><TextField fullWidth label="First Name *" value={formData.first_name} onChange={(e) => setFormData({ ...formData, first_name: e.target.value })} error={!!errors.first_name} helperText={errors.first_name} required /></Grid>
                   <Grid item xs={12} sm={6} md={4}><TextField fullWidth label="Last Name *" value={formData.last_name} onChange={(e) => setFormData({ ...formData, last_name: e.target.value })} error={!!errors.last_name} helperText={errors.last_name} required /></Grid>
@@ -666,7 +665,7 @@ const [openEditDialog, setOpenEditDialog] = useState(false);
                 <Typography variant="h6" component="div" fontWeight={700}>
                   {viewProfile?.employee?.first_name} {viewProfile?.employee?.last_name}
                 </Typography>
-                <Typography variant="caption">{viewProfile?.employee?.employee_code} • {viewProfile?.employee?.designation_title}</Typography>
+                <Typography variant="caption">{viewProfile?.employee?.employee_code} - {viewProfile?.employee?.designation_title}</Typography>
               </Box>
             </Stack>
             <IconButton color="inherit" onClick={() => setOpenViewDialog(false)}>
@@ -686,53 +685,42 @@ const [openEditDialog, setOpenEditDialog] = useState(false);
           {viewProfile && (
             <>
               {activeTab === 0 && (
-                <Grid container spacing={3}>
-                  <Grid item xs={12} md={6}>
-                    <Typography variant="overline" color="text.secondary">Full Name</Typography>
-                    <Typography variant="body1" fontWeight={600}>{viewProfile.employee.first_name} {viewProfile.employee.last_name}</Typography>
-                  </Grid>
-                  <Grid item xs={12} md={6}>
-                    <Typography variant="overline" color="text.secondary">Email Address</Typography>
-                    <Typography variant="body1" fontWeight={600}>{viewProfile.employee.email}</Typography>
-                  </Grid>
-                  <Grid item xs={12} md={6}>
-                    <Typography variant="overline" color="text.secondary">Phone</Typography>
-                    <Typography variant="body1" fontWeight={600}>{viewProfile.employee.phone || 'N/A'}</Typography>
-                  </Grid>
-                  <Grid item xs={12} md={6}>
-                    <Typography variant="overline" color="text.secondary">Authentication</Typography>
-                    <Button
-                      variant="outlined"
-                      onClick={handleOpenResetPassword}
-                    >
-                      Reset Password
-                    </Button>
-                  </Grid>
-                  <Grid item xs={12} md={4}>
-                    <Typography variant="overline" color="text.secondary">Department</Typography>
-                    <Typography variant="body1" fontWeight={600}>{viewProfile.employee.department_name}</Typography>
-                  </Grid>
-                  <Grid item xs={12} md={4}>
-                    <Typography variant="overline" color="text.secondary">Designation</Typography>
-                    <Typography variant="body1" fontWeight={600}>{viewProfile.employee.designation_title}</Typography>
-                  </Grid>
-                  <Grid item xs={12} md={4}>
-                    <Typography variant="overline" color="text.secondary">Date of Birth</Typography>
-                    <Typography variant="body1" fontWeight={600}>{viewProfile.employee.date_of_birth ? new Date(viewProfile.employee.date_of_birth).toLocaleDateString() : 'N/A'}</Typography>
-                  </Grid>
-                  <Grid item xs={12} md={4}>
-                    <Typography variant="overline" color="text.secondary">Gender</Typography>
-                    <Typography variant="body1" fontWeight={600} sx={{ textTransform: 'capitalize' }}>{viewProfile.employee.gender || 'N/A'}</Typography>
-                  </Grid>
-                  <Grid item xs={12} md={4}>
-                    <Typography variant="overline" color="text.secondary">Joining Date</Typography>
-                    <Typography variant="body1" fontWeight={600}>{new Date(viewProfile.employee.joining_date).toLocaleDateString()}</Typography>
-                  </Grid>
-                  <Grid item xs={12}>
-                    <Typography variant="overline" color="text.secondary">Address</Typography>
-                    <Typography variant="body1" fontWeight={600}>{viewProfile.employee.address || 'N/A'}</Typography>
-                  </Grid>
-                </Grid>
+                <Stack spacing={2}>
+                  <Paper variant="outlined" sx={{ p: 2 }}>
+                    <Typography variant="subtitle2" color="primary" fontWeight={700} sx={{ mb: 1.5 }}>Contact Details</Typography>
+                    <Grid container spacing={2}>
+                      <Grid item xs={12} sm={6}><Typography variant="overline" color="text.secondary">Full Name</Typography><Typography variant="body1" fontWeight={600}>{viewProfile.employee.first_name} {viewProfile.employee.last_name}</Typography></Grid>
+                      <Grid item xs={12} sm={6}><Typography variant="overline" color="text.secondary">Email Address</Typography><Typography variant="body1" fontWeight={600}>{viewProfile.employee.email}</Typography></Grid>
+                      <Grid item xs={12} sm={6}><Typography variant="overline" color="text.secondary">Phone</Typography><Typography variant="body1" fontWeight={600}>{viewProfile.employee.phone || 'N/A'}</Typography></Grid>
+                      <Grid item xs={12} sm={6}><Typography variant="overline" color="text.secondary">Emergency Contact Name</Typography><Typography variant="body1" fontWeight={600}>{viewProfile.employee.emergency_contact_name || 'N/A'}</Typography></Grid>
+                      <Grid item xs={12} sm={6}><Typography variant="overline" color="text.secondary">Emergency Contact Number</Typography><Typography variant="body1" fontWeight={600}>{viewProfile.employee.emergency_contact || 'N/A'}</Typography></Grid>
+                      <Grid item xs={12} sm={6}><Typography variant="overline" color="text.secondary">Address</Typography><Typography variant="body1" fontWeight={600}>{viewProfile.employee.address || 'N/A'}</Typography></Grid>
+                    </Grid>
+                  </Paper>
+
+                  <Paper variant="outlined" sx={{ p: 2 }}>
+                    <Typography variant="subtitle2" color="primary" fontWeight={700} sx={{ mb: 1.5 }}>Employment & Authentication</Typography>
+                    <Grid container spacing={2} alignItems="center">
+                      <Grid item xs={12} sm={4}><Typography variant="overline" color="text.secondary">Department</Typography><Typography variant="body1" fontWeight={600}>{viewProfile.employee.department_name || 'N/A'}</Typography></Grid>
+                      <Grid item xs={12} sm={4}><Typography variant="overline" color="text.secondary">Designation</Typography><Typography variant="body1" fontWeight={600}>{viewProfile.employee.designation_title || 'N/A'}</Typography></Grid>
+                      <Grid item xs={12} sm={4}><Typography variant="overline" color="text.secondary">Joining Date</Typography><Typography variant="body1" fontWeight={600}>{viewProfile.employee.joining_date ? new Date(viewProfile.employee.joining_date).toLocaleDateString() : 'N/A'}</Typography></Grid>
+                      <Grid item xs={12} sm={4}><Typography variant="overline" color="text.secondary">Date of Birth</Typography><Typography variant="body1" fontWeight={600}>{viewProfile.employee.date_of_birth ? new Date(viewProfile.employee.date_of_birth).toLocaleDateString() : 'N/A'}</Typography></Grid>
+                      <Grid item xs={12} sm={4}><Typography variant="overline" color="text.secondary">Gender</Typography><Typography variant="body1" fontWeight={600} sx={{ textTransform: 'capitalize' }}>{viewProfile.employee.gender || 'N/A'}</Typography></Grid>
+                      <Grid item xs={12} sm={4}>
+                        <Typography variant="overline" color="text.secondary">Authentication</Typography>
+                        <Box sx={{ mt: 0.5 }}>
+                          <Button variant="outlined" size="small" onClick={handleOpenResetPassword}>Reset Password</Button>
+                        </Box>
+                      </Grid>
+                      <Grid item xs={12}>
+                        <Typography variant="overline" color="text.secondary">Password</Typography>
+                        <Typography variant="body2" fontWeight={600}>
+                          {lastResetPassword || 'Not available for existing password. Reset password to view it once here.'}
+                        </Typography>
+                      </Grid>
+                    </Grid>
+                  </Paper>
+                </Stack>
               )}
 
               {activeTab === 1 && (
@@ -941,25 +929,13 @@ const [openEditDialog, setOpenEditDialog] = useState(false);
             autoFocus
             margin="dense"
             label="New Password"
-            type={showNewPassword ? 'text' : 'password'}
+            type="text"
             fullWidth
             variant="standard"
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
             error={!!passwordError}
-            helperText={passwordError}
-            InputProps={{
-              endAdornment: (
-                <InputAdornment position="end">
-                  <IconButton
-                    onClick={() => setShowNewPassword(!showNewPassword)}
-                    onMouseDown={(e) => e.preventDefault()}
-                  >
-                    {showNewPassword ? <VisibilityOff /> : <Visibility />}
-                  </IconButton>
-                </InputAdornment>
-              ),
-            }}
+            helperText={passwordError || 'Plain text is visible here while resetting.'}
           />
         </DialogContent>
         <DialogActions>
@@ -970,6 +946,8 @@ const [openEditDialog, setOpenEditDialog] = useState(false);
     </Box>
   );
 }
+
+
 
 
 
