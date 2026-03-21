@@ -14,6 +14,28 @@ const theme = createTheme({
   },
   shape: { borderRadius: 12 },
   components: {
+    MuiFormControl: {
+      defaultProps: {
+        fullWidth: true,
+      },
+      styleOverrides: {
+        root: { width: '100%' },
+      },
+    },
+    MuiSelect: {
+      defaultProps: {
+        displayEmpty: true,
+      },
+      styleOverrides: {
+        root: { width: '100%', minWidth: 140 },
+        select: { minHeight: '1.2em' },
+      },
+    },
+    MuiInputLabel: {
+      defaultProps: {
+        shrink: true,
+      },
+    },
     MuiButton: {
       styleOverrides: {
         root: { boxShadow: 'none', '&:hover': { boxShadow: 'none' } },

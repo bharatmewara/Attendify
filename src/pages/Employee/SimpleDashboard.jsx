@@ -25,6 +25,7 @@ export default function EmployeeDashboard() {
   const navigate = useNavigate();
   const [todayAttendance, setTodayAttendance] = useState(null);
   const [leaveBalance, setLeaveBalance] = useState([]);
+  const [upcomingHolidays, setUpcomingHolidays] = useState([]);
   const [message, setMessage] = useState({ type: '', text: '' });
 
   useEffect(() => {
@@ -36,6 +37,17 @@ export default function EmployeeDashboard() {
         ]);
         setTodayAttendance(attendanceData);
         setLeaveBalance(balanceData);
+        const year = new Date().getFullYear();
+        const holidays = await apiRequest(`/holidays?year=${year}`);
+        const now = new Date();
+        const upcoming = (holidays || [])
+          .filter((h) => {
+            const d = new Date(h.holiday_date);
+            const diff = Math.ceil((d - now) / (1000 * 60 * 60 * 24));
+            return diff >= 0 && diff <= 30;
+          })
+          .slice(0, 5);
+        setUpcomingHolidays(upcoming);
       } catch (error) {
         setMessage({ type: 'error', text: error.message });
       }
@@ -105,6 +117,17 @@ export default function EmployeeDashboard() {
             </Button>
           </Paper>
         </Stack>
+        {upcomingHolidays.length > 0 ? (
+          <Alert severity="info" sx={{ mt: 1.5, textAlign: 'left' }}>
+            <strong>Upcoming Holidays:</strong>{' '}
+            {upcomingHolidays.map((h, idx) => (
+              <span key={h.id}>
+                {idx > 0 ? ', ' : ''}
+                {h.name} ({new Date(h.holiday_date).toLocaleDateString()})
+              </span>
+            ))}
+          </Alert>
+        ) : null}
       </Card>
 
       {/* Leave Balance */}

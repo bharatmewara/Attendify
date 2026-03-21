@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   Box,
+  Paper,
   Grid,
   Card,
   CardContent,
@@ -452,167 +453,73 @@ export default function SuperAdminDashboard() {
         maxWidth="md"
         fullWidth
       >
-        <DialogTitle>Add New Company</DialogTitle>
-        <DialogContent>
-          <Grid container spacing={2} sx={{ mt: 0.5 }}>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Company Name"
-                value={formData.company_name}
-                onChange={(e) => setFormData({ ...formData, company_name: e.target.value })}
-                margin="normal"
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Company Code"
-                value={formData.company_code}
-                onChange={(e) => setFormData({ ...formData, company_code: e.target.value })}
-                margin="normal"
-                helperText="Optional. Leave blank to auto-generate from company name."
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Email"
-                type="email"
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                margin="normal"
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Phone"
-                value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                margin="normal"
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Website"
-                value={formData.website}
-                onChange={(e) => setFormData({ ...formData, website: e.target.value })}
-                margin="normal"
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Industry"
-                value={formData.industry}
-                onChange={(e) => setFormData({ ...formData, industry: e.target.value })}
-                margin="normal"
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="Address"
-                multiline
-                rows={3}
-                value={formData.address}
-                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                margin="normal"
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <Typography variant="subtitle2" sx={{ mt: 1 }}>
-                Company Admin Access
-              </Typography>
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Admin Email"
-                type="email"
-                value={formData.admin_email}
-                onChange={(e) => setFormData({ ...formData, admin_email: e.target.value })}
-                margin="normal"
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Admin Password"
-                type="password"
-                value={formData.admin_password}
-                onChange={(e) => setFormData({ ...formData, admin_password: e.target.value })}
-                margin="normal"
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Confirm Admin Password"
-                type="password"
-                value={formData.confirm_password}
-                onChange={(e) => setFormData({ ...formData, confirm_password: e.target.value })}
-                margin="normal"
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <Typography variant="subtitle2" sx={{ mt: 1 }}>
-                Subscription Setup
-              </Typography>
-            </Grid>
-            <Grid item xs={12} sm={6} md={4}>
-              <FormControl fullWidth margin="normal" size="small">
-                <InputLabel id="dashboard-company-plan-label">Plan</InputLabel>
-                <Select
-                  labelId="dashboard-company-plan-label"
-                  label="Plan"
-                  value={formData.plan_id}
-                  onChange={(e) => setFormData({ ...formData, plan_id: e.target.value })}
-                >
-                  <MenuItem value="">
-                    <em>No Plan</em>
-                  </MenuItem>
-                  {plans.map((plan) => (
-                    <MenuItem key={plan.id} value={plan.id}>
-                      {plan.name}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} sm={6} md={4}>
-              <FormControl fullWidth margin="normal" size="small" disabled={!formData.plan_id}>
-                <InputLabel id="dashboard-payment-status-label">Payment Status</InputLabel>
-                <Select
-                  labelId="dashboard-payment-status-label"
-                  label="Payment Status"
-                  value={formData.payment_status}
-                  onChange={(e) => setFormData({ ...formData, payment_status: e.target.value })}
-                >
-                  <MenuItem value="paid">Paid</MenuItem>
-                  <MenuItem value="unpaid">Unpaid</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} sm={6} md={4}>
-              <FormControl fullWidth margin="normal" size="small" disabled={!formData.plan_id}>
-                <InputLabel id="dashboard-billing-cycle-label">Billing Cycle</InputLabel>
-                <Select
-                  labelId="dashboard-billing-cycle-label"
-                  label="Billing Cycle"
-                  value={formData.billing_cycle}
-                  onChange={(e) => setFormData({ ...formData, billing_cycle: e.target.value })}
-                >
-                  <MenuItem value="monthly">Monthly</MenuItem>
-                  <MenuItem value="yearly">Yearly</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-          </Grid>
-        </DialogContent>
-        <DialogActions>
+        <DialogTitle>
+          <Typography variant="h6" fontWeight={700}>Add Company</Typography>
+          <Typography variant="body2" color="text.secondary">Separate company details, admin access, and subscription setup for faster entry.</Typography>
+        </DialogTitle>
+        <DialogContent sx={{ maxHeight: '78vh', overflowY: 'auto' }}>
+          <Stack spacing={2.5} sx={{ mt: 1 }}>
+            <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 3 }}>
+              <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 0.5 }}>Company Details</Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>Identity, contact details, and public profile information.</Typography>
+              <Grid container spacing={2}>
+                <Grid item xs={12} sm={6}><TextField fullWidth label="Company Name" value={formData.company_name} onChange={(e) => setFormData({ ...formData, company_name: e.target.value })} margin="normal" /></Grid>
+                <Grid item xs={12} sm={6}><TextField fullWidth label="Company Code" value={formData.company_code} onChange={(e) => setFormData({ ...formData, company_code: e.target.value })} margin="normal" helperText="Optional. Leave blank to auto-generate from company name." /></Grid>
+                <Grid item xs={12} sm={6}><TextField fullWidth label="Email" type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} margin="normal" /></Grid>
+                <Grid item xs={12} sm={6}><TextField fullWidth label="Phone" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} margin="normal" /></Grid>
+                <Grid item xs={12} sm={6}><TextField fullWidth label="Website" value={formData.website} onChange={(e) => setFormData({ ...formData, website: e.target.value })} margin="normal" /></Grid>
+                <Grid item xs={12} sm={6}><TextField fullWidth label="Industry" value={formData.industry} onChange={(e) => setFormData({ ...formData, industry: e.target.value })} margin="normal" /></Grid>
+                <Grid item xs={12}><TextField fullWidth label="Address" multiline rows={3} value={formData.address} onChange={(e) => setFormData({ ...formData, address: e.target.value })} margin="normal" /></Grid>
+              </Grid>
+            </Paper>
+
+            <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 3 }}>
+              <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 0.5 }}>Company Admin Access</Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>Primary admin credentials for the company workspace.</Typography>
+              <Grid container spacing={2}>
+                <Grid item xs={12} sm={6}><TextField fullWidth label="Admin Email" type="email" value={formData.admin_email} onChange={(e) => setFormData({ ...formData, admin_email: e.target.value })} margin="normal" /></Grid>
+                <Grid item xs={12} sm={6}><TextField fullWidth label="Admin Password" type="password" value={formData.admin_password} onChange={(e) => setFormData({ ...formData, admin_password: e.target.value })} margin="normal" /></Grid>
+                <Grid item xs={12} sm={6}><TextField fullWidth label="Confirm Admin Password" type="password" value={formData.confirm_password} onChange={(e) => setFormData({ ...formData, confirm_password: e.target.value })} margin="normal" /></Grid>
+              </Grid>
+            </Paper>
+
+            <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 3 }}>
+              <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 0.5 }}>Subscription Setup</Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>Pick a plan now or leave the company without a plan for later setup.</Typography>
+              <Grid container spacing={2}>
+                <Grid item xs={12} sm={6} md={4}>
+                  <FormControl fullWidth margin="normal" size="small">
+                    <InputLabel id="dashboard-company-plan-label">Plan</InputLabel>
+                    <Select labelId="dashboard-company-plan-label" label="Plan" value={formData.plan_id} onChange={(e) => setFormData({ ...formData, plan_id: e.target.value })}>
+                      <MenuItem value=""><em>No Plan</em></MenuItem>
+                      {plans.map((plan) => (
+                        <MenuItem key={plan.id} value={plan.id}>{plan.name}</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={12} sm={6} md={4}>
+                  <FormControl fullWidth margin="normal" size="small" disabled={!formData.plan_id}>
+                    <InputLabel id="dashboard-payment-status-label">Payment Status</InputLabel>
+                    <Select labelId="dashboard-payment-status-label" label="Payment Status" value={formData.payment_status} onChange={(e) => setFormData({ ...formData, payment_status: e.target.value })}>
+                      <MenuItem value="paid">Paid</MenuItem>
+                      <MenuItem value="unpaid">Unpaid</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={12} sm={6} md={4}>
+                  <FormControl fullWidth margin="normal" size="small" disabled={!formData.plan_id}>
+                    <InputLabel id="dashboard-billing-cycle-label">Billing Cycle</InputLabel>
+                    <Select labelId="dashboard-billing-cycle-label" label="Billing Cycle" value={formData.billing_cycle} onChange={(e) => setFormData({ ...formData, billing_cycle: e.target.value })}>
+                      <MenuItem value="monthly">Monthly</MenuItem>
+                      <MenuItem value="yearly">Yearly</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+              </Grid>
+            </Paper>
+          </Stack>
+        </DialogContent>        <DialogActions>
           <Button onClick={() => { setOpenDialog(false); setFormData(getInitialCompanyFormData()); }}>Cancel</Button>
           <Button onClick={handleCreateCompany} variant="contained">
             Create
@@ -794,3 +701,4 @@ export default function SuperAdminDashboard() {
     </Box>
   );
 }
+

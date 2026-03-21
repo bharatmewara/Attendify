@@ -1,15 +1,50 @@
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import { apiRequest } from '../lib/api';
+import { apiRequest, TOKEN_KEY, getStoredToken } from '../lib/api';
 
 const AuthContext = createContext(null);
 
-const TOKEN_KEY = 'attendify_token';
+const getUrlToken = () => {
+  if (typeof window === 'undefined') {
+    return '';
+  }
+  return new URLSearchParams(window.location.search).get('token') || '';
+};
+
+const persistSessionToken = (token) => {
+  sessionStorage.setItem(TOKEN_KEY, token);
+};
+
+const persistLoginToken = (token) => {
+  sessionStorage.setItem(TOKEN_KEY, token);
+  localStorage.setItem(TOKEN_KEY, token);
+};
+
+const clearTokens = () => {
+  sessionStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(TOKEN_KEY);
+};
 
 export const AuthProvider = ({ children }) => {
-  const [token, setToken] = useState(() => localStorage.getItem(TOKEN_KEY) || '');
+  const initialToken = getUrlToken() || getStoredToken();
+  const [token, setToken] = useState(initialToken);
   const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(Boolean(localStorage.getItem(TOKEN_KEY)));
+  const [loading, setLoading] = useState(Boolean(initialToken));
+
+  useEffect(() => {
+    const urlToken = getUrlToken();
+    if (!urlToken) {
+      return;
+    }
+
+    persistSessionToken(urlToken);
+    setToken(urlToken);
+    const params = new URLSearchParams(window.location.search);
+    params.delete('token');
+    const nextSearch = params.toString();
+    const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ''}${window.location.hash}`;
+    window.history.replaceState({}, '', nextUrl);
+  }, []);
 
   useEffect(() => {
     const hydrate = async () => {
@@ -22,14 +57,13 @@ export const AuthProvider = ({ children }) => {
       try {
         const data = await apiRequest('/auth/me', { token });
         const userData = data.user;
-        // Check for impersonation
         if (userData.impersonateBy) {
           userData.isImpersonated = true;
-          userData.originalSuperAdminId = userData.impersonateBy;
+          userData.originalSuperAdminId = userData.originalRole === 'super_admin' ? userData.impersonateBy : null;
         }
         setUser(userData);
       } catch {
-        localStorage.removeItem(TOKEN_KEY);
+        clearTokens();
         setToken('');
         setUser(null);
       } finally {
@@ -45,16 +79,21 @@ export const AuthProvider = ({ children }) => {
       method: 'POST',
       body: { email, password },
     });
-    localStorage.setItem(TOKEN_KEY, data.token);
+    persistLoginToken(data.token);
     setToken(data.token);
     setUser(data.user);
     return data.user;
   };
 
   const logout = () => {
-    localStorage.removeItem(TOKEN_KEY);
+    clearTokens();
     setToken('');
     setUser(null);
+  };
+
+  const setSessionToken = (nextToken) => {
+    persistSessionToken(nextToken);
+    setToken(nextToken);
   };
 
   const value = useMemo(
@@ -65,6 +104,7 @@ export const AuthProvider = ({ children }) => {
       isAuthenticated: Boolean(token && user),
       login,
       logout,
+      setSessionToken,
     }),
     [token, user, loading],
   );

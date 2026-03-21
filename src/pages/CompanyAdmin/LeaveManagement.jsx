@@ -25,7 +25,7 @@ import {
   Typography,
   Snackbar,
 } from '@mui/material';
-import { Add, Check, Close, Delete } from '@mui/icons-material';
+import { Add, Check, Close, Delete, Edit, Visibility } from '@mui/icons-material';
 import { apiRequest } from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
 
@@ -71,6 +71,10 @@ export default function LeaveManagement() {
   const [assignForm, setAssignForm] = useState({ employee_id: '', leave_type_id: '', days_to_add: 0 });
   const [message, setMessage] = useState({ type: '', text: '' });
   const [deleteLeaveConfirm, setDeleteLeaveConfirm] = useState(null);
+  const [openReasonDialog, setOpenReasonDialog] = useState(false);
+  const [selectedReasonLeave, setSelectedReasonLeave] = useState(null);
+  const [editingType, setEditingType] = useState(null);
+  const [deleteTypeConfirm, setDeleteTypeConfirm] = useState(null);
 
   const loadData = async () => {
     try {
@@ -147,13 +151,47 @@ export default function LeaveManagement() {
 
   const handleCreateType = async () => {
     try {
-      await apiRequest('/leave/types', {
-        method: 'POST',
-        body: typeForm,
-      });
+      if (editingType) {
+        await apiRequest(`/leave/types/${editingType.id}`, {
+          method: 'PUT',
+          body: typeForm,
+        });
+        setMessage({ type: 'success', text: 'Leave policy updated successfully.' });
+      } else {
+        await apiRequest('/leave/types', {
+          method: 'POST',
+          body: typeForm,
+        });
+        setMessage({ type: 'success', text: 'Leave policy created successfully.' });
+      }
       setOpenTypeDialog(false);
       setTypeForm(typeInitial);
-      setMessage({ type: 'success', text: 'Leave policy created successfully.' });
+      setEditingType(null);
+      loadData();
+    } catch (error) {
+      setMessage({ type: 'error', text: error.message });
+    }
+  };
+
+  const handleEditType = (type) => {
+    setEditingType(type);
+    setTypeForm({
+      name: type.name || '',
+      code: type.code || '',
+      days_per_year: Number(type.days_per_year || 0),
+      carry_forward: Boolean(type.carry_forward),
+      max_carry_forward_days: Number(type.max_carry_forward_days || 0),
+      is_paid: Boolean(type.is_paid),
+      requires_document: Boolean(type.requires_document),
+    });
+    setOpenTypeDialog(true);
+  };
+
+  const handleDeleteType = async (typeId) => {
+    try {
+      await apiRequest(`/leave/types/${typeId}`, { method: 'DELETE' });
+      setDeleteTypeConfirm(null);
+      setMessage({ type: 'success', text: 'Leave policy deleted successfully.' });
       loadData();
     } catch (error) {
       setMessage({ type: 'error', text: error.message });
@@ -222,7 +260,15 @@ export default function LeaveManagement() {
                     <Button variant="outlined" onClick={() => setOpenAssignDialog(true)} sx={{ color: '#fff', borderColor: 'rgba(255,255,255,0.4)', '&:hover': { borderColor: '#fff', bgcolor: 'rgba(255,255,255,0.1)' } }}>
                       Assign Balance
                     </Button>
-                    <Button variant="contained" onClick={() => setOpenTypeDialog(true)} sx={{ bgcolor: '#fff', color: '#312e81', '&:hover': { bgcolor: '#eef2ff' } }}>
+                    <Button
+                      variant="contained"
+                      onClick={() => {
+                        setEditingType(null);
+                        setTypeForm(typeInitial);
+                        setOpenTypeDialog(true);
+                      }}
+                      sx={{ bgcolor: '#fff', color: '#312e81', '&:hover': { bgcolor: '#eef2ff' } }}
+                    >
                       Add Leave Type
                     </Button>
                   </>
@@ -308,8 +354,28 @@ export default function LeaveManagement() {
                               {new Date(leave.start_date).toLocaleDateString()} - {new Date(leave.end_date).toLocaleDateString()}
                             </TableCell>
                             <TableCell>{leave.total_days}</TableCell>
-                            <TableCell sx={{ maxWidth: 200, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={leave.reason}>
-                              {leave.reason}
+                            <TableCell sx={{ maxWidth: 250 }}>
+                              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
+                                <Typography
+                                  variant="body2"
+                                  sx={{ maxWidth: 170, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+                                  title={leave.reason}
+                                >
+                                  {leave.reason || '-'}
+                                </Typography>
+                                <Button
+                                  size="small"
+                                  variant="text"
+                                  startIcon={<Visibility fontSize="small" />}
+                                  onClick={() => {
+                                    setSelectedReasonLeave(leave);
+                                    setOpenReasonDialog(true);
+                                  }}
+                                  sx={{ minWidth: 'auto', px: 1, textTransform: 'none' }}
+                                >
+                                  View
+                                </Button>
+                              </Box>
                             </TableCell>
                             <TableCell>
                               <Chip label={leave.status} size="small" color={leave.status === 'approved' ? 'success' : leave.status === 'rejected' ? 'error' : 'default'} sx={{ textTransform: 'capitalize', fontWeight: 600, px: 1 }} />
@@ -427,6 +493,7 @@ export default function LeaveManagement() {
                         <TableCell sx={{ fontWeight: 700 }}>Policy Name</TableCell>
                         <TableCell sx={{ fontWeight: 700 }}>Code</TableCell>
                         <TableCell align="right" sx={{ fontWeight: 700 }}>Days / Year</TableCell>
+                        {!isEmployee ? <TableCell align="right" sx={{ fontWeight: 700 }}>Actions</TableCell> : null}
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -437,6 +504,31 @@ export default function LeaveManagement() {
                             <Chip label={type.code} size="small" variant="outlined" sx={{ fontWeight: 600 }} />
                           </TableCell>
                           <TableCell align="right" sx={{ fontWeight: 800 }}>{type.days_per_year}</TableCell>
+                          {!isEmployee ? (
+                            <TableCell align="right">
+                              <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  startIcon={<Edit />}
+                                  onClick={() => handleEditType(type)}
+                                  sx={{ borderRadius: 2, textTransform: 'none' }}
+                                >
+                                  Edit
+                                </Button>
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  startIcon={<Delete />}
+                                  color="error"
+                                  onClick={() => setDeleteTypeConfirm(type)}
+                                  sx={{ borderRadius: 2, textTransform: 'none' }}
+                                >
+                                  Delete
+                                </Button>
+                              </Box>
+                            </TableCell>
+                          ) : null}
                         </TableRow>
                       ))}
                     </TableBody>
@@ -490,7 +582,7 @@ export default function LeaveManagement() {
       </Dialog>
 
       <Dialog open={openTypeDialog} onClose={() => setOpenTypeDialog(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Create Leave Policy</DialogTitle>
+        <DialogTitle>{editingType ? 'Edit Leave Policy' : 'Create Leave Policy'}</DialogTitle>
         <DialogContent>
           <TextField fullWidth label="Policy Name" value={typeForm.name} onChange={(e) => setTypeForm({ ...typeForm, name: e.target.value })} margin="normal" />
           <TextField fullWidth label="Code" value={typeForm.code} onChange={(e) => setTypeForm({ ...typeForm, code: e.target.value.toUpperCase() })} margin="normal" />
@@ -511,7 +603,7 @@ export default function LeaveManagement() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenTypeDialog(false)}>Cancel</Button>
-          <Button onClick={handleCreateType} variant="contained">Create Policy</Button>
+          <Button onClick={handleCreateType} variant="contained">{editingType ? 'Update Policy' : 'Create Policy'}</Button>
         </DialogActions>
       </Dialog>
 
@@ -551,6 +643,29 @@ export default function LeaveManagement() {
         <DialogActions>
           <Button onClick={() => setDeleteLeaveConfirm(null)}>Cancel</Button>
           <Button onClick={() => handleDeleteLeave(deleteLeaveConfirm?.id)} variant="contained" color="error">Delete</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={openReasonDialog} onClose={() => setOpenReasonDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Leave Reason</DialogTitle>
+        <DialogContent>
+          <Typography sx={{ whiteSpace: 'pre-wrap' }}>{selectedReasonLeave?.reason || 'No reason provided.'}</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenReasonDialog(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={Boolean(deleteTypeConfirm)} onClose={() => setDeleteTypeConfirm(null)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700 }}>Delete Leave Policy</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Delete leave policy <strong>{deleteTypeConfirm?.name}</strong>? This will hide it from new leave applications.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteTypeConfirm(null)}>Cancel</Button>
+          <Button onClick={() => handleDeleteType(deleteTypeConfirm?.id)} variant="contained" color="error">Delete</Button>
         </DialogActions>
       </Dialog>
     </Box>

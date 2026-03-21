@@ -49,6 +49,7 @@ import {
   Assignment,
   Download,
   VisibilityOff,
+  LockOpen,
 } from '@mui/icons-material';
 import { apiRequest } from '../../lib/api';
 import { InputAdornment } from '@mui/material';
@@ -188,6 +189,16 @@ const [openEditDialog, setOpenEditDialog] = useState(false);
     }
   };
 
+
+  const handleLoginAsEmployee = async (emp) => {
+    try {
+      const response = await apiRequest(`/employees/${emp.id}/impersonate`);
+      window.open(`/app/dashboard?token=${encodeURIComponent(response.token)}`, '_blank', 'noopener,noreferrer');
+      setMessage(`Opened ${emp.first_name} ${emp.last_name} in a new tab`);
+    } catch (error) {
+      setMessage(`error:${error.message}`);
+    }
+  };
   const handleOpenResetPassword = () => {
     setNewPassword('');
     setPasswordError('');
@@ -470,6 +481,10 @@ const [openEditDialog, setOpenEditDialog] = useState(false);
                         <IconButton size="small" color="secondary" onClick={() => handleSalaryCreditEmail(emp)}>
                           <AccountBalance fontSize="small" />
                         </IconButton>
+                      </Tooltip>`r`n                      <Tooltip title="Login as Employee">
+                        <IconButton size="small" color="success" onClick={() => handleLoginAsEmployee(emp)}>
+                          <LockOpen fontSize="small" />
+                        </IconButton>
                       </Tooltip>
                       <Tooltip title="Delete">
                         <IconButton size="small" color="error" onClick={() => handleOpenDelete(emp)}>
@@ -512,7 +527,7 @@ const [openEditDialog, setOpenEditDialog] = useState(false);
                   <Grid item xs={12} sm={6} md={4}><TextField fullWidth label="Last Name *" value={formData.last_name} onChange={(e) => setFormData({ ...formData, last_name: e.target.value })} error={!!errors.last_name} helperText={errors.last_name} required /></Grid>
                   <Grid item xs={12} sm={6} md={4}><TextField fullWidth label="Phone *" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} error={!!errors.phone} helperText={errors.phone} required /></Grid>
                   <Grid item xs={12} sm={6} md={4}><TextField fullWidth label="Date of Birth" type="date" InputLabelProps={{ shrink: true }} value={formData.date_of_birth} onChange={(e) => setFormData({ ...formData, date_of_birth: e.target.value })} /></Grid>
-                  <Grid item xs={12} sm={6} md={4}><TextField fullWidth select label="Gender" value={formData.gender} onChange={(e) => setFormData({ ...formData, gender: e.target.value })}><MenuItem value="male">Male</MenuItem><MenuItem value="female">Female</MenuItem><MenuItem value="other">Other</MenuItem></TextField></Grid>
+                  <Grid item xs={12} sm={6} md={4}><TextField fullWidth select label="Gender" value={formData.gender} onChange={(e) => setFormData({ ...formData, gender: e.target.value })} SelectProps={{ displayEmpty: true }}><MenuItem value="">Select Gender</MenuItem><MenuItem value="male">Male</MenuItem><MenuItem value="female">Female</MenuItem><MenuItem value="other">Other</MenuItem></TextField></Grid>
                   <Grid item xs={12} sm={6} md={4}><TextField fullWidth label="Joining Date *" type="date" InputLabelProps={{ shrink: true }} value={formData.joining_date} onChange={(e) => setFormData({ ...formData, joining_date: e.target.value })} error={!!errors.joining_date} helperText={errors.joining_date} required /></Grid>
                 </Grid>
               </Paper>
@@ -523,9 +538,9 @@ const [openEditDialog, setOpenEditDialog] = useState(false);
                 <Box sx={{ borderLeft: '4px solid', borderColor: 'secondary.main', pl: 1, mb: 1 }}><Typography variant="h6" fontWeight={700} color="secondary">Employment Details</Typography></Box>
                 <Divider sx={{ mb: 2 }} />
                 <Grid container spacing={2}>
-                  <Grid item xs={12} sm={6} md={4}><TextField fullWidth select label="Department *" value={formData.department_id} onChange={(e) => setFormData({ ...formData, department_id: e.target.value })} error={!!errors.department_id} helperText={errors.department_id} required SelectProps={{ MenuProps: { PaperProps: { style: { maxHeight: 300 }}}}}>{departments.map((dept) => (<MenuItem key={dept.id} value={dept.id}>{dept.name}</MenuItem>))}</TextField></Grid>
-                  <Grid item xs={12} sm={6} md={4}><TextField fullWidth select label="Designation *" value={formData.designation_id} onChange={(e) => setFormData({ ...formData, designation_id: e.target.value })} error={!!errors.designation_id} helperText={errors.designation_id} required SelectProps={{ MenuProps: { PaperProps: { style: { maxHeight: 300 }}}}}>{designations.map((desig) => (<MenuItem key={desig.id} value={desig.id}>{desig.title}</MenuItem>))}</TextField></Grid>
-                  <Grid item xs={12} sm={6} md={4}><TextField fullWidth select label="Employment Type *" value={formData.employment_type} onChange={(e) => setFormData({ ...formData, employment_type: e.target.value })}><MenuItem value="full_time">Full Time</MenuItem><MenuItem value="part_time">Part Time</MenuItem><MenuItem value="contract">Contract</MenuItem><MenuItem value="intern">Intern</MenuItem></TextField></Grid>
+                  <Grid item xs={12} sm={6} md={4}><TextField fullWidth select label="Department *" value={formData.department_id} onChange={(e) => setFormData({ ...formData, department_id: e.target.value })} error={!!errors.department_id} helperText={errors.department_id} required SelectProps={{ displayEmpty: true, MenuProps: { PaperProps: { style: { maxHeight: 300 }}}}}><MenuItem value="">Select Department</MenuItem>{departments.map((dept) => (<MenuItem key={dept.id} value={dept.id}>{dept.name}</MenuItem>))}</TextField></Grid>
+                  <Grid item xs={12} sm={6} md={4}><TextField fullWidth select label="Designation *" value={formData.designation_id} onChange={(e) => setFormData({ ...formData, designation_id: e.target.value })} error={!!errors.designation_id} helperText={errors.designation_id} required SelectProps={{ displayEmpty: true, MenuProps: { PaperProps: { style: { maxHeight: 300 }}}}}><MenuItem value="">Select Designation</MenuItem>{designations.map((desig) => (<MenuItem key={desig.id} value={desig.id}>{desig.title}</MenuItem>))}</TextField></Grid>
+                  <Grid item xs={12} sm={6} md={4}><TextField fullWidth select label="Employment Type *" value={formData.employment_type} onChange={(e) => setFormData({ ...formData, employment_type: e.target.value })} SelectProps={{ displayEmpty: true }}><MenuItem value="">Select Employment Type</MenuItem><MenuItem value="full_time">Full Time</MenuItem><MenuItem value="part_time">Part Time</MenuItem><MenuItem value="contract">Contract</MenuItem><MenuItem value="intern">Intern</MenuItem></TextField></Grid>
                 </Grid>
               </Paper>
             </Grid>
@@ -602,9 +617,9 @@ const [openEditDialog, setOpenEditDialog] = useState(false);
                 <Box sx={{ borderLeft: '4px solid', borderColor: 'secondary.main', pl: 1, mb: 1 }}><Typography variant="h6" fontWeight={700}>Employment Details</Typography></Box>
                 <Divider sx={{ mb: 2 }} />
                 <Grid container spacing={2}>
-                  <Grid item xs={12} sm={6}><TextField fullWidth select label="Department" value={editFormData.department_id} onChange={(e) => setEditFormData({ ...editFormData, department_id: e.target.value })} SelectProps={{ MenuProps: { PaperProps: { style: { maxHeight: 300 }}}}}>{departments.map((dept) => (<MenuItem key={dept.id} value={dept.id}>{dept.name}</MenuItem>))}</TextField></Grid>
-                  <Grid item xs={12} sm={6}><TextField fullWidth select label="Designation" value={editFormData.designation_id} onChange={(e) => setEditFormData({ ...editFormData, designation_id: e.target.value })} SelectProps={{ MenuProps: { PaperProps: { style: { maxHeight: 300 }}}}}>{designations.map((desig) => (<MenuItem key={desig.id} value={desig.id}>{desig.title}</MenuItem>))}</TextField></Grid>
-                  <Grid item xs={12} sm={6}><TextField fullWidth select label="Employment Type" value={editFormData.employment_type} onChange={(e) => setEditFormData({ ...editFormData, employment_type: e.target.value })}><MenuItem value="full_time">Full Time</MenuItem><MenuItem value="part_time">Part Time</MenuItem><MenuItem value="contract">Contract</MenuItem><MenuItem value="intern">Intern</MenuItem></TextField></Grid>
+                  <Grid item xs={12} sm={6}><TextField fullWidth select label="Department" value={editFormData.department_id} onChange={(e) => setEditFormData({ ...editFormData, department_id: e.target.value })} SelectProps={{ displayEmpty: true, MenuProps: { PaperProps: { style: { maxHeight: 300 }}}}}><MenuItem value="">Select Department</MenuItem>{departments.map((dept) => (<MenuItem key={dept.id} value={dept.id}>{dept.name}</MenuItem>))}</TextField></Grid>
+                  <Grid item xs={12} sm={6}><TextField fullWidth select label="Designation" value={editFormData.designation_id} onChange={(e) => setEditFormData({ ...editFormData, designation_id: e.target.value })} SelectProps={{ displayEmpty: true, MenuProps: { PaperProps: { style: { maxHeight: 300 }}}}}><MenuItem value="">Select Designation</MenuItem>{designations.map((desig) => (<MenuItem key={desig.id} value={desig.id}>{desig.title}</MenuItem>))}</TextField></Grid>
+                  <Grid item xs={12} sm={6}><TextField fullWidth select label="Employment Type" value={editFormData.employment_type} onChange={(e) => setEditFormData({ ...editFormData, employment_type: e.target.value })} SelectProps={{ displayEmpty: true }}><MenuItem value="">Select Employment Type</MenuItem><MenuItem value="full_time">Full Time</MenuItem><MenuItem value="part_time">Part Time</MenuItem><MenuItem value="contract">Contract</MenuItem><MenuItem value="intern">Intern</MenuItem></TextField></Grid>
                 </Grid>
               </Paper>
             </Grid>
@@ -955,3 +970,7 @@ const [openEditDialog, setOpenEditDialog] = useState(false);
     </Box>
   );
 }
+
+
+
+

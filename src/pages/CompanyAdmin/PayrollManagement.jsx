@@ -51,6 +51,7 @@ export default function PayrollManagement() {
     month: new Date().getMonth() + 1,
     year: new Date().getFullYear(),
     employee_id: '',
+    incentive_amount: 0,
   });
   const [salaryData, setSalaryData] = useState(defaultSalaryData);
   const [payslipTemplate, setPayslipTemplate] = useState(defaultTemplate);
@@ -97,7 +98,9 @@ export default function PayrollManagement() {
     try {
       await apiRequest('/payroll/calculate', {
         method: 'POST',
-        body: filters.employee_id ? filters : { month: filters.month, year: filters.year },
+        body: filters.employee_id
+          ? filters
+          : { month: filters.month, year: filters.year },
       });
       setOpenDialog(false);
       setMessage({ type: 'success', text: 'Payroll calculated successfully.' });
@@ -145,7 +148,8 @@ export default function PayrollManagement() {
   const totals = useMemo(() => {
     const gross = payrolls.reduce((sum, item) => sum + Number(item.gross_salary || 0), 0);
     const net = payrolls.reduce((sum, item) => sum + Number(item.net_salary || 0), 0);
-    return { gross, net };
+    const incentives = payrolls.reduce((sum, item) => sum + Number(item.incentives || 0), 0);
+    return { gross, net, incentives };
   }, [payrolls]);
 
   return (
@@ -153,7 +157,7 @@ export default function PayrollManagement() {
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'end', mb: 3 }}>
         <Box>
           <Typography variant="h4" fontWeight={800}>Payroll Management</Typography>
-          <Typography color="text.secondary">Salary structures, deductions, payroll calculations, and customizable payslip downloads.</Typography>
+          <Typography color="text.secondary">Salary structures, incentives, payroll calculations, and customizable payslip downloads.</Typography>
         </Box>
         <Box sx={{ display: 'flex', gap: 1.25 }}>
           <Button variant="outlined" onClick={() => setOpenTemplateDialog(true)}>Customize Payslip</Button>
@@ -162,9 +166,9 @@ export default function PayrollManagement() {
         </Box>
       </Box>
 
-      <Snackbar 
-        open={Boolean(message.text)} 
-        autoHideDuration={6000} 
+      <Snackbar
+        open={Boolean(message.text)}
+        autoHideDuration={6000}
         onClose={() => setMessage({ type: '', text: '' })}
         anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
         sx={{ zIndex: 9999 }}
@@ -185,14 +189,15 @@ export default function PayrollManagement() {
           <Card sx={{ borderRadius: 4 }}><CardContent><Typography color="text.secondary">Net Payroll</Typography><Typography variant="h5" fontWeight={800}>{currency(totals.net)}</Typography></CardContent></Card>
         </Grid>
         <Grid item xs={12} md={3}>
-          <Card sx={{ borderRadius: 4 }}><CardContent><Typography color="text.secondary">Pay Period</Typography><Typography variant="h5" fontWeight={800}>{new Date(filters.year, filters.month - 1).toLocaleString('en-IN', { month: 'long', year: 'numeric' })}</Typography></CardContent></Card>
+          <Card sx={{ borderRadius: 4 }}><CardContent><Typography color="text.secondary">Incentives</Typography><Typography variant="h5" fontWeight={800}>{currency(totals.incentives)}</Typography></CardContent></Card>
         </Grid>
       </Grid>
 
       <Card sx={{ mb: 3, borderRadius: 4 }}>
         <CardContent>
+          <Typography variant="h6" fontWeight={700} sx={{ mb: 2 }}>Payroll Scope</Typography>
           <Grid container spacing={2}>
-            <Grid item xs={12} md={4}>
+            <Grid item xs={12} md={3}>
               <TextField fullWidth select label="Month" value={filters.month} onChange={(e) => setFilters({ ...filters, month: Number(e.target.value) })}>
                 {Array.from({ length: 12 }, (_, index) => (
                   <MenuItem key={index + 1} value={index + 1}>
@@ -201,15 +206,24 @@ export default function PayrollManagement() {
                 ))}
               </TextField>
             </Grid>
-            <Grid item xs={12} md={4}>
+            <Grid item xs={12} md={3}>
               <TextField fullWidth select label="Year" value={filters.year} onChange={(e) => setFilters({ ...filters, year: Number(e.target.value) })}>
                 {[2024, 2025, 2026, 2027].map((year) => (
                   <MenuItem key={year} value={year}>{year}</MenuItem>
                 ))}
               </TextField>
             </Grid>
-            <Grid item xs={12} md={4}>
-              <TextField fullWidth select label="Employee" value={filters.employee_id} onChange={(e) => setFilters({ ...filters, employee_id: e.target.value })}>
+            <Grid item xs={12} md={3}>
+              <TextField
+                fullWidth
+                select
+                label="Employee"
+                value={filters.employee_id}
+                onChange={(e) => setFilters({ ...filters, employee_id: e.target.value, incentive_amount: 0 })}
+                SelectProps={{
+                  displayEmpty: true,
+                }}
+              >
                 <MenuItem value="">All Employees</MenuItem>
                 {employees.map((employee) => (
                   <MenuItem key={employee.id} value={employee.id}>
@@ -217,6 +231,17 @@ export default function PayrollManagement() {
                   </MenuItem>
                 ))}
               </TextField>
+            </Grid>
+            <Grid item xs={12} md={3}>
+              <TextField
+                fullWidth
+                label="Incentive of This Month"
+                type="number"
+                value={filters.incentive_amount}
+                onChange={(e) => setFilters({ ...filters, incentive_amount: Number(e.target.value) })}
+                helperText={filters.employee_id ? 'Added to the selected employee during calculation.' : 'Select one employee to apply an incentive.'}
+                disabled={!filters.employee_id}
+              />
             </Grid>
           </Grid>
         </CardContent>
@@ -232,6 +257,7 @@ export default function PayrollManagement() {
                   <TableCell>Employee</TableCell>
                   <TableCell>Basic</TableCell>
                   <TableCell>Allowances</TableCell>
+                  <TableCell>Incentives</TableCell>
                   <TableCell>Deductions</TableCell>
                   <TableCell>Net Salary</TableCell>
                   <TableCell>Attendance</TableCell>
@@ -244,6 +270,7 @@ export default function PayrollManagement() {
                     <TableCell>{payroll.first_name} {payroll.last_name}</TableCell>
                     <TableCell>{currency(payroll.basic_salary)}</TableCell>
                     <TableCell>{currency(payroll.total_allowances)}</TableCell>
+                    <TableCell>{currency(payroll.incentives)}</TableCell>
                     <TableCell>{currency(Number(payroll.total_deductions) + Number(payroll.late_penalties) + Number(payroll.early_leave_penalties))}</TableCell>
                     <TableCell><strong>{currency(payroll.net_salary)}</strong></TableCell>
                     <TableCell>{payroll.present_days}P / {payroll.absent_days}A / {payroll.leave_days}L</TableCell>
@@ -265,6 +292,9 @@ export default function PayrollManagement() {
           <Typography sx={{ mt: 2 }}>
             Calculate payroll for {new Date(filters.year, filters.month - 1).toLocaleString('en-IN', { month: 'long', year: 'numeric' })}{filters.employee_id ? ' for the selected employee' : ' for all active employees'}?
           </Typography>
+          <Alert severity="info" sx={{ mt: 2 }}>
+            Net salary uses prorated basic salary based on present days, then adds allowances and incentive, then subtracts deductions and penalties.
+          </Alert>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenDialog(false)}>Cancel</Button>

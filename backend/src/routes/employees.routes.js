@@ -1,9 +1,11 @@
 import express from 'express';
 import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
 import { query } from '../db.js';
 import { authenticate, authorize, requireCompanyContext, tenantIsolation } from '../middleware/auth.middleware.js';
 import { logAudit } from '../utils/audit.js';
 import { sendEmail } from '../utils/email.js';
+import { config } from '../config.js';
 
 const router = express.Router();
 
@@ -18,7 +20,6 @@ const sanitizeDocuments = (documents = []) =>
       file_size: Number(document.file_size) || null,
     }));
 
-// Get all employees
 router.get('/', authenticate, tenantIsolation, async (req, res) => {
   try {
     const result = await query(`
@@ -41,7 +42,6 @@ router.get('/', authenticate, tenantIsolation, async (req, res) => {
   }
 });
 
-// Get ALL employee documents for company (admin view)
 router.get('/documents', authenticate, authorize('company_admin', 'super_admin'), tenantIsolation, async (req, res) => {
   try {
     const { employee_id, document_type } = req.query;
@@ -73,7 +73,6 @@ router.get('/documents', authenticate, authorize('company_admin', 'super_admin')
   }
 });
 
-// Get employee by ID
 router.get('/:id', authenticate, tenantIsolation, async (req, res) => {
   try {
     const result = await query(`
@@ -102,7 +101,6 @@ router.get('/:id', authenticate, tenantIsolation, async (req, res) => {
   }
 });
 
-// Get employee full profile
 router.get('/:id/profile', authenticate, tenantIsolation, async (req, res) => {
   try {
     const employeeResult = await query(
@@ -233,7 +231,6 @@ router.get('/:id/profile', authenticate, tenantIsolation, async (req, res) => {
   }
 });
 
-// Create employee
 router.post('/', authenticate, authorize('company_admin', 'super_admin'), tenantIsolation, requireCompanyContext, async (req, res) => {
   const {
     email, password, employee_code, first_name, last_name, date_of_birth, gender,
@@ -273,7 +270,6 @@ router.post('/', authenticate, authorize('company_admin', 'super_admin'), tenant
     const employee = empResult.rows[0];
     const sanitizedDocuments = sanitizeDocuments(documents);
 
-    // Initialize leave balances
     const leaveTypes = await query('SELECT * FROM leave_types WHERE company_id = $1 AND is_active = true', [req.companyId]);
     const currentYear = new Date().getFullYear();
 
@@ -326,7 +322,6 @@ router.post('/', authenticate, authorize('company_admin', 'super_admin'), tenant
   }
 });
 
-// Send onboarding email to employee (offer letter/joining/credentials)
 router.post('/:id/send-onboarding', authenticate, authorize('company_admin', 'super_admin'), tenantIsolation, requireCompanyContext, async (req, res) => {
   const { id } = req.params;
   const { subject, message, include_credentials = false } = req.body;
@@ -365,7 +360,53 @@ router.post('/:id/send-onboarding', authenticate, authorize('company_admin', 'su
   }
 });
 
-// Update employee
+router.get('/:id/impersonate', authenticate, authorize('company_admin', 'super_admin'), tenantIsolation, async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const employeeResult = await query(
+      'SELECT e.id, e.user_id, e.company_id, e.first_name, e.last_name, u.email, u.role' +
+      ' FROM employees e' +
+      ' JOIN users u ON e.user_id = u.id' +
+      ' WHERE e.id = $1 AND ($2::int IS NULL OR e.company_id = $2)',
+      [id, req.companyId],
+    );
+
+    if (employeeResult.rows.length === 0) {
+      return res.status(404).json({ message: 'Employee not found' });
+    }
+
+    const employee = employeeResult.rows[0];
+    const token = jwt.sign(
+      {
+        userId: employee.user_id,
+        role: employee.role,
+        companyId: employee.company_id,
+        impersonateBy: req.user.id,
+        originalRole: req.user.role,
+        originalUserId: req.user.id,
+        impersonateUntil: Date.now() + 24 * 60 * 60 * 1000,
+      },
+      config.jwtSecret,
+      { expiresIn: '24h' },
+    );
+
+    res.json({
+      message: 'Employee impersonation token generated',
+      token,
+      employee: {
+        id: employee.id,
+        first_name: employee.first_name,
+        last_name: employee.last_name,
+        email: employee.email,
+      },
+    });
+  } catch (error) {
+    console.error('Employee impersonation error:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
 router.put('/:id', authenticate, authorize('company_admin', 'super_admin'), tenantIsolation, async (req, res) => {
   const { id } = req.params;
   const {
@@ -406,11 +447,10 @@ router.put('/:id', authenticate, authorize('company_admin', 'super_admin'), tena
   }
 });
 
-// Delete employee
 router.delete('/:id', authenticate, authorize('company_admin', 'super_admin'), tenantIsolation, async (req, res) => {
   try {
     const empResult = await query('SELECT user_id FROM employees WHERE id = $1 AND ($2::int IS NULL OR company_id = $2)', [req.params.id, req.companyId]);
-    
+
     if (empResult.rows.length === 0) {
       return res.status(404).json({ message: 'Employee not found' });
     }
@@ -434,7 +474,6 @@ router.delete('/:id', authenticate, authorize('company_admin', 'super_admin'), t
   }
 });
 
-// Get employee documents (per employee)
 router.get('/:id/documents', authenticate, tenantIsolation, async (req, res) => {
   try {
     const result = await query(
@@ -449,7 +488,6 @@ router.get('/:id/documents', authenticate, tenantIsolation, async (req, res) => 
   }
 });
 
-// Get employee assets
 router.get('/:id/assets', authenticate, tenantIsolation, async (req, res) => {
   try {
     const result = await query(
@@ -464,7 +502,6 @@ router.get('/:id/assets', authenticate, tenantIsolation, async (req, res) => {
   }
 });
 
-// Assign asset
 router.post('/:id/assets', authenticate, authorize('company_admin', 'super_admin'), tenantIsolation, requireCompanyContext, async (req, res) => {
   const { asset_name, asset_type, serial_number, assigned_date, notes } = req.body;
 
@@ -483,7 +520,6 @@ router.post('/:id/assets', authenticate, authorize('company_admin', 'super_admin
   }
 });
 
-// Reset employee password (for admins)
 router.put('/:id/password', authenticate, authorize('company_admin', 'super_admin'), tenantIsolation, async (req, res) => {
   const { id } = req.params;
   const { newPassword } = req.body;
@@ -494,7 +530,7 @@ router.put('/:id/password', authenticate, authorize('company_admin', 'super_admi
 
   try {
     const empResult = await query('SELECT user_id, company_id FROM employees WHERE id = $1 AND ($2::int IS NULL OR company_id = $2)', [id, req.companyId]);
-    
+
     if (empResult.rows.length === 0) {
       return res.status(404).json({ message: 'Employee not found' });
     }

@@ -20,6 +20,7 @@ import ShieldMoonRoundedIcon from '@mui/icons-material/ShieldMoonRounded';
 import BoltRoundedIcon from '@mui/icons-material/BoltRounded';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { getTenantBrandName } from '../../lib/tenantBranding';
 
 const trustPoints = ['ISO 27001 Ready', 'SOC Controls', '99.99% Uptime SLA'];
 
@@ -29,6 +30,7 @@ const LoginPage = () => {
   const [form, setForm] = useState({ email: '', password: '', companyCode: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const brandName = getTenantBrandName();
 
   const onInput = (field) => (event) => {
     setForm((prev) => ({ ...prev, [field]: event.target.value }));
@@ -47,6 +49,11 @@ const LoginPage = () => {
       setLoading(false);
     }
   };
+
+  const heroTitle = brandName === 'Attendify'
+    ? 'One platform for attendance, payroll, and HR operations.'
+    : `${brandName} workforce workspace.`;
+  const workspaceLabel = brandName === 'Attendify' ? 'company workspace' : `${brandName} workspace`;
 
   return (
     <Box
@@ -73,11 +80,11 @@ const LoginPage = () => {
               <Stack spacing={2.5}>
                 <Chip
                   icon={<ShieldMoonRoundedIcon />}
-                  label="Enterprise Grade HRMS"
+                  label={brandName === 'Attendify' ? 'Enterprise Grade HRMS' : `${brandName} Portal`}
                   sx={{ alignSelf: 'flex-start', bgcolor: 'rgba(255,255,255,0.16)', color: 'white' }}
                 />
                 <Typography variant="h3" fontWeight={800}>
-                  One platform for attendance, payroll, and HR operations.
+                  {heroTitle}
                 </Typography>
                 <Typography sx={{ opacity: 0.9 }}>
                   Run attendance, leave approvals, shifts, payroll, employee records, and HR documents from a single secure workspace.
@@ -114,13 +121,13 @@ const LoginPage = () => {
                 Welcome back
               </Typography>
               <Typography color="text.secondary" mb={3}>
-                Sign in to continue to your company workspace.
+                Sign in to continue to your {workspaceLabel}.
               </Typography>
 
               <Stack spacing={2}>
-                <Snackbar 
-                  open={Boolean(error)} 
-                  autoHideDuration={6000} 
+                <Snackbar
+                  open={Boolean(error)}
+                  autoHideDuration={6000}
                   onClose={() => setError('')}
                   anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
                   sx={{ zIndex: 9999 }}
@@ -150,7 +157,7 @@ const LoginPage = () => {
                   <Button size="small">Forgot password?</Button>
                 </Stack>
                 <Button type="submit" variant="contained" size="large" sx={{ py: 1.4 }} disabled={loading}>
-                  Sign in to Attendify
+                  Sign in to {brandName}
                 </Button>
                 <Divider>or</Divider>
                 <Button variant="outlined" size="large">

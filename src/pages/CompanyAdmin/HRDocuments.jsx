@@ -30,7 +30,7 @@ import { Edit, Business, Image, Save } from '@mui/icons-material';
 import { useAuth } from '../../context/AuthContext';
 import { useRef } from 'react';
 import { Add, Download } from '@mui/icons-material';
-import { apiRequest } from '../../lib/api';
+import { API_BASE_URL, apiRequest } from '../../lib/api';
 import { buildDocumentHtml, downloadBlob } from '../../utils/fileExports';
 
 const initialForm = {
@@ -164,11 +164,17 @@ useEffect(() => {
   const handleDownload = async (document) => {
     const employee = employeeMap[document.employee_id];
     const companyData = await apiRequest('/organization/companies');
+    const apiOrigin = API_BASE_URL.replace(/\/api$/, '');
     const html = buildDocumentHtml({
       title: document.title,
       employeeName: employee ? `${employee.first_name} ${employee.last_name}` : '',
       companyName: companyData.company_name || 'Attendify',
-      companyLogo: companyData.logo ? `http://localhost:4000${companyData.logo}` : null,
+      companyLogo: companyData.logo ? `${apiOrigin}${companyData.logo}` : null,
+      companyAddress: companyData.address || '',
+      companyPhone: companyData.phone || '',
+      companyTel: companyData.tel_no || '',
+      companyEmail: companyData.email || '',
+      companyWebsite: companyData.website || '',
       content: document.content,
     });
     downloadBlob(html, `${document.document_type}-${document.id}.html`, 'text/html;charset=utf-8');
@@ -232,6 +238,9 @@ useEffect(() => {
                 select 
                 label="Employee" 
                 value={activeTab === 0 ? hrFilters.employee_id : empFilters.employee_id} 
+                SelectProps={{
+                  displayEmpty: true,
+                }}
                 onChange={(e) => {
                   if (activeTab === 0) setHrFilters({ ...hrFilters, employee_id: e.target.value });
                   else setEmpFilters({ ...empFilters, employee_id: e.target.value });
@@ -251,6 +260,9 @@ useEffect(() => {
                 select 
                 label="Document Type" 
                 value={activeTab === 0 ? hrFilters.document_type : empFilters.document_type} 
+                SelectProps={{
+                  displayEmpty: true,
+                }}
                 onChange={(e) => {
                   if (activeTab === 0) setHrFilters({ ...hrFilters, document_type: e.target.value });
                   else setEmpFilters({ ...empFilters, document_type: e.target.value });

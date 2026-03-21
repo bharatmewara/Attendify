@@ -1,10 +1,11 @@
 import { AppBar, Avatar, Badge, Box, Button, IconButton, Stack, Toolbar, Typography } from '@mui/material';
 import NotificationsNoneRoundedIcon from '@mui/icons-material/NotificationsNoneRounded';
-import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import { apiRequest } from '../lib/api';
 
-const Topbar = ({ title, subtitle }) => {
-  const { user, logout } = useAuth();
+const Topbar = ({ title, subtitle, companyProfile }) => {
+  const { user, logout, setSessionToken } = useAuth();
   const navigate = useNavigate();
 
   const onLogout = () => {
@@ -14,7 +15,16 @@ const Topbar = ({ title, subtitle }) => {
 
   const displayName = user?.full_name || [user?.first_name, user?.last_name].filter(Boolean).join(' ') || user?.email || 'User';
 
-  const originalSuperAdminId = user?.originalSuperAdminId;
+  const handleExitImpersonation = async () => {
+    try {
+      const data = await apiRequest('/auth/impersonate-exit');
+      setSessionToken(data.token);
+      window.location.href = '/app/dashboard';
+    } catch {
+      logout();
+      navigate('/auth/login');
+    }
+  };
 
   return (
     <AppBar
@@ -31,6 +41,11 @@ const Topbar = ({ title, subtitle }) => {
           {subtitle ? (
             <Typography variant="body2" color="text.secondary">
               {subtitle}
+            </Typography>
+          ) : null}
+          {companyProfile?.company_name ? (
+            <Typography variant="caption" sx={{ fontWeight: 700, color: 'primary.main' }}>
+              {companyProfile.company_name}
             </Typography>
           ) : null}
         </Box>
@@ -52,23 +67,9 @@ const Topbar = ({ title, subtitle }) => {
             </Badge>
           </IconButton>
           <Avatar sx={{ bgcolor: 'primary.main' }}>{displayName.charAt(0).toUpperCase()}</Avatar>
-          {user?.isImpersonated && originalSuperAdminId && (
-            <Button 
-              size="small" 
-              variant="contained" 
-              color="secondary" 
-              onClick={async () => {
-                try {
-const superAdminData = await apiRequest('/superadmin/impersonate-exit', { token: localStorage.getItem('attendify_token') });
-                  localStorage.setItem(TOKEN_KEY, superAdminData.token);
-                  window.location.reload();
-                } catch {
-                  logout();
-                }
-              }}
-              sx={{ minWidth: 120 }}
-            >
-              Back to Super
+          {user?.isImpersonated && (
+            <Button size="small" variant="contained" color="secondary" onClick={handleExitImpersonation} sx={{ minWidth: 132 }}>
+              Back to {user.originalRole === 'super_admin' ? 'Super Admin' : 'Admin'}
             </Button>
           )}
           <Button size="small" variant="outlined" onClick={onLogout}>

@@ -48,7 +48,7 @@ router.post('/salary-structure', authenticate, authorize('company_admin', 'super
 
 // Calculate payroll for a month
 router.post('/calculate', authenticate, authorize('company_admin', 'super_admin'), tenantIsolation, requireCompanyContext, async (req, res) => {
-  const { month, year, employee_id } = req.body;
+  const { month, year, employee_id, incentive_amount = 0 } = req.body;
 
   try {
     // Before calculating, run auto-mark absent for the entire month for all employees (or the specific one)
@@ -117,19 +117,37 @@ router.post('/calculate', authenticate, authorize('company_admin', 'super_admin'
       const totalAllowances = Object.values(allowances).reduce((sum, val) => sum + parseFloat(val || 0), 0);
       const totalDeductions = Object.values(deductions).reduce((sum, val) => sum + parseFloat(val || 0), 0);
 
+      const approvedIncentiveResult = await query(
+        `SELECT COALESCE(SUM(ic.incentive_amount * ir.quantity), 0) AS total
+         FROM incentive_requests ir
+         JOIN incentive_configs ic ON ic.id = ir.incentive_config_id
+         WHERE ir.employee_id = $1
+           AND ir.company_id = $2
+           AND ir.status = 'approved'
+           AND EXTRACT(MONTH FROM ir.requested_at) = $3
+           AND EXTRACT(YEAR FROM ir.requested_at) = $4`,
+        [empId, req.companyId, month, year],
+      );
+
+      const approvedIncentives = Number(approvedIncentiveResult.rows[0]?.total || 0);
+      const manualIncentive = employee_id && Number(employee_id) === Number(empId) ? Number(incentive_amount || 0) : 0;
+      const incentives = approvedIncentives + manualIncentive;
+
       const latePenalties = parseFloat(shift.late_penalty_per_minute) * parseInt(attendance.total_late_minutes || 0);
       const earlyLeavePenalties = parseFloat(shift.early_leave_penalty_per_minute) * parseInt(attendance.total_early_leave_minutes || 0);
+      const presentDays = Number(attendance.present_days || 0);
+      const proratedBasicSalary = (basicSalary / workingDays) * presentDays;
 
-      const grossSalary = basicSalary + totalAllowances;
+      const grossSalary = proratedBasicSalary + totalAllowances + incentives;
       const netSalary = grossSalary - totalDeductions - latePenalties - earlyLeavePenalties;
 
       // Save payroll calculation
       const payrollResult = await query(
         `INSERT INTO payroll_calculations (
           employee_id, company_id, month, year, basic_salary, total_allowances, total_deductions,
-          late_penalties, early_leave_penalties, gross_salary, net_salary, working_days,
+          late_penalties, early_leave_penalties, incentives, gross_salary, net_salary, working_days,
           present_days, absent_days, leave_days, status, processed_by, processed_at
-        ) VALUES ($1::int, $2::int, $3::int, $4::int, $5::decimal, $6::decimal, $7::decimal, $8::decimal, $9::decimal, $10::decimal, $11::decimal, $12::int, $13::int, $14::int, $15::int, 'processed', $16::int, NOW())
+        ) VALUES ($1::int, $2::int, $3::int, $4::int, $5::decimal, $6::decimal, $7::decimal, $8::decimal, $9::decimal, $10::decimal, $11::decimal, $12::decimal, $13::int, $14::int, $15::int, $16::int, 'processed', $17::int, NOW())
         ON CONFLICT (employee_id, month, year) 
         DO UPDATE SET 
           basic_salary = EXCLUDED.basic_salary,
@@ -137,6 +155,7 @@ router.post('/calculate', authenticate, authorize('company_admin', 'super_admin'
           total_deductions = EXCLUDED.total_deductions,
           late_penalties = EXCLUDED.late_penalties,
           early_leave_penalties = EXCLUDED.early_leave_penalties,
+          incentives = EXCLUDED.incentives,
           gross_salary = EXCLUDED.gross_salary,
           net_salary = EXCLUDED.net_salary,
           working_days = EXCLUDED.working_days,
@@ -148,7 +167,7 @@ router.post('/calculate', authenticate, authorize('company_admin', 'super_admin'
         RETURNING *`,
         [
           empId, req.companyId, month, year, basicSalary, totalAllowances, totalDeductions,
-          latePenalties, earlyLeavePenalties, grossSalary, netSalary, workingDays,
+          latePenalties, earlyLeavePenalties, incentives, grossSalary, netSalary, workingDays,
           attendance.present_days, attendance.absent_days, attendance.leave_days, req.user.id
         ]
       );
@@ -307,3 +326,7 @@ router.post('/payslips/:payrollId', authenticate, authorize('company_admin', 'su
 });
 
 export default router;
+
+
+
+

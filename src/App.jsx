@@ -20,6 +20,9 @@ import ShiftManagement from './pages/CompanyAdmin/ShiftManagement';
 import PayrollManagement from './pages/CompanyAdmin/PayrollManagement';
 import HRDocuments from './pages/CompanyAdmin/HRDocuments';
 import HolidayManagement from './pages/CompanyAdmin/HolidayManagement';
+import IncentivesManagement from './pages/CompanyAdmin/Incentives';
+import EmployeeIncentives from './pages/Employee/Incentives';
+import EmployeeDocuments from './pages/Employee/Documents';
 
 // Super Admin Pages
 import Companies from './pages/SuperAdmin/Companies';
@@ -49,6 +52,22 @@ function AttendanceRouter() {
   return <AttendanceManagement />;
 }
 
+function IncentiveRouter() {
+  const { user } = useAuth();
+  if (user?.role === 'employee') {
+    return <EmployeeIncentives />;
+  }
+  return <IncentivesManagement />;
+}
+
+function DocumentsRouter() {
+  const { user } = useAuth();
+  if (user?.role === 'employee') {
+    return <EmployeeDocuments />;
+  }
+  return <HRDocuments />;
+}
+
 function App() {
   return (
     <ThemeProvider theme={theme}>
@@ -71,7 +90,8 @@ function App() {
               <Route path="leave" element={<LeaveManagement />} />
               <Route path="shifts" element={<ShiftManagement />} />
               <Route path="payroll" element={<PayrollManagement />} />
-              <Route path="documents" element={<HRDocuments />} />
+              <Route path="incentives" element={<IncentiveRouter />} />
+              <Route path="documents" element={<DocumentsRouter />} />
               <Route path="holidays" element={<HolidayManagement />} />
               <Route index element={<Navigate to="dashboard" replace />} />
               <Route path="*" element={<Navigate to="dashboard" replace />} />

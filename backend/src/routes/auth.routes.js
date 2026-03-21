@@ -11,8 +11,8 @@ import { isCompanyIpAllowedByPolicy } from '../middleware/networkPolicy.js';
 
 const router = express.Router();
 
-const signToken = (userId) =>
-  jwt.sign({ userId }, config.jwtSecret, {
+const signToken = (payload) =>
+  jwt.sign(payload, config.jwtSecret, {
     expiresIn: '12h',
   });
 
@@ -53,7 +53,6 @@ router.post('/login', async (req, res) => {
       }
     }
 
-    // Update last login
     await query('UPDATE users SET last_login_at = NOW() WHERE id = $1', [user.id]);
 
     await logAudit({
@@ -66,7 +65,7 @@ router.post('/login', async (req, res) => {
       userAgent: req.get('user-agent'),
     });
 
-    const token = signToken(user.id);
+    const token = signToken({ userId: user.id });
     return res.json({
       token,
       user: {
@@ -106,8 +105,24 @@ router.get('/me', authenticate, async (req, res) => {
         first_name: user.first_name,
         last_name: user.last_name,
         employee_code: user.employee_code,
+        impersonateBy: req.user.impersonateBy || null,
+        originalRole: req.user.originalRole || null,
+        originalUserId: req.user.originalUserId || null,
       },
     });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+});
+
+router.get('/impersonate-exit', authenticate, async (req, res) => {
+  if (!req.auth?.impersonateBy) {
+    return res.status(400).json({ message: 'No impersonation session found' });
+  }
+
+  try {
+    const token = signToken({ userId: req.auth.impersonateBy });
+    return res.json({ token });
   } catch (error) {
     return res.status(500).json({ message: error.message });
   }

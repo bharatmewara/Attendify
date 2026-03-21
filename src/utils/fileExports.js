@@ -108,7 +108,19 @@ export const buildPayslipHtml = ({ payroll, employee, companyName, template = {}
 </html>`;
 };
 
-export const buildDocumentHtml = ({ title, employeeName, companyName, companyLogo, content, accentColor = '#1d4ed8' }) => `<!doctype html>
+export const buildDocumentHtml = ({
+  title,
+  employeeName,
+  companyName,
+  companyLogo,
+  companyAddress,
+  companyPhone,
+  companyTel,
+  companyEmail,
+  companyWebsite,
+  content,
+  accentColor = '#1d4ed8',
+}) => `<!doctype html>
 <html>
   <head>
     <meta charset="utf-8" />
@@ -117,21 +129,43 @@ export const buildDocumentHtml = ({ title, employeeName, companyName, companyLog
       body { font-family: Georgia, serif; padding: 36px; color: #111827; }
       .frame { max-width: 900px; margin: 0 auto; border: 1px solid #dbeafe; border-radius: 18px; overflow: hidden; }
       .head { background: linear-gradient(135deg, ${accentColor}, #0f172a); color: white; padding: 28px; }
+      .head-top { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
       .logo { height: 60px; width: auto; vertical-align: middle; }
+      .org { text-align: right; font-size: 12px; line-height: 1.5; opacity: 0.95; }
       .content { padding: 32px; white-space: pre-wrap; line-height: 1.7; }
       .meta { font-size: 13px; opacity: 0.8; margin-top: 6px; }
+      .footer { border-top: 1px solid #e5e7eb; padding: 18px 32px 24px; background: #f8fafc; font-size: 12px; color: #475569; }
+      .footer strong { color: #1f2937; }
     </style>
   </head>
   <body>
     <div class="frame">
       <div class="head">
+        <div class="head-top">
+          <div>
+            ${companyLogo ? `<img src="${companyLogo}" class="logo" alt="${companyName}">` : ''}
+          </div>
+          <div class="org">
+            ${companyAddress ? `<div>${companyAddress}</div>` : ''}
+            ${companyPhone ? `<div>Phone: ${companyPhone}</div>` : ''}
+            ${companyTel ? `<div>Tel: ${companyTel}</div>` : ''}
+            ${companyEmail ? `<div>Email: ${companyEmail}</div>` : ''}
+            ${companyWebsite ? `<div>Web: ${companyWebsite}</div>` : ''}
+          </div>
+        </div>
         <h1>${title}</h1>
         <div class="meta">
-          ${companyLogo ? `<img src="${companyLogo}" class="logo" alt="${companyName}">` : ''}
           ${companyName || 'Attendify'} | ${employeeName || ''}
         </div>
       </div>
       <div class="content">${content || ''}</div>
+      <div class="footer">
+        <strong>${companyName || 'Attendify'}</strong>
+        ${companyAddress ? ` | ${companyAddress}` : ''}
+        ${companyPhone ? ` | ${companyPhone}` : ''}
+        ${companyEmail ? ` | ${companyEmail}` : ''}
+        ${companyWebsite ? ` | ${companyWebsite}` : ''}
+      </div>
     </div>
   </body>
 </html>`;

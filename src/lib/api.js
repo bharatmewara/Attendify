@@ -1,4 +1,13 @@
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000/api';
+const TOKEN_KEY = 'attendify_token';
+
+const getStoredToken = () => {
+  if (typeof window === 'undefined') {
+    return '';
+  }
+
+  return sessionStorage.getItem(TOKEN_KEY) || localStorage.getItem(TOKEN_KEY) || '';
+};
 
 const parseResponse = async (res) => {
   const text = await res.text();
@@ -24,7 +33,7 @@ const parseResponse = async (res) => {
   return data ?? {};
 };
 
-const getToken = (tokenOverride) => tokenOverride || localStorage.getItem('attendify_token');
+const getToken = (tokenOverride) => tokenOverride || getStoredToken();
 
 export const apiRequest = async (path, { method = 'GET', body, token, headers: customHeaders } = {}) => {
   const authToken = getToken(token);
@@ -47,4 +56,4 @@ export const apiRequest = async (path, { method = 'GET', body, token, headers: c
   return parseResponse(response);
 };
 
-export { API_BASE_URL };
+export { API_BASE_URL, TOKEN_KEY, getStoredToken };

@@ -31,6 +31,30 @@ const applyApprovedLeaveEffects = async ({ leave, companyId }) => {
 const getLeaveDays = (startDate, endDate) =>
   Math.ceil((new Date(endDate) - new Date(startDate)) / (1000 * 60 * 60 * 24)) + 1;
 
+const syncLeaveTypeBalancesForEmployees = async ({ companyId, leaveTypeId, daysPerYear }) => {
+  const currentYear = new Date().getFullYear();
+  const employeesResult = await query(
+    `SELECT id
+     FROM employees
+     WHERE company_id = $1
+       AND status = 'active'`,
+    [companyId],
+  );
+
+  for (const employee of employeesResult.rows) {
+    await query(
+      `INSERT INTO leave_balances (employee_id, leave_type_id, year, total_days, remaining_days, used_days)
+       VALUES ($1, $2, $3, $4, $4, 0)
+       ON CONFLICT (employee_id, leave_type_id, year)
+       DO UPDATE SET
+         total_days = EXCLUDED.total_days,
+         remaining_days = GREATEST(0, EXCLUDED.total_days - leave_balances.used_days),
+         updated_at = NOW()`,
+      [employee.id, leaveTypeId, currentYear, Number(daysPerYear || 0)],
+    );
+  }
+};
+
 // Get leave types
 router.get('/types', authenticate, tenantIsolation, async (req, res) => {
   try {
@@ -56,12 +80,80 @@ router.post('/types', authenticate, authorize('company_admin', 'super_admin'), t
       [req.companyId, name, code, days_per_year, carry_forward, max_carry_forward_days, is_paid, requires_document]
     );
 
-    res.status(201).json(result.rows[0]);
+    const leaveType = result.rows[0];
+    await syncLeaveTypeBalancesForEmployees({
+      companyId: req.companyId,
+      leaveTypeId: leaveType.id,
+      daysPerYear: leaveType.days_per_year,
+    });
+
+    res.status(201).json(leaveType);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 });
 
+// Update leave type
+router.put('/types/:id', authenticate, authorize('company_admin', 'super_admin'), tenantIsolation, requireCompanyContext, async (req, res) => {
+  const { name, code, days_per_year, carry_forward, max_carry_forward_days, is_paid, requires_document } = req.body;
+
+  try {
+    const result = await query(
+      `UPDATE leave_types
+       SET name = $1,
+           code = $2,
+           days_per_year = $3,
+           carry_forward = $4,
+           max_carry_forward_days = $5,
+           is_paid = $6,
+           requires_document = $7,
+           updated_at = NOW()
+       WHERE id = $8
+         AND company_id = $9
+         AND is_active = true
+       RETURNING *`,
+      [name, code, days_per_year, carry_forward, max_carry_forward_days, is_paid, requires_document, req.params.id, req.companyId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'Leave policy not found' });
+    }
+
+    const leaveType = result.rows[0];
+    await syncLeaveTypeBalancesForEmployees({
+      companyId: req.companyId,
+      leaveTypeId: leaveType.id,
+      daysPerYear: leaveType.days_per_year,
+    });
+
+    return res.json(leaveType);
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+});
+
+// Delete (deactivate) leave type
+router.delete('/types/:id', authenticate, authorize('company_admin', 'super_admin'), tenantIsolation, requireCompanyContext, async (req, res) => {
+  try {
+    const result = await query(
+      `UPDATE leave_types
+       SET is_active = false, updated_at = NOW()
+       WHERE id = $1
+         AND company_id = $2
+         AND is_active = true
+       RETURNING id`,
+      [req.params.id, req.companyId],
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'Leave policy not found' });
+    }
+
+    return res.json({ message: 'Leave policy deleted successfully' });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+});
 // Get leave requests
 router.get('/requests', authenticate, tenantIsolation, async (req, res) => {
   const { status, employee_id } = req.query;
@@ -390,3 +482,7 @@ router.delete('/requests/:id', authenticate, authorize('company_admin', 'super_a
 });
 
 export default router;
+
+
+
+

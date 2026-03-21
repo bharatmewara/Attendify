@@ -1,10 +1,11 @@
-import { Box, Drawer, List, ListItemButton, ListItemText, Stack, Typography } from '@mui/material';
+import { Avatar, Box, Drawer, List, ListItemButton, ListItemText, Stack, Typography } from '@mui/material';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { API_BASE_URL } from '../lib/api';
 
 const drawerWidth = 274;
 
-const Sidebar = ({ mobileOpen, onClose }) => {
+const Sidebar = ({ mobileOpen, onClose, companyProfile }) => {
   const location = useLocation();
   const { user } = useAuth();
 
@@ -16,7 +17,8 @@ const Sidebar = ({ mobileOpen, onClose }) => {
         { label: 'Plans', to: '/app/plans' },
         { label: 'Analytics', to: '/app/analytics' },
       ];
-    } else if (user?.role === 'company_admin') {
+    }
+    if (user?.role === 'company_admin') {
       return [
         { label: 'Dashboard', to: '/app/dashboard' },
         { label: 'Employees', to: '/app/employees' },
@@ -25,28 +27,44 @@ const Sidebar = ({ mobileOpen, onClose }) => {
         { label: 'Leave', to: '/app/leave' },
         { label: 'Shifts', to: '/app/shifts' },
         { label: 'Holidays', to: '/app/holidays' },
+        { label: 'Incentives', to: '/app/incentives' },
         { label: 'Payroll', to: '/app/payroll' },
         { label: 'Documents', to: '/app/documents' },
       ];
-    } else if (user?.role === 'employee') {
+    }
+    if (user?.role === 'employee') {
       return [
         { label: 'Dashboard', to: '/app/dashboard' },
         { label: 'My Attendance', to: '/app/attendance' },
         { label: 'My ER Requests', to: '/app/attendance-er' },
         { label: 'My Leave', to: '/app/leave' },
+        { label: 'My Incentives', to: '/app/incentives' },
+        { label: 'My Documents', to: '/app/documents' },
       ];
     }
     return [];
   };
 
   const navItems = getNavItems();
+  const logoSrc = companyProfile?.logo
+    ? companyProfile.logo.startsWith('http')
+      ? companyProfile.logo
+      : `${API_BASE_URL.replace(/\/api$/, '')}${companyProfile.logo}`
+    : '';
+  const brandName = user?.role === 'super_admin' ? 'Attendify Pro' : (companyProfile?.company_name || user?.company_name || 'Company Workspace');
+  const subLabel = user?.role === 'super_admin'
+    ? 'Super Admin'
+    : user?.role === 'company_admin'
+      ? 'Company Admin'
+      : 'Employee Portal';
 
   const content = (
     <Box sx={{ p: 2, height: '100%', bgcolor: '#0F172A', color: '#E2E8F0' }}>
       <Stack spacing={0.5} mb={2}>
-        <Typography fontWeight={800}>Attendify Pro</Typography>
+        {logoSrc ? <Avatar src={logoSrc} variant="rounded" sx={{ width: 56, height: 56, mb: 0.5 }} /> : null}
+        <Typography fontWeight={800}>{brandName}</Typography>
         <Typography variant="caption" sx={{ color: '#94A3B8' }}>
-          {user?.role === 'super_admin' ? 'Super Admin' : user?.role === 'company_admin' ? 'Company Admin' : 'Employee Portal'}
+          {subLabel}
         </Typography>
       </Stack>
       <List>

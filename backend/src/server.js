@@ -12,6 +12,7 @@ import organizationRoutes from './routes/organization.routes.js';
 import attendanceRoutes from './routes/attendance.routes.js';
 import networkRoutes from './routes/network.routes.js';
 import holidaysRoutes from './routes/holidays.routes.js';
+import incentivesRoutes from './routes/incentives.routes.js';
 import multer from 'multer';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -85,100 +86,6 @@ app.get('/api/health', (_req, res) => {
 // REMOVED MOCK - Now uses real superadmin.routes.js /companies endpoint with JOINs
 // app.get('/api/superadmin/companies', authenticate, authorize('super_admin'), async (req, res) => { ... }
 
-app.put('/api/superadmin/companies/:id', authenticate, authorize('super_admin'), async (req, res) => {
-  try {
-    const { is_active, subscription_status } = req.body;
-    const updates = [];
-    const values = [];
-    let paramIndex = 1;
-    if (is_active !== undefined) {
-      updates.push(`is_active = $${paramIndex}`);
-      values.push(is_active);
-      paramIndex++;
-    }
-    if (subscription_status !== undefined) {
-      updates.push(`subscription_status = $${paramIndex}`);
-      values.push(subscription_status);
-      paramIndex++;
-    }
-
-    if (updates.length === 0) {
-      return res.status(400).json({ message: 'No fields to update' });
-    }
-
-    values.push(req.params.id);
-    const result = await query(`
-      UPDATE companies 
-      SET ${updates.join(', ')}, updated_at = NOW()
-      WHERE id = $${paramIndex}
-      RETURNING *
-    `, values);
-    if (result.rows.length === 0) {
-      return res.status(404).json({ message: 'Company not found' });
-    }
-
-    if (subscription_status !== undefined) {
-      // Update latest subscription row to keep listed status in sync
-      await query(
-        `UPDATE company_subscriptions
-         SET status = $1
-         WHERE id = (
-           SELECT id FROM company_subscriptions WHERE company_id = $2 ORDER BY created_at DESC LIMIT 1
-         )`,
-        [subscription_status, req.params.id]
-      );
-    }
-
-    res.json(result.rows[0]);
-  } catch (error) {
-    console.error('Company UPDATE error:', error);
-    res.status(500).json({ message: 'Update failed' });
-  }
-});
-
-app.get('/api/superadmin/impersonate-exit', authenticate, authorize('super_admin'), async (req, res) => {
-  try {
-    const superToken = jwt.sign(
-      { userId: req.user.originalSuperAdminId || req.user.id },
-      config.jwtSecret,
-      { expiresIn: '7d' }
-    );
-    res.json({ token: superToken });
-  } catch (error) {
-    res.status(500).json({ message: 'Token generation failed' });
-  }
-});
-
-app.get('/api/superadmin/subscription-plans', authenticate, authorize('super_admin'), async (req, res) => {
-  try {
-    const result = await query('SELECT * FROM subscription_plans ORDER BY price_monthly');
-    res.json(result.rows.length ? result.rows : [
-      { id: 1, name: 'Basic', price_monthly: 999, price_yearly: 9999, employee_limit: 10 },
-      { id: 2, name: 'Standard', price_monthly: 1999, price_yearly: 19999, employee_limit: 50 },
-      { id: 3, name: 'Premium', price_monthly: 4999, price_yearly: 49999, employee_limit: 200 }
-    ]);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
- });
-
-app.delete('/api/superadmin/subscription-plans/:id', authenticate, authorize('super_admin'), async (req, res) => {
-  try {
-    const usageResult = await query('SELECT COUNT(*) as count FROM company_subscriptions WHERE plan_id = $1', [req.params.id]);
-    if (parseInt(usageResult.rows[0].count) > 0) {
-      return res.status(400).json({ message: 'Cannot delete plan assigned to companies' });
-    }
-    const result = await query('DELETE FROM subscription_plans WHERE id = $1 RETURNING id', [req.params.id]);
-    if (result.rows.length === 0) {
-      return res.status(404).json({ message: 'Plan not found' });
-    }
-    res.json({ message: 'Plan deleted successfully' });
-  } catch (error) {
-    console.error('Plan delete error:', error);
-    res.status(500).json({ message: error.message });
-  }
- });
-
 app.get('/api/superadmin/analytics', (req, res) => {
   res.json({
     active_companies: 12,
@@ -208,6 +115,7 @@ app.use('/api/organization', organizationRoutes);
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/network-policies', networkRoutes);
 app.use('/api/holidays', holidaysRoutes);
+app.use('/api/incentives', incentivesRoutes);
 
 // SuperAdmin Dashboard APIs (added for 404 fix)
 app.use('/api/superadmin/analytics', (req, res) => {
@@ -240,3 +148,5 @@ app.use((err, _req, res, _next) => {
 app.listen(config.port, () => {
   console.log(`Attendify backend running on http://localhost:${config.port}`);
 });
+
+

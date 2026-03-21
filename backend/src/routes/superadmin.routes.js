@@ -1,14 +1,14 @@
 import express from 'express';
 import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
 import { pool, query } from '../db.js';
 import { authenticate, authorize } from '../middleware/auth.middleware.js';
-import { logAudit } from '../utils/audit.js';
-import { sendEmail } from '../utils/email.js';
 import { uploadCompany } from '../middleware/uploads.js';
-import jwt from 'jsonwebtoken';
+import { logAudit } from '../utils/audit.js';
 import { config } from '../config.js';
 
 const router = express.Router();
+
 const nullable = (value) => (value === '' || value === undefined ? null : value);
 const slugifyCompanyCode = (value) =>
   value
@@ -37,11 +37,10 @@ const generateUniqueCompanyCode = async (client, companyName) => {
   }
 };
 
-// Get all companies
-router.get('/companies', authenticate, authorize('super_admin'), async (req, res) => {
+router.get('/companies', authenticate, authorize('super_admin'), async (_req, res) => {
   try {
     const result = await query(`
-      SELECT c.*, 
+      SELECT c.*,
         COUNT(DISTINCT e.id) as employee_count,
         cs.id as subscription_id,
         cs.status as subscription_status,
@@ -70,7 +69,184 @@ router.get('/companies', authenticate, authorize('super_admin'), async (req, res
   }
 });
 
-// Assign subscription to company - Step 2 of TODO.md
+router.post('/companies', authenticate, authorize('super_admin'), uploadCompany.single('logo'), async (req, res) => {
+  const {
+    company_name,
+    company_code,
+    email,
+    phone,
+    address,
+    website,
+    industry,
+    admin_email,
+    admin_password,
+  } = req.body || {};
+
+  if (!company_name || !email || !admin_email || !admin_password) {
+    return res.status(400).json({ message: 'company_name, email, admin_email and admin_password are required' });
+  }
+
+  if (String(admin_password).length < 6) {
+    return res.status(400).json({ message: 'Admin password must be at least 6 characters' });
+  }
+
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    const normalizedCompanyCode = company_code ? slugifyCompanyCode(company_code) : await generateUniqueCompanyCode(client, company_name);
+
+    const existingCode = await client.query('SELECT id FROM companies WHERE company_code = $1 LIMIT 1', [normalizedCompanyCode]);
+    if (existingCode.rows.length > 0) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ message: 'Company code already exists' });
+    }
+
+    const existingAdminEmail = await client.query('SELECT id FROM users WHERE email = $1 LIMIT 1', [admin_email]);
+    if (existingAdminEmail.rows.length > 0) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ message: 'Admin email already exists' });
+    }
+
+    const companyResult = await client.query(
+      `INSERT INTO companies (company_name, company_code, email, phone, address, website, industry, is_active, subscription_status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, true, 'trial')
+       RETURNING *`,
+      [
+        company_name,
+        normalizedCompanyCode,
+        email,
+        nullable(phone),
+        nullable(address),
+        nullable(website),
+        nullable(industry),
+      ]
+    );
+
+    const company = companyResult.rows[0];
+    const passwordHash = await bcrypt.hash(String(admin_password), 10);
+
+    await client.query(
+      `INSERT INTO users (company_id, email, password_hash, role, is_active, email_verified)
+       VALUES ($1, $2, $3, 'company_admin', true, false)`,
+      [company.id, admin_email, passwordHash]
+    );
+
+    await client.query('COMMIT');
+
+    await logAudit({
+      companyId: company.id,
+      userId: req.user.id,
+      action: 'create',
+      entityType: 'company',
+      entityId: company.id,
+      newValues: { company_name, company_code: normalizedCompanyCode, email, admin_email },
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent'),
+    });
+
+    res.status(201).json(company);
+  } catch (error) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ message: error.message });
+  } finally {
+    client.release();
+  }
+});
+
+router.put('/companies/:id', authenticate, authorize('super_admin'), async (req, res) => {
+  const companyId = Number(req.params.id);
+  if (!Number.isInteger(companyId) || companyId <= 0) {
+    return res.status(400).json({ message: 'Invalid company id' });
+  }
+
+  const allowedFields = [
+    'company_name',
+    'email',
+    'phone',
+    'address',
+    'website',
+    'industry',
+    'is_active',
+    'subscription_status',
+  ];
+
+  const updates = [];
+  const values = [];
+
+  for (const field of allowedFields) {
+    if (Object.prototype.hasOwnProperty.call(req.body || {}, field)) {
+      const nextValue = ['phone', 'address', 'website', 'industry'].includes(field)
+        ? nullable(req.body[field])
+        : req.body[field];
+      values.push(nextValue);
+      updates.push(`${field} = $${values.length}`);
+    }
+  }
+
+  if (updates.length === 0) {
+    return res.status(400).json({ message: 'No fields to update' });
+  }
+
+  values.push(companyId);
+
+  try {
+    const result = await query(
+      `UPDATE companies
+       SET ${updates.join(', ')}, updated_at = NOW()
+       WHERE id = $${values.length}
+       RETURNING *`,
+      values
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'Company not found' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+
+router.delete('/companies/:id', authenticate, authorize('super_admin'), async (req, res) => {
+  const companyId = Number(req.params.id);
+  if (!Number.isInteger(companyId) || companyId <= 0) {
+    return res.status(400).json({ message: 'Invalid company id' });
+  }
+
+  try {
+    const companyResult = await query('SELECT id, company_name FROM companies WHERE id = $1', [companyId]);
+    if (companyResult.rows.length === 0) {
+      return res.status(404).json({ message: 'Company not found' });
+    }
+
+    await query('DELETE FROM companies WHERE id = $1', [companyId]);
+
+    await logAudit({
+      companyId,
+      userId: req.user.id,
+      action: 'delete',
+      entityType: 'company',
+      entityId: companyId,
+      oldValues: companyResult.rows[0],
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent'),
+    });
+
+    res.json({ message: 'Company deleted successfully' });
+  } catch (error) {
+    // FK violations are expected when a company still has dependent data.
+    if (error?.code === '23503') {
+      return res.status(409).json({
+        message: 'Cannot delete company because related records exist. Deactivate it instead or remove dependent data first.',
+      });
+    }
+    res.status(500).json({ message: error.message });
+  }
+});
 router.post('/companies/:id/assign-subscription', authenticate, authorize('super_admin'), async (req, res) => {
   const { id } = req.params;
   const { plan_id, billing_cycle, payment_status = 'paid' } = req.body;
@@ -86,7 +262,7 @@ router.post('/companies/:id/assign-subscription', authenticate, authorize('super
     }
 
     const planResult = await query(
-      'SELECT id, name, price_monthly, price_yearly FROM subscription_plans WHERE id = $1 AND is_active = true', 
+      'SELECT id, name, price_monthly, price_yearly FROM subscription_plans WHERE id = $1 AND is_active = true',
       [plan_id]
     );
     if (planResult.rows.length === 0) {
@@ -101,32 +277,29 @@ router.post('/companies/:id/assign-subscription', authenticate, authorize('super
     end_date.setMonth(end_date.getMonth() + (billing_cycle === 'yearly' ? 12 : 1));
     end_date = end_date.toISOString().split('T')[0];
 
-    // Deactivate existing
     await query("UPDATE company_subscriptions SET status = 'expired' WHERE company_id = $1 AND status = 'active'", [id]);
 
-    // Insert new subscription
     await query(
       `INSERT INTO company_subscriptions (company_id, plan_id, status, billing_cycle, amount, start_date, end_date, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW()) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
        ON CONFLICT (company_id) DO UPDATE SET plan_id = $2, status = $3, billing_cycle = $4, amount = $5, start_date = $6, end_date = $7`,
       [id, plan_id, status, billing_cycle, amount, start_date, end_date]
     );
 
-    // Refresh company data
     const updated = await query(`
       SELECT c.*, COUNT(DISTINCT e.id)::int as employee_count, cs.*,
-             sp.name as plan_name, sp.features as plan_features 
-      FROM companies c 
-      LEFT JOIN employees e ON c.id = e.company_id 
+             sp.name as plan_name, sp.features as plan_features
+      FROM companies c
+      LEFT JOIN employees e ON c.id = e.company_id
       LEFT JOIN company_subscriptions cs ON c.id = cs.company_id AND cs.status='active'
-      LEFT JOIN subscription_plans sp ON cs.plan_id = sp.id 
-      WHERE c.id = $1 
+      LEFT JOIN subscription_plans sp ON cs.plan_id = sp.id
+      WHERE c.id = $1
       GROUP BY c.id, cs.id, sp.id, sp.name, sp.features
     `, [id]);
 
     res.json({
       success: true,
-      message: "Assigned " + plan.name + " (" + billing_cycle.toUpperCase() + ", ₹" + amount + ")",
+      message: `Assigned ${plan.name} (${billing_cycle.toUpperCase()}, amount ${amount})`,
       company: updated.rows[0]
     });
   } catch (error) {
@@ -135,7 +308,202 @@ router.post('/companies/:id/assign-subscription', authenticate, authorize('super
   }
 });
 
-// ... [rest of routes unchanged until impersonate]
+router.post('/companies/:id/reset-password', authenticate, authorize('super_admin'), async (req, res) => {
+  const companyId = Number(req.params.id);
+  const { new_password } = req.body || {};
+
+  if (!Number.isInteger(companyId) || companyId <= 0) {
+    return res.status(400).json({ message: 'Invalid company id' });
+  }
+
+  if (!new_password || String(new_password).length < 6) {
+    return res.status(400).json({ message: 'new_password must be at least 6 characters' });
+  }
+
+  try {
+    const adminResult = await query(
+      `SELECT id, company_id, email
+       FROM users
+       WHERE company_id = $1 AND role = 'company_admin'
+       ORDER BY created_at ASC
+       LIMIT 1`,
+      [companyId]
+    );
+
+    if (adminResult.rows.length === 0) {
+      return res.status(404).json({ message: 'Company admin not found' });
+    }
+
+    const admin = adminResult.rows[0];
+    const passwordHash = await bcrypt.hash(String(new_password), 10);
+
+    await query(
+      'UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2',
+      [passwordHash, admin.id]
+    );
+
+    await logAudit({
+      companyId,
+      userId: req.user.id,
+      action: 'reset_password',
+      entityType: 'user',
+      entityId: admin.id,
+      newValues: { email: admin.email },
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent'),
+    });
+
+    res.json({ message: 'Password reset successfully' });
+  } catch (error) {
+    // FK violations are expected when a company still has dependent data.
+    if (error?.code === '23503') {
+      return res.status(409).json({
+        message: 'Cannot delete company because related records exist. Deactivate it instead or remove dependent data first.',
+      });
+    }
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.get('/notifications', authenticate, authorize('super_admin'), async (_req, res) => {
+  try {
+    const result = await query(
+      `SELECT n.*, c.company_name, u.email as created_by_email
+       FROM notifications n
+       LEFT JOIN companies c ON c.id = n.company_id
+       LEFT JOIN users u ON u.id = n.created_by
+       ORDER BY n.created_at DESC
+       LIMIT 100`
+    );
+    res.json(result.rows);
+  } catch (error) {
+    // FK violations are expected when a company still has dependent data.
+    if (error?.code === '23503') {
+      return res.status(409).json({
+        message: 'Cannot delete company because related records exist. Deactivate it instead or remove dependent data first.',
+      });
+    }
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.post('/notifications', authenticate, authorize('super_admin'), async (req, res) => {
+  const { company_id, title, message, type = 'info', priority = 'normal' } = req.body || {};
+
+  if (!company_id || !title || !message) {
+    return res.status(400).json({ message: 'company_id, title and message are required' });
+  }
+
+  try {
+    const result = await query(
+      `INSERT INTO notifications (company_id, title, message, type, priority, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING *`,
+      [company_id, title, message, type, priority, req.user.id]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    // FK violations are expected when a company still has dependent data.
+    if (error?.code === '23503') {
+      return res.status(409).json({
+        message: 'Cannot delete company because related records exist. Deactivate it instead or remove dependent data first.',
+      });
+    }
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.post('/subscription-plans', authenticate, authorize('super_admin'), async (req, res) => {
+  const {
+    name,
+    description,
+    price_monthly,
+    price_yearly,
+    employee_limit,
+    features = {},
+    is_active = true,
+  } = req.body || {};
+
+  if (!name || price_monthly === undefined || price_yearly === undefined || employee_limit === undefined) {
+    return res.status(400).json({ message: 'name, price_monthly, price_yearly, employee_limit are required' });
+  }
+
+  try {
+    const result = await query(
+      `INSERT INTO subscription_plans (name, description, price_monthly, price_yearly, employee_limit, features, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING *`,
+      [
+        name,
+        nullable(description),
+        Number(price_monthly),
+        Number(price_yearly),
+        Number(employee_limit),
+        JSON.stringify(features || {}),
+        Boolean(is_active),
+      ]
+    );
+
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    // FK violations are expected when a company still has dependent data.
+    if (error?.code === '23503') {
+      return res.status(409).json({
+        message: 'Cannot delete company because related records exist. Deactivate it instead or remove dependent data first.',
+      });
+    }
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.put('/subscription-plans/:id', authenticate, authorize('super_admin'), async (req, res) => {
+  const planId = Number(req.params.id);
+  if (!Number.isInteger(planId) || planId <= 0) {
+    return res.status(400).json({ message: 'Invalid plan id' });
+  }
+
+  const updatable = ['name', 'description', 'price_monthly', 'price_yearly', 'employee_limit', 'features', 'is_active'];
+  const updates = [];
+  const values = [];
+
+  for (const field of updatable) {
+    if (Object.prototype.hasOwnProperty.call(req.body || {}, field)) {
+      let value = req.body[field];
+      if (field === 'description') value = nullable(value);
+      if (field === 'features') value = JSON.stringify(value || {});
+      if (['price_monthly', 'price_yearly', 'employee_limit'].includes(field)) value = Number(value);
+      if (field === 'is_active') value = Boolean(value);
+
+      values.push(value);
+      updates.push(`${field} = $${values.length}`);
+    }
+  }
+
+  if (updates.length === 0) {
+    return res.status(400).json({ message: 'No fields to update' });
+  }
+
+  values.push(planId);
+
+  try {
+    const result = await query(
+      `UPDATE subscription_plans
+       SET ${updates.join(', ')}, updated_at = NOW()
+       WHERE id = $${values.length}
+       RETURNING *`,
+      values
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'Plan not found' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Plan update error:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
 
 router.get('/companies/:id/impersonate', authenticate, authorize('super_admin'), async (req, res) => {
   const { id } = req.params;
@@ -148,21 +516,20 @@ router.get('/companies/:id/impersonate', authenticate, authorize('super_admin'),
 
     let admin = await query(
       `SELECT u.id, u.email, u.role, u.company_id, c.company_name
-       FROM users u 
-       JOIN companies c ON u.company_id = c.id 
-       WHERE u.company_id = $1 AND u.role = 'company_admin' 
+       FROM users u
+       JOIN companies c ON u.company_id = c.id
+       WHERE u.company_id = $1 AND u.role = 'company_admin'
        ORDER BY u.created_at ASC
        LIMIT 1`,
       [id]
     );
 
     if (admin.rows.length === 0) {
-      // Auto-create company admin if none exists
       const password = 'TempPass123!';
       const passwordHash = await bcrypt.hash(password, 10);
       const companyCodeResult = await query('SELECT company_code FROM companies WHERE id = $1', [id]);
       const companyCode = companyCodeResult.rows[0].company_code;
-      const adminEmail = `admin@` + companyCode.toLowerCase().replace(/_/g, '') + `.company`;
+      const adminEmail = `admin@${companyCode.toLowerCase().replace(/_/g, '')}.company`;
 
       const adminResult = await query(
         `INSERT INTO users (company_id, email, password_hash, role, is_active, email_verified)
@@ -171,12 +538,10 @@ router.get('/companies/:id/impersonate', authenticate, authorize('super_admin'),
         [id, adminEmail, passwordHash]
       );
       admin = adminResult;
-      console.log(`Auto-created company admin for company ${id}: ${admin.rows[0].email}, password: ${password}`);
     }
 
     const adminUser = admin.rows[0];
 
-    // Generate temporary token for impersonation
     const impersonateToken = jwt.sign(
       {
         userId: adminUser.id,
@@ -184,7 +549,7 @@ router.get('/companies/:id/impersonate', authenticate, authorize('super_admin'),
         role: adminUser.role,
         companyId: adminUser.company_id,
         impersonateBy: req.user.id,
-        impersonateUntil: Date.now() + 24 * 60 * 60 * 1000 // 24h
+        impersonateUntil: Date.now() + 24 * 60 * 60 * 1000,
       },
       config.jwtSecret,
       { expiresIn: '24h' }
@@ -193,8 +558,8 @@ router.get('/companies/:id/impersonate', authenticate, authorize('super_admin'),
     res.json({
       message: 'Impersonation token generated',
       token: impersonateToken,
-      company: { id: id, company_name: companyResult.rows[0].company_name },
-      admin: adminUser
+      company: { id, company_name: companyResult.rows[0].company_name },
+      admin: adminUser,
     });
   } catch (error) {
     console.error('Impersonation error:', error);
@@ -202,26 +567,82 @@ router.get('/companies/:id/impersonate', authenticate, authorize('super_admin'),
   }
 });
 
-// Super admin impersonate exit - return super admin token
-router.get('/impersonate-exit/:superAdminId', authenticate, authorize('super_admin'), async (req, res) => {
+router.get('/impersonate-exit', authenticate, authorize('super_admin'), async (req, res) => {
   try {
-    const { superAdminId } = req.params;
-    const result = await query('SELECT id, email, role FROM users WHERE id = $1 AND role = \'super_admin\'', [superAdminId]);
-    if (result.rows.length === 0) {
-      return res.status(404).json({ message: 'Super admin not found' });
+    const token = jwt.sign(
+      {
+        userId: req.user.originalSuperAdminId || req.user.id,
+        email: req.user.email,
+        role: 'super_admin',
+      },
+      config.jwtSecret,
+      { expiresIn: '24h' }
+    );
+
+    res.json({ token });
+  } catch (error) {
+    // FK violations are expected when a company still has dependent data.
+    if (error?.code === '23503') {
+      return res.status(409).json({
+        message: 'Cannot delete company because related records exist. Deactivate it instead or remove dependent data first.',
+      });
+    }
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.get('/subscription-plans', authenticate, authorize('super_admin'), async (_req, res) => {
+  try {
+    const result = await query('SELECT * FROM subscription_plans ORDER BY price_monthly');
+    res.json(result.rows);
+  } catch (error) {
+    // FK violations are expected when a company still has dependent data.
+    if (error?.code === '23503') {
+      return res.status(409).json({
+        message: 'Cannot delete company because related records exist. Deactivate it instead or remove dependent data first.',
+      });
+    }
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.delete('/subscription-plans/:id', authenticate, authorize('super_admin'), async (req, res) => {
+  const planId = Number(req.params.id);
+  if (!Number.isInteger(planId) || planId <= 0) {
+    return res.status(400).json({ message: 'Invalid plan id' });
+  }
+
+  try {
+    const usageResult = await query('SELECT COUNT(*) as count FROM company_subscriptions WHERE plan_id = $1', [planId]);
+    if (parseInt(usageResult.rows[0].count, 10) > 0) {
+      return res.status(400).json({ message: 'Cannot delete plan assigned to companies' });
     }
 
-    const superAdmin = result.rows[0];
-    const token = jwt.sign({
-      userId: superAdmin.id,
-      email: superAdmin.email,
-      role: superAdmin.role
-    }, config.jwtSecret, { expiresIn: '24h' });
+    const result = await query('DELETE FROM subscription_plans WHERE id = $1 RETURNING id', [planId]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'Plan not found' });
+    }
 
-    res.json({ token, user: superAdmin });
+    res.json({ message: 'Plan deleted successfully' });
   } catch (error) {
+    // FK violations are expected when a company still has dependent data.
+    if (error?.code === '23503') {
+      return res.status(409).json({
+        message: 'Cannot delete company because related records exist. Deactivate it instead or remove dependent data first.',
+      });
+    }
     res.status(500).json({ message: error.message });
   }
 });
 
 export default router;
+
+
+
+
+
+
+
+
+
+

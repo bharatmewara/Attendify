@@ -227,7 +227,16 @@ export default function AttendanceManagement() {
               <TextField fullWidth label="End Date" type="date" InputLabelProps={{ shrink: true }} value={filters.end_date} onChange={(e) => setFilters({ ...filters, end_date: e.target.value })} />
             </Grid>
             <Grid item xs={12} md={3}>
-              <TextField fullWidth select label="Employee" value={filters.employee_id} onChange={(e) => setFilters({ ...filters, employee_id: e.target.value })}>
+              <TextField
+                fullWidth
+                select
+                label="Employee"
+                value={filters.employee_id}
+                onChange={(e) => setFilters({ ...filters, employee_id: e.target.value })}
+                SelectProps={{
+                  displayEmpty: true,
+                }}
+              >
                 <MenuItem value="">All Employees</MenuItem>
                 {employees.map((employee) => (
                   <MenuItem key={employee.id} value={employee.id}>
@@ -237,7 +246,16 @@ export default function AttendanceManagement() {
               </TextField>
             </Grid>
             <Grid item xs={12} md={3}>
-              <TextField fullWidth select label="Status" value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value })}>
+              <TextField
+                fullWidth
+                select
+                label="Status"
+                value={filters.status}
+                onChange={(e) => setFilters({ ...filters, status: e.target.value })}
+                SelectProps={{
+                  displayEmpty: true,
+                }}
+              >
                 <MenuItem value="">All Statuses</MenuItem>
                 <MenuItem value="present">Present</MenuItem>
                 <MenuItem value="absent">Absent</MenuItem>
