@@ -65,7 +65,7 @@ router.post('/login', async (req, res) => {
       userAgent: req.get('user-agent'),
     });
 
-    const token = signToken({ userId: user.id });
+    const token = signToken({ userId: user.id, companyId: user.company_id || null, role: user.role });
     return res.json({
       token,
       user: {
@@ -105,9 +105,9 @@ router.get('/me', authenticate, async (req, res) => {
         first_name: user.first_name,
         last_name: user.last_name,
         employee_code: user.employee_code,
-        impersonateBy: req.user.impersonateBy || null,
-        originalRole: req.user.originalRole || null,
-        originalUserId: req.user.originalUserId || null,
+        impersonateBy: req.auth?.impersonateBy || null,
+        originalRole: req.auth?.originalRole || null,
+        originalUserId: req.auth?.originalUserId || null,
       },
     });
   } catch (error) {
@@ -241,3 +241,5 @@ router.post('/change-password', authenticate, async (req, res) => {
 });
 
 export default router;
+
+

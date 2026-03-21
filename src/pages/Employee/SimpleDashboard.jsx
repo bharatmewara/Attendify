@@ -26,6 +26,7 @@ export default function EmployeeDashboard() {
   const [todayAttendance, setTodayAttendance] = useState(null);
   const [leaveBalance, setLeaveBalance] = useState([]);
   const [upcomingHolidays, setUpcomingHolidays] = useState([]);
+  const [nearHoliday, setNearHoliday] = useState(null);
   const [message, setMessage] = useState({ type: '', text: '' });
   
   const fetchTodayAttendance = async () => {
@@ -59,6 +60,15 @@ export default function EmployeeDashboard() {
           })
           .slice(0, 5);
         setUpcomingHolidays(upcoming);
+        const nearest = (holidays || [])
+          .map((h) => {
+            const d = new Date(h.holiday_date);
+            const diff = Math.ceil((d - now) / (1000 * 60 * 60 * 24));
+            return { ...h, days_left: diff };
+          })
+          .filter((h) => h.days_left >= 0 && h.days_left <= 4)
+          .sort((a, b) => a.days_left - b.days_left)[0] || null;
+        setNearHoliday(nearest);
       } catch (error) {
         setMessage({ type: 'error', text: error.message });
       }

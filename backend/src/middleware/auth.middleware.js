@@ -10,6 +10,8 @@ export const authenticate = async (req, res, next) => {
     }
 
     const decoded = jwt.verify(token, config.jwtSecret);
+    req.auth = decoded;
+
     const result = await query(
       `SELECT u.*, COALESCE(e.company_id, u.company_id) AS company_id
        FROM users u
@@ -23,6 +25,13 @@ export const authenticate = async (req, res, next) => {
     }
 
     req.user = result.rows[0];
+    if (!req.user.company_id && decoded.companyId) {
+      req.user.company_id = decoded.companyId;
+    }
+    if (!req.user.role && decoded.role) {
+      req.user.role = decoded.role;
+    }
+
     next();
   } catch (error) {
     return res.status(401).json({ message: 'Invalid or expired token' });
@@ -44,20 +53,26 @@ export const authorize = (...roles) => {
 };
 
 export const tenantIsolation = (req, res, next) => {
+  const requestedCompanyId = Number(
+    req.query.company_id || req.body?.company_id || req.headers['x-company-id'] || 0
+  );
+
   if (req.user.role === 'super_admin') {
-    const requestedCompanyId = Number(
-      req.query.company_id || req.body?.company_id || req.headers['x-company-id'] || 0
-    );
     req.companyId = requestedCompanyId || null;
     req.allowAllCompanies = !req.companyId;
     return next();
   }
 
-  if (!req.user.company_id) {
+  const derivedCompanyId =
+    req.user.company_id ||
+    req.auth?.companyId ||
+    ((req.user.role === 'company_admin' || req.user.role === 'super_admin') ? requestedCompanyId : null);
+
+  if (!derivedCompanyId) {
     return res.status(403).json({ message: 'No company association' });
   }
 
-  req.companyId = req.user.company_id;
+  req.companyId = Number(derivedCompanyId);
   req.allowAllCompanies = false;
   next();
 };
@@ -68,4 +83,3 @@ export const requireCompanyContext = (req, res, next) => {
   }
   return next();
 };
-

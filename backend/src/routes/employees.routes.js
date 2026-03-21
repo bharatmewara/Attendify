@@ -538,7 +538,27 @@ router.put('/:id/password', authenticate, authorize('company_admin', 'super_admi
     const { user_id: userId, company_id: companyId } = empResult.rows[0];
     const passwordHash = await bcrypt.hash(newPassword, 10);
 
-    await query('UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2', [passwordHash, userId]);
+    const duplicateMapping = await query(
+      'SELECT id FROM employees WHERE user_id = $1 AND ($2::int IS NULL OR company_id = $2)',
+      [userId, req.companyId],
+    );
+
+    if (duplicateMapping.rows.length > 1) {
+      return res.status(409).json({
+        message: 'Cannot reset password: multiple employees are linked to the same login account. Please repair employee-user mapping first.',
+        employee_ids: duplicateMapping.rows.map((row) => row.id),
+      });
+    }
+
+    await query(
+      `UPDATE users u
+       SET password_hash = $1, updated_at = NOW()
+       FROM employees e
+       WHERE e.id = $2
+         AND e.user_id = u.id
+         AND ($3::int IS NULL OR e.company_id = $3)`,
+      [passwordHash, id, req.companyId],
+    );
 
     await logAudit({
       companyId: companyId,
@@ -557,3 +577,4 @@ router.put('/:id/password', authenticate, authorize('company_admin', 'super_admi
 });
 
 export default router;
+

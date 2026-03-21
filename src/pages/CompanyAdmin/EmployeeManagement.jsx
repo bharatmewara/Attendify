@@ -76,7 +76,7 @@ const [openEditDialog, setOpenEditDialog] = useState(false);
   const [openResetPasswordDialog, setOpenResetPasswordDialog] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [passwordError, setPasswordError] = useState('');
-  const [lastResetPassword, setLastResetPassword] = useState('');
+  const [lastResetPasswordInfo, setLastResetPasswordInfo] = useState({ employeeId: null, password: '' });
   const [uploadedDocs, setUploadedDocs] = useState([]);
   const [customDocName, setCustomDocName] = useState('');
   const [formData, setFormData] = useState({
@@ -138,6 +138,7 @@ const [openEditDialog, setOpenEditDialog] = useState(false);
   const handleOpenView = async (emp) => {
     try {
       setSelectedEmployee(emp);
+      setLastResetPasswordInfo({ employeeId: null, password: '' });
       const data = await apiRequest(`/employees/${emp.id}/profile`);
       setViewProfile(data);
       setOpenViewDialog(true);
@@ -218,7 +219,7 @@ const [openEditDialog, setOpenEditDialog] = useState(false);
         method: 'PUT',
         body: { newPassword },
       });
-      setLastResetPassword(newPassword);
+      setLastResetPasswordInfo({ employeeId: selectedEmployee.id, password: newPassword });
       setMessage('Password reset successfully');
       handleCloseResetPassword();
     } catch (error) {
@@ -716,7 +717,9 @@ const [openEditDialog, setOpenEditDialog] = useState(false);
                       <Grid item xs={12}>
                         <Typography variant="overline" color="text.secondary">Password</Typography>
                         <Typography variant="body2" fontWeight={600}>
-                          {lastResetPassword || 'Not available for existing password. Reset password to view it once here.'}
+                          {lastResetPasswordInfo.employeeId === viewProfile.employee.id
+                            ? lastResetPasswordInfo.password
+                            : 'Not available for current password. Reset this employee password to show here.'}
                         </Typography>
                       </Grid>
                     </Grid>
@@ -936,7 +939,7 @@ const [openEditDialog, setOpenEditDialog] = useState(false);
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
             error={!!passwordError}
-            helperText={passwordError || 'Plain text is visible here while resetting.'}
+            helperText={passwordError || 'Visible only in this reset dialog.'}
           />
         </DialogContent>
         <DialogActions>
