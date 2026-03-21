@@ -480,7 +480,8 @@ const [openEditDialog, setOpenEditDialog] = useState(false);
                         <IconButton size="small" color="secondary" onClick={() => handleSalaryCreditEmail(emp)}>
                           <AccountBalance fontSize="small" />
                         </IconButton>
-                      </Tooltip>`r`n                      <Tooltip title="Login as Employee">
+                      </Tooltip>
+                      <Tooltip title="Login as Employee">
                         <IconButton size="small" color="success" onClick={() => handleLoginAsEmployee(emp)}>
                           <LockOpen fontSize="small" />
                         </IconButton>
