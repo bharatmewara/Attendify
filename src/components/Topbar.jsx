@@ -67,11 +67,7 @@ const Topbar = ({ title, subtitle, companyProfile }) => {
             </Badge>
           </IconButton>
           <Avatar sx={{ bgcolor: 'primary.main' }}>{displayName.charAt(0).toUpperCase()}</Avatar>
-          {user?.isImpersonated && (
-            <Button size="small" variant="contained" color="secondary" onClick={handleExitImpersonation} sx={{ minWidth: 132 }}>
-              Back to {user.originalRole === 'super_admin' ? 'Super Admin' : 'Admin'}
-            </Button>
-          )}
+          
           <Button size="small" variant="outlined" onClick={onLogout}>
             Logout
           </Button>
