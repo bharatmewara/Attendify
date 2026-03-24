@@ -118,20 +118,17 @@ router.post('/calculate', authenticate, authorize('company_admin', 'super_admin'
       const totalDeductions = Object.values(deductions).reduce((sum, val) => sum + parseFloat(val || 0), 0);
 
       const approvedIncentiveResult = await query(
-        `SELECT COALESCE(SUM(ic.incentive_amount * ir.quantity), 0) AS total
-         FROM incentive_requests ir
-         JOIN incentive_configs ic ON ic.id = ir.incentive_config_id
-         WHERE ir.employee_id = $1
-           AND ir.company_id = $2
-           AND ir.status = 'approved'
-           AND EXTRACT(MONTH FROM ir.requested_at) = $3
-           AND EXTRACT(YEAR FROM ir.requested_at) = $4`,
+        `SELECT COALESCE(SUM(incentive_amount), 0) AS total
+         FROM incentive_submissions
+         WHERE employee_id = $1
+           AND company_id = $2
+           AND status = 'approved'
+           AND EXTRACT(MONTH FROM submitted_at) = $3
+           AND EXTRACT(YEAR FROM submitted_at) = $4`,
         [empId, req.companyId, month, year],
       );
 
-      const approvedIncentives = Number(approvedIncentiveResult.rows[0]?.total || 0);
-      const manualIncentive = employee_id && Number(employee_id) === Number(empId) ? Number(incentive_amount || 0) : 0;
-      const incentives = approvedIncentives + manualIncentive;
+      const incentives = Number(approvedIncentiveResult.rows[0]?.total || 0);
 
       const latePenalties = parseFloat(shift.late_penalty_per_minute) * parseInt(attendance.total_late_minutes || 0);
       const earlyLeavePenalties = parseFloat(shift.early_leave_penalty_per_minute) * parseInt(attendance.total_early_leave_minutes || 0);

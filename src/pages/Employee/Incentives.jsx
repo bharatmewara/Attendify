@@ -22,19 +22,32 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import { Add } from '@mui/icons-material';
+import { Add, UploadFile } from '@mui/icons-material';
 import { apiRequest } from '../../lib/api';
 
 const requestInitial = {
-  incentive_config_id: '',
-  payment_type: 'new',
-  quantity: 1,
-  screenshot_url: '',
-  note: '',
+  client_name: '',
+  product_name: 'Bulk SMS',
+  sms_quantity: '',
+  rate: '',
+  price: '',
+  payment_mode: '',
+  package_type: 'new',
+  client_location: '',
+  screenshot: null,
 };
 
+const productOptions = [
+  'Bulk SMS',
+  'WhatsApp SMS',
+  'WhatsApp Meta Setup',
+  'WhatsApp Meta Recharge',
+  'WhatsApp Meta Subscription',
+  'RCS Setup',
+  'RCS Recharge',
+];
+
 export default function EmployeeIncentives() {
-  const [configs, setConfigs] = useState([]);
   const [requests, setRequests] = useState([]);
   const [openRequestDialog, setOpenRequestDialog] = useState(false);
   const [requestForm, setRequestForm] = useState(requestInitial);
@@ -42,18 +55,8 @@ export default function EmployeeIncentives() {
 
   const loadData = async () => {
     try {
-      const [cfg, req] = await Promise.all([
-        apiRequest('/incentives/config'),
-        apiRequest('/incentives/requests'),
-      ]);
-      const configList = Array.isArray(cfg) ? cfg : Array.isArray(cfg?.rows) ? cfg.rows : [];
-      setConfigs(configList);
+      const req = await apiRequest('/incentives/submissions');
       setRequests(req || []);
-      if (configList.length > 0) {
-        setRequestForm((prev) =>
-          prev.incentive_config_id ? prev : { ...prev, incentive_config_id: String(configList[0].id) },
-        );
-      }
     } catch (error) {
       setMessage({ type: 'error', text: error.message });
     }
@@ -63,16 +66,29 @@ export default function EmployeeIncentives() {
     loadData();
   }, []);
 
+  const handleFileChange = (e) => {
+    setRequestForm({ ...requestForm, screenshot: e.target.files[0] });
+  };
+
   const handleSubmit = async () => {
-    if (!requestForm.incentive_config_id) {
-      setMessage({ type: 'error', text: 'Please select an incentive slab.' });
-      return;
-    }
+    const formData = new FormData();
+    Object.keys(requestForm).forEach(key => {
+      if (key === 'screenshot' && requestForm.screenshot) {
+        formData.append('screenshot', requestForm.screenshot);
+      } else if (requestForm[key]) {
+        formData.append(key, requestForm[key]);
+      }
+    });
+
     try {
-      await apiRequest('/incentives/requests', { method: 'POST', body: requestForm });
+      await apiRequest('/incentives/submissions', {
+        method: 'POST',
+        body: formData,
+        headers: {}, // Let browser set Content-Type for FormData
+      });
       setOpenRequestDialog(false);
       setRequestForm(requestInitial);
-      setMessage({ type: 'success', text: 'Incentive request submitted. Admin can approve from Incentive Management.' });
+      setMessage({ type: 'success', text: 'Incentive request submitted for approval.' });
       loadData();
     } catch (error) {
       setMessage({ type: 'error', text: error.message });
@@ -86,10 +102,10 @@ export default function EmployeeIncentives() {
 
         <Card>
           <CardContent>
-            <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', md: 'center' }} spacing={2}>
+            <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems="center" spacing={2}>
               <Box>
                 <Typography variant="h5" fontWeight={800}>My Incentives</Typography>
-                <Typography color="text.secondary">Submit incentive sales requests with payment proof and track approval status.</Typography>
+                <Typography color="text.secondary">Submit incentive sales requests and track approval status.</Typography>
               </Box>
               <Button variant="contained" startIcon={<Add />} onClick={() => setOpenRequestDialog(true)}>
                 Submit Incentive Request
@@ -100,24 +116,26 @@ export default function EmployeeIncentives() {
 
         <Card>
           <CardContent>
-            <Typography variant="h6" fontWeight={800} sx={{ mb: 1.5 }}>My Requests</Typography>
+            <Typography variant="h6" fontWeight={800} sx={{ mb: 1.5 }}>My Submissions</Typography>
             <TableContainer component={Paper} variant="outlined">
               <Table>
                 <TableHead>
                   <TableRow>
-                    <TableCell>Incentive Type</TableCell>
-                    <TableCell>Package</TableCell>
-                    <TableCell>Payment Type</TableCell>
+                    <TableCell>Client</TableCell>
+                    <TableCell>Product</TableCell>
+                    <TableCell>Price</TableCell>
+                    <TableCell>Incentive</TableCell>
                     <TableCell>Status</TableCell>
-                    <TableCell>Requested At</TableCell>
+                    <TableCell>Submitted At</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {requests.map((row) => (
                     <TableRow key={row.id}>
-                      <TableCell>{row.incentive_type}</TableCell>
-                      <TableCell>{Number(row.package_volume).toLocaleString()}</TableCell>
-                      <TableCell>{row.payment_type}</TableCell>
+                      <TableCell>{row.client_name}</TableCell>
+                      <TableCell>{row.product_name}</TableCell>
+                      <TableCell>{Number(row.price).toLocaleString()}</TableCell>
+                      <TableCell>{Number(row.incentive_amount).toFixed(2)}</TableCell>
                       <TableCell>
                         <Chip
                           size="small"
@@ -125,7 +143,7 @@ export default function EmployeeIncentives() {
                           color={row.status === 'approved' ? 'success' : row.status === 'rejected' ? 'error' : 'warning'}
                         />
                       </TableCell>
-                      <TableCell>{new Date(row.requested_at).toLocaleString()}</TableCell>
+                      <TableCell>{new Date(row.submitted_at).toLocaleString()}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -138,27 +156,36 @@ export default function EmployeeIncentives() {
       <Dialog open={openRequestDialog} onClose={() => setOpenRequestDialog(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Submit Incentive Request</DialogTitle>
         <DialogContent>
-          <TextField fullWidth select label="Incentive Slab" margin="normal" value={requestForm.incentive_config_id} onChange={(e) => setRequestForm({ ...requestForm, incentive_config_id: e.target.value })}>
-            {configs.length === 0 ? (
-              <MenuItem value="" disabled>No incentive slab configured by admin</MenuItem>
-            ) : null}
-            {configs.map((cfg) => (
-              <MenuItem key={cfg.id} value={String(cfg.id)}>
-                {cfg.incentive_type} - {Number(cfg.package_volume).toLocaleString()} - Incentive {cfg.incentive_amount}
-              </MenuItem>
-            ))}
+          <TextField fullWidth label="Client Name" margin="normal" value={requestForm.client_name} onChange={(e) => setRequestForm({ ...requestForm, client_name: e.target.value })} />
+          <TextField fullWidth select label="Product Name" margin="normal" value={requestForm.product_name} onChange={(e) => setRequestForm({ ...requestForm, product_name: e.target.value })}>
+            {productOptions.map(option => <MenuItem key={option} value={option}>{option}</MenuItem>)}
           </TextField>
-          <TextField fullWidth select label="Payment Type" margin="normal" value={requestForm.payment_type} onChange={(e) => setRequestForm({ ...requestForm, payment_type: e.target.value })}>
+          
+          {['Bulk SMS', 'WhatsApp SMS'].includes(requestForm.product_name) && (
+            <>
+              <TextField fullWidth label="SMS Quantity" type="number" margin="normal" value={requestForm.sms_quantity} onChange={(e) => setRequestForm({ ...requestForm, sms_quantity: e.target.value })} />
+              <TextField fullWidth label="Rate" type="number" margin="normal" value={requestForm.rate} onChange={(e) => setRequestForm({ ...requestForm, rate: e.target.value })} />
+            </>
+          )}
+
+          <TextField fullWidth label="Price" type="number" margin="normal" value={requestForm.price} onChange={(e) => setRequestForm({ ...requestForm, price: e.target.value })} />
+          <TextField fullWidth label="Payment Mode" margin="normal" value={requestForm.payment_mode} onChange={(e) => setRequestForm({ ...requestForm, payment_mode: e.target.value })} />
+          <TextField fullWidth select label="Client Package Type" margin="normal" value={requestForm.package_type} onChange={(e) => setRequestForm({ ...requestForm, package_type: e.target.value })}>
             <MenuItem value="new">New</MenuItem>
             <MenuItem value="renew">Renew</MenuItem>
           </TextField>
-          <TextField fullWidth label="Quantity" type="number" margin="normal" value={requestForm.quantity} onChange={(e) => setRequestForm({ ...requestForm, quantity: Number(e.target.value) })} />
-          <TextField fullWidth label="Payment Screenshot URL" margin="normal" value={requestForm.screenshot_url} onChange={(e) => setRequestForm({ ...requestForm, screenshot_url: e.target.value })} helperText="Paste uploaded screenshot link." />
-          <TextField fullWidth label="Notes" margin="normal" multiline rows={3} value={requestForm.note} onChange={(e) => setRequestForm({ ...requestForm, note: e.target.value })} />
+          <TextField fullWidth label="Client Location" margin="normal" value={requestForm.client_location} onChange={(e) => setRequestForm({ ...requestForm, client_location: e.target.value })} />
+          
+          <Button component="label" variant="outlined" startIcon={<UploadFile />} sx={{ mt: 1 }}>
+            Upload Screenshot
+            <input type="file" hidden onChange={handleFileChange} />
+          </Button>
+          {requestForm.screenshot && <Typography variant="body2" sx={{ mt: 1 }}>{requestForm.screenshot.name}</Typography>}
+
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenRequestDialog(false)}>Cancel</Button>
-          <Button variant="contained" onClick={handleSubmit} disabled={configs.length === 0}>Submit</Button>
+          <Button variant="contained" onClick={handleSubmit}>Submit</Button>
         </DialogActions>
       </Dialog>
     </Box>
