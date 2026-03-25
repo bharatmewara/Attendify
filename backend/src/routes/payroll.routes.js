@@ -1,4 +1,4 @@
-import express from 'express';
+﻿import express from 'express';
 import { query } from '../db.js';
 import { authenticate, authorize, requireCompanyContext, tenantIsolation } from '../middleware/auth.middleware.js';
 import { autoMarkAbsent } from '../utils/attendanceHelper.js';
@@ -123,8 +123,9 @@ router.post('/calculate', authenticate, authorize('company_admin', 'super_admin'
          WHERE employee_id = $1
            AND company_id = $2
            AND status = 'approved'
-           AND EXTRACT(MONTH FROM submitted_at) = $3
-           AND EXTRACT(YEAR FROM submitted_at) = $4`,
+           AND approved_at IS NOT NULL
+           AND EXTRACT(MONTH FROM approved_at) = $3
+           AND EXTRACT(YEAR FROM approved_at) = $4`,
         [empId, req.companyId, month, year],
       );
 
@@ -207,7 +208,7 @@ router.post('/credit', authenticate, authorize('company_admin', 'super_admin'), 
     );
 
     const subject = `Salary credited for ${month}/${year}`;
-    const text = `Hello ${payroll.first_name},\n\nYour salary for ${month}/${year} has been credited. Net salary: ₹${payroll.net_salary}.\n${note ? `Note: ${note}\n` : ''}\nThank you for your effort!\nAttendify`;
+    const text = `Hello ${payroll.first_name},\n\nYour salary for ${month}/${year} has been credited. Net salary: â‚¹${payroll.net_salary}.\n${note ? `Note: ${note}\n` : ''}\nThank you for your effort!\nAttendify`;
 
     try {
       await sendEmail({ to: payroll.email, subject, text });

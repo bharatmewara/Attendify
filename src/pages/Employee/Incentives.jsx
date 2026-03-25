@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+﻿import { useEffect, useState } from 'react';
 import {
   Alert,
   Box,
@@ -28,6 +28,10 @@ import { apiRequest } from '../../lib/api';
 const requestInitial = {
   client_name: '',
   product_name: 'Bulk SMS',
+  client_mobile_1: '',
+  client_mobile_2: '',
+  client_email: '',
+  client_username: '',
   sms_quantity: '',
   rate: '',
   price: '',
@@ -53,11 +57,11 @@ const getIncentiveDetails = (productName) => {
       <Box sx={{ mt: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
         <Typography variant="subtitle2" fontWeight={600}>Incentive Details for Bulk SMS:</Typography>
         <Typography variant="body2">Rate: 0.08 - 0.14</Typography>
-        <Typography variant="body2">Quantity 100K-199K: ₹200</Typography>
-        <Typography variant="body2">Quantity 200K-299K: ₹250</Typography>
-        <Typography variant="body2">Quantity 300K-399K: ₹300</Typography>
-        <Typography variant="body2">Quantity 400K-499K: ₹400</Typography>
-        <Typography variant="body2">Quantity 500K-900K: ₹500</Typography>
+        <Typography variant="body2">Quantity 100K-199K: â‚¹200</Typography>
+        <Typography variant="body2">Quantity 200K-299K: â‚¹250</Typography>
+        <Typography variant="body2">Quantity 300K-399K: â‚¹300</Typography>
+        <Typography variant="body2">Quantity 400K-499K: â‚¹400</Typography>
+        <Typography variant="body2">Quantity 500K-900K: â‚¹500</Typography>
         <Typography variant="body2">Quantity 1M-1.5M: 2% of price</Typography>
         <Typography variant="body2" sx={{ mt: 1, fontStyle: 'italic' }}>Renewal packages get half incentive.</Typography>
       </Box>
@@ -67,12 +71,12 @@ const getIncentiveDetails = (productName) => {
       <Box sx={{ mt: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
         <Typography variant="subtitle2" fontWeight={600}>Incentive Details for WhatsApp SMS:</Typography>
         <Typography variant="body2">Rate: 0.03 - 0.12</Typography>
-        <Typography variant="body2">50K-99K (Rate 0.03-0.04): ₹100</Typography>
-        <Typography variant="body2">100K-199K (Rate 0.05-0.06): ₹200; (Rate 0.06-0.12): ₹300</Typography>
-        <Typography variant="body2">200K-299K (Rate 0.03-0.04): ₹200; (Rate 0.05-0.06): ₹300; (Rate 0.07-0.12): ₹400</Typography>
-        <Typography variant="body2">300K-399K (Rate 0.03-0.04): ₹250; (Rate 0.05-0.06): ₹350; (Rate 0.07-0.12): ₹500</Typography>
-        <Typography variant="body2">400K-499K (Rate 0.03-0.04): ₹300; (Rate 0.05-0.06): ₹400; (Rate 0.07-0.12): ₹600</Typography>
-        <Typography variant="body2">500K+ (Rate 0.03-0.06): ₹400; (Rate 0.07-0.09): ₹900; (Rate 0.10-0.12): ₹1200</Typography>
+        <Typography variant="body2">50K-99K (Rate 0.03-0.04): â‚¹100</Typography>
+        <Typography variant="body2">100K-199K (Rate 0.05-0.06): â‚¹200; (Rate 0.06-0.12): â‚¹300</Typography>
+        <Typography variant="body2">200K-299K (Rate 0.03-0.04): â‚¹200; (Rate 0.05-0.06): â‚¹300; (Rate 0.07-0.12): â‚¹400</Typography>
+        <Typography variant="body2">300K-399K (Rate 0.03-0.04): â‚¹250; (Rate 0.05-0.06): â‚¹350; (Rate 0.07-0.12): â‚¹500</Typography>
+        <Typography variant="body2">400K-499K (Rate 0.03-0.04): â‚¹300; (Rate 0.05-0.06): â‚¹400; (Rate 0.07-0.12): â‚¹600</Typography>
+        <Typography variant="body2">500K+ (Rate 0.03-0.06): â‚¹400; (Rate 0.07-0.09): â‚¹900; (Rate 0.10-0.12): â‚¹1200</Typography>
         <Typography variant="body2" sx={{ mt: 1, fontStyle: 'italic' }}>Renewal packages get half incentive.</Typography>
       </Box>
     );
@@ -80,7 +84,7 @@ const getIncentiveDetails = (productName) => {
     return (
       <Box sx={{ mt: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
         <Typography variant="subtitle2" fontWeight={600}>Incentive Details for WhatsApp Meta Setup:</Typography>
-        <Typography variant="body2">Fixed Incentive: ₹100</Typography>
+        <Typography variant="body2">Fixed Incentive: â‚¹100</Typography>
         <Typography variant="body2" sx={{ mt: 1, fontStyle: 'italic' }}>Renewal packages get half incentive.</Typography>
       </Box>
     );
@@ -88,7 +92,7 @@ const getIncentiveDetails = (productName) => {
     return (
       <Box sx={{ mt: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
         <Typography variant="subtitle2" fontWeight={600}>Incentive Details for WhatsApp Meta Recharge:</Typography>
-        <Typography variant="body2">Price ≤ ₹5000: ₹100</Typography>
+        <Typography variant="body2">Price â‰¤ â‚¹5000: â‚¹100</Typography>
         <Typography variant="body2" sx={{ mt: 1, fontStyle: 'italic' }}>Renewal packages get half incentive.</Typography>
       </Box>
     );
@@ -96,7 +100,7 @@ const getIncentiveDetails = (productName) => {
     return (
       <Box sx={{ mt: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
         <Typography variant="subtitle2" fontWeight={600}>Incentive Details for WhatsApp Meta Subscription:</Typography>
-        <Typography variant="body2">Fixed Incentive: ₹200</Typography>
+        <Typography variant="body2">Fixed Incentive: â‚¹200</Typography>
         <Typography variant="body2" sx={{ mt: 1, fontStyle: 'italic' }}>Renewal packages get half incentive.</Typography>
       </Box>
     );
@@ -104,7 +108,7 @@ const getIncentiveDetails = (productName) => {
     return (
       <Box sx={{ mt: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
         <Typography variant="subtitle2" fontWeight={600}>Incentive Details for RCS Setup:</Typography>
-        <Typography variant="body2">Fixed Incentive: ₹100</Typography>
+        <Typography variant="body2">Fixed Incentive: â‚¹100</Typography>
         <Typography variant="body2" sx={{ mt: 1, fontStyle: 'italic' }}>Renewal packages get half incentive.</Typography>
       </Box>
     );
@@ -112,7 +116,7 @@ const getIncentiveDetails = (productName) => {
     return (
       <Box sx={{ mt: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
         <Typography variant="subtitle2" fontWeight={600}>Incentive Details for RCS Recharge:</Typography>
-        <Typography variant="body2">Price ≤ ₹15000: ₹100</Typography>
+        <Typography variant="body2">Price â‰¤ â‚¹15000: â‚¹100</Typography>
         <Typography variant="body2" sx={{ mt: 1, fontStyle: 'italic' }}>Renewal packages get half incentive.</Typography>
       </Box>
     );
@@ -299,7 +303,11 @@ export default function EmployeeIncentives() {
       <Dialog open={openRequestDialog} onClose={() => setOpenRequestDialog(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Submit Incentive Request</DialogTitle>
         <DialogContent>
-          <TextField fullWidth label="Client Name" margin="normal" value={requestForm.client_name} onChange={(e) => setRequestForm({ ...requestForm, client_name: e.target.value })} />
+          <TextField fullWidth required label="Client Name" margin="normal" value={requestForm.client_name} onChange={(e) => setRequestForm({ ...requestForm, client_name: e.target.value })} />
+          <TextField fullWidth required label="Client Mobile No 1" margin="normal" value={requestForm.client_mobile_1} onChange={(e) => setRequestForm({ ...requestForm, client_mobile_1: e.target.value })} />
+          <TextField fullWidth label="Client Mobile No 2" margin="normal" value={requestForm.client_mobile_2} onChange={(e) => setRequestForm({ ...requestForm, client_mobile_2: e.target.value })} />
+          <TextField fullWidth required label="Client Email" margin="normal" value={requestForm.client_email} onChange={(e) => setRequestForm({ ...requestForm, client_email: e.target.value })} />
+          <TextField fullWidth label="Client User Name" margin="normal" value={requestForm.client_username} onChange={(e) => setRequestForm({ ...requestForm, client_username: e.target.value })} />
           <TextField fullWidth select label="Product Name" margin="normal" value={requestForm.product_name} onChange={(e) => setRequestForm({ ...requestForm, product_name: e.target.value })}>
             {productOptions.map(option => <MenuItem key={option} value={option}>{option}</MenuItem>)}
           </TextField>
@@ -318,7 +326,7 @@ export default function EmployeeIncentives() {
           {calculatedIncentive > 0 && (
             <Box sx={{ mt: 2, p: 2, bgcolor: 'success.light', borderRadius: 1 }}>
               <Typography variant="subtitle2" fontWeight={600} color="success.contrastText">
-                Estimated Incentive: ₹{calculatedIncentive.toFixed(2)}
+                Estimated Incentive: {calculatedIncentive.toFixed(2)}
               </Typography>
             </Box>
           )}

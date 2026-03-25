@@ -1,14 +1,16 @@
--- Drop existing incentive tables if they exist
-DROP TABLE IF EXISTS incentive_requests;
-DROP TABLE IF EXISTS incentive_configs;
+﻿-- Incentives schema
+-- Note: This file is intentionally non-destructive (no DROP TABLE) to avoid data loss.
 
--- Create a new table to store incentive submissions
 CREATE TABLE IF NOT EXISTS incentive_submissions (
   id SERIAL PRIMARY KEY,
   company_id INTEGER NOT NULL,
   employee_id INTEGER NOT NULL,
   client_name VARCHAR(255) NOT NULL,
   product_name VARCHAR(100) NOT NULL,
+  client_mobile_1 VARCHAR(20),
+  client_mobile_2 VARCHAR(20),
+  client_email VARCHAR(255),
+  client_username VARCHAR(255),
   sms_quantity INTEGER,
   rate NUMERIC(10, 4),
   price NUMERIC(10, 2),
@@ -24,3 +26,15 @@ CREATE TABLE IF NOT EXISTS incentive_submissions (
   FOREIGN KEY (company_id) REFERENCES companies(id),
   FOREIGN KEY (employee_id) REFERENCES employees(id)
 );
+
+ALTER TABLE IF EXISTS incentive_submissions
+  ADD COLUMN IF NOT EXISTS client_mobile_1 VARCHAR(20);
+
+ALTER TABLE IF EXISTS incentive_submissions
+  ADD COLUMN IF NOT EXISTS client_mobile_2 VARCHAR(20);
+
+ALTER TABLE IF EXISTS incentive_submissions
+  ADD COLUMN IF NOT EXISTS client_email VARCHAR(255);
+
+ALTER TABLE IF EXISTS incentive_submissions
+  ADD COLUMN IF NOT EXISTS client_username VARCHAR(255);
