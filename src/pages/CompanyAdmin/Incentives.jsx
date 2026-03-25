@@ -22,6 +22,7 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  TextField,
   Typography,
 } from '@mui/material';
 import { Check, Close, Info, MoreVert } from '@mui/icons-material';
@@ -41,14 +42,19 @@ const toScreenshotUrl = (screenshotPath) => {
 
 export default function IncentivesManagement() {
   const [requests, setRequests] = useState([]);
+  const [earnings, setEarnings] = useState([]);
   const [message, setMessage] = useState({ type: '', text: '' });
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [selected, setSelected] = useState(null);
 
+  const now = useMemo(() => new Date(), []);
+  const [earningsMonth, setEarningsMonth] = useState(now.getMonth() + 1);
+  const [earningsYear, setEarningsYear] = useState(now.getFullYear());
+
   const [menuAnchorEl, setMenuAnchorEl] = useState(null);
   const [menuRow, setMenuRow] = useState(null);
 
-  const loadData = async () => {
+  const loadQueue = async () => {
     try {
       const req = await apiRequest('/incentives/submissions');
       setRequests(req || []);
@@ -57,11 +63,30 @@ export default function IncentivesManagement() {
     }
   };
 
+  const loadEarnings = async (month = earningsMonth, year = earningsYear) => {
+    try {
+      const qs = new URLSearchParams();
+      if (month) qs.set('month', String(month));
+      if (year) qs.set('year', String(year));
+      const rows = await apiRequest(`/incentives/earnings?${qs.toString()}`);
+      setEarnings(rows || []);
+    } catch (error) {
+      setMessage({ type: 'error', text: error.message });
+    }
+  };
+
   useEffect(() => {
-    loadData();
+    loadQueue();
+    loadEarnings(earningsMonth, earningsYear);
   }, []);
 
-  const pendingCount = useMemo(() => requests.filter((item) => item.status === 'pending').length, [requests]);
+  const queueRows = useMemo(() => requests.filter((r) => r.status === 'pending'), [requests]);
+  const pendingCount = queueRows.length;
+
+  const earningsTotal = useMemo(
+    () => earnings.reduce((sum, r) => sum + Number(r.incentive_amount || 0), 0),
+    [earnings],
+  );
 
   const handleUpdateStatus = async (id, status) => {
     try {
@@ -70,7 +95,8 @@ export default function IncentivesManagement() {
         body: { status },
       });
       setMessage({ type: 'success', text: `Request ${status}.` });
-      loadData();
+      await loadQueue();
+      await loadEarnings(earningsMonth, earningsYear);
     } catch (error) {
       setMessage({ type: 'error', text: error.message });
     }
@@ -130,7 +156,7 @@ export default function IncentivesManagement() {
             <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems="center" spacing={2}>
               <Box>
                 <Typography variant="h5" fontWeight={800}>Incentive Management</Typography>
-                <Typography color="text.secondary">Review and approve employee incentive submissions.</Typography>
+                <Typography color="text.secondary">Approve pending incentive submissions and track monthly earnings.</Typography>
               </Box>
               <Chip color={pendingCount ? 'warning' : 'success'} label={`Pending Requests: ${pendingCount}`} />
             </Stack>
@@ -139,7 +165,7 @@ export default function IncentivesManagement() {
 
         <Card>
           <CardContent>
-            <Typography variant="h6" fontWeight={800} sx={{ mb: 1.5 }}>Request Queue</Typography>
+            <Typography variant="h6" fontWeight={800} sx={{ mb: 1.5 }}>Request Queue (Pending)</Typography>
             <TableContainer component={Paper} variant="outlined">
               <Table>
                 <TableHead>
@@ -153,12 +179,11 @@ export default function IncentivesManagement() {
                     <TableCell>Mobile</TableCell>
                     <TableCell>Incentive</TableCell>
                     <TableCell>Screenshot</TableCell>
-                    <TableCell>Status</TableCell>
                     <TableCell align="right">Actions</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {requests.map((row) => {
+                  {queueRows.map((row) => {
                     const screenshotUrl = toScreenshotUrl(row.screenshot_path);
 
                     return (
@@ -176,13 +201,6 @@ export default function IncentivesManagement() {
                             <Button size="small" variant="text" href={screenshotUrl} target="_blank" rel="noreferrer">View</Button>
                           ) : 'N/A'}
                         </TableCell>
-                        <TableCell>
-                          <Chip
-                            size="small"
-                            label={row.status}
-                            color={row.status === 'approved' ? 'success' : row.status === 'rejected' ? 'error' : 'warning'}
-                          />
-                        </TableCell>
                         <TableCell align="right">
                           <IconButton
                             size="small"
@@ -197,6 +215,83 @@ export default function IncentivesManagement() {
                       </TableRow>
                     );
                   })}
+                  {queueRows.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={10}>
+                        <Typography variant="body2" color="text.secondary">No pending requests.</Typography>
+                      </TableCell>
+                    </TableRow>
+                  ) : null}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent>
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between" alignItems={{ xs: 'stretch', md: 'center' }}>
+              <Box>
+                <Typography variant="h6" fontWeight={800}>Monthly Incentive Info</Typography>
+                <Typography color="text.secondary">Monitor incentives earned month-wise.</Typography>
+              </Box>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ xs: 'stretch', sm: 'center' }}>
+                <TextField
+                  size="small"
+                  label="Month"
+                  type="number"
+                  value={earningsMonth}
+                  onChange={(e) => setEarningsMonth(Math.max(1, Math.min(12, Number(e.target.value) || 1)))}
+                  inputProps={{ min: 1, max: 12 }}
+                  sx={{ width: { xs: '100%', sm: 120 } }}
+                />
+                <TextField
+                  size="small"
+                  label="Year"
+                  type="number"
+                  value={earningsYear}
+                  onChange={(e) => setEarningsYear(Number(e.target.value) || now.getFullYear())}
+                  sx={{ width: { xs: '100%', sm: 140 } }}
+                />
+                <Button variant="contained" onClick={() => loadEarnings(earningsMonth, earningsYear)}>Load</Button>
+              </Stack>
+            </Stack>
+
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mt: 2 }}>
+              <Chip color="success" label={`Total Earned: ${earningsTotal.toFixed(2)}`} />
+              <Chip variant="outlined" label={`Rows: ${earnings.length}`} />
+            </Stack>
+
+            <TableContainer component={Paper} variant="outlined" sx={{ mt: 2 }}>
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Employee</TableCell>
+                    <TableCell>Client</TableCell>
+                    <TableCell>Incentive Earned</TableCell>
+                    <TableCell>Type</TableCell>
+                    <TableCell>Payment Mode</TableCell>
+                    <TableCell>Date</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {earnings.map((row) => (
+                    <TableRow key={row.id}>
+                      <TableCell>{row.first_name} {row.last_name}</TableCell>
+                      <TableCell>{row.client_name}</TableCell>
+                      <TableCell>{Number(row.incentive_amount || 0).toFixed(2)}</TableCell>
+                      <TableCell>{String(row.package_type || '').toLowerCase() === 'renew' ? 'Renew' : 'New'}</TableCell>
+                      <TableCell>{row.payment_mode || 'N/A'}</TableCell>
+                      <TableCell>{row.earned_at ? new Date(row.earned_at).toLocaleString() : 'N/A'}</TableCell>
+                    </TableRow>
+                  ))}
+                  {earnings.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={6}>
+                        <Typography variant="body2" color="text.secondary">No earnings for selected month.</Typography>
+                      </TableCell>
+                    </TableRow>
+                  ) : null}
                 </TableBody>
               </Table>
             </TableContainer>
@@ -216,18 +311,14 @@ export default function IncentivesManagement() {
           <Info fontSize="small" style={{ marginRight: 10 }} />
           Details
         </MenuItem>
-        {menuRow?.status === 'pending' ? (
-          <MenuItem onClick={() => handleMenuAction('approve')}>
-            <Check fontSize="small" style={{ marginRight: 10 }} />
-            Approve
-          </MenuItem>
-        ) : null}
-        {menuRow?.status === 'pending' ? (
-          <MenuItem onClick={() => handleMenuAction('reject')}>
-            <Close fontSize="small" style={{ marginRight: 10 }} />
-            Reject
-          </MenuItem>
-        ) : null}
+        <MenuItem onClick={() => handleMenuAction('approve')}>
+          <Check fontSize="small" style={{ marginRight: 10 }} />
+          Approve
+        </MenuItem>
+        <MenuItem onClick={() => handleMenuAction('reject')}>
+          <Close fontSize="small" style={{ marginRight: 10 }} />
+          Reject
+        </MenuItem>
       </Menu>
 
       <Dialog open={detailsOpen} onClose={closeDetails} maxWidth="sm" fullWidth>

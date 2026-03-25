@@ -104,6 +104,36 @@ router.get('/submissions', authenticate, tenantIsolation, async (req, res) => {
   }
 });
 
+router.get('/earnings', authenticate, tenantIsolation, async (req, res) => {
+  try {
+    let employeeId = null;
+    if (req.user.role === 'employee') {
+      employeeId = await resolveEmployeeIdForUser(req.user.id);
+      if (!employeeId) return res.json([]);
+    }
+
+    const month = req.query.month ? Number(req.query.month) : null;
+    const year = req.query.year ? Number(req.query.year) : null;
+    const employeeFilter = employeeId || (req.query.employee_id ? Number(req.query.employee_id) : null);
+
+    const result = await query(
+      `SELECT ie.*, e.first_name, e.last_name, e.employee_code
+       FROM incentive_earnings ie
+       JOIN employees e ON e.id = ie.employee_id
+       WHERE ($1::int IS NULL OR ie.company_id = $1)
+         AND ($2::int IS NULL OR ie.earned_month = $2)
+         AND ($3::int IS NULL OR ie.earned_year = $3)
+         AND ($4::int IS NULL OR ie.employee_id = $4)
+       ORDER BY ie.earned_at DESC`,
+      [req.companyId, month, year, employeeFilter],
+    );
+
+    return res.json(result.rows);
+  } catch (error) {
+    console.error('Incentive earnings fetch failed', error);
+    return res.status(500).json({ message: error.message });
+  }
+});
 router.post(
   '/submissions',
   authenticate,
@@ -132,6 +162,11 @@ router.post(
 
     if (!client_mobile_1 || !client_email) {
       return res.status(400).json({ message: 'Client mobile number and email are required.' });
+    }
+
+    const rateValue = rate === undefined || rate === null || rate === '' ? null : Number(rate);
+    if (rateValue !== null && (!Number.isFinite(rateValue) || rateValue < 0 || rateValue >= 1)) {
+      return res.status(400).json({ message: 'Rate must be entered in paisa (example 0.12) and must be less than 1.' });
     }
 
     try {
@@ -277,16 +312,74 @@ router.put(
 
       const result = await query(
         `UPDATE incentive_submissions
-         SET status = $1,
-             approved_by = CASE WHEN $1 = 'approved' THEN $2 ELSE NULL END,
-             approved_at = CASE WHEN $1 = 'approved' THEN NOW() ELSE NULL END
-         WHERE id = $3
-           AND company_id = $4
+         SET status = $1::varchar(20),
+             approved_by = CASE WHEN $1::varchar(20) = 'approved'::varchar(20) THEN $2::int ELSE NULL END,
+             approved_at = CASE WHEN $1::varchar(20) = 'approved'::varchar(20) THEN NOW() ELSE NULL END
+         WHERE id = $3::int
+           AND company_id = $4::int
          RETURNING *`,
         [nextStatus, req.user.id, submissionId, req.companyId],
       );
 
       const updated = result.rows[0];
+
+      // Keep monthly earnings table in sync with approved submissions.
+      try {
+        if (updated.status === 'approved') {
+          await query(
+            `INSERT INTO incentive_earnings (
+              company_id, employee_id, submission_id,
+              earned_month, earned_year, earned_at,
+              client_name, product_name, package_type, payment_mode, price, incentive_amount, client_location,
+              submitted_at, approved_by, approved_at
+            )
+            SELECT
+              s.company_id,
+              s.employee_id,
+              s.id,
+              EXTRACT(MONTH FROM s.approved_at)::int,
+              EXTRACT(YEAR FROM s.approved_at)::int,
+              s.approved_at,
+              s.client_name,
+              s.product_name,
+              s.package_type,
+              s.payment_mode,
+              s.price,
+              s.incentive_amount,
+              s.client_location,
+              s.submitted_at,
+              s.approved_by,
+              s.approved_at
+            FROM incentive_submissions s
+            WHERE s.id = $1::int
+              AND s.company_id = $2::int
+              AND s.status = 'approved'
+              AND s.approved_at IS NOT NULL
+            ON CONFLICT (submission_id)
+            DO UPDATE SET
+              earned_month = EXCLUDED.earned_month,
+              earned_year = EXCLUDED.earned_year,
+              earned_at = EXCLUDED.earned_at,
+              package_type = EXCLUDED.package_type,
+              payment_mode = EXCLUDED.payment_mode,
+              price = EXCLUDED.price,
+              incentive_amount = EXCLUDED.incentive_amount,
+              client_location = EXCLUDED.client_location,
+              approved_by = EXCLUDED.approved_by,
+              approved_at = EXCLUDED.approved_at`,
+            [submissionId, req.companyId],
+          );
+        } else {
+          await query(
+            `DELETE FROM incentive_earnings
+             WHERE submission_id = $1::int
+               AND company_id = $2::int`,
+            [submissionId, req.companyId],
+          );
+        }
+      } catch (earnError) {
+        console.error('Incentive earnings sync failed', earnError);
+      }
 
       // If payroll for that month was already processed, keep its incentive total in sync.
       try {
@@ -323,14 +416,14 @@ router.put(
 
           await query(
             `UPDATE payroll_calculations
-             SET incentives = $1,
-                 gross_salary = gross_salary - incentives + $1,
-                 net_salary = net_salary - incentives + $1,
+             SET incentives = $1::decimal(10,2),
+                 gross_salary = (gross_salary - incentives + $1::decimal(10,2)),
+                 net_salary = (net_salary - incentives + $1::decimal(10,2)),
                  processed_at = NOW()
-             WHERE employee_id = $2
-               AND company_id = $3
-               AND month = $4
-               AND year = $5`,
+             WHERE employee_id = $2::int
+               AND company_id = $3::int
+               AND month = $4::int
+               AND year = $5::int`,
             [total, updated.employee_id, req.companyId, month, year],
           );
         }
@@ -340,7 +433,34 @@ router.put(
 
       return res.json(updated);
     } catch (error) {
-      return res.status(500).json({ message: error.message });
+      console.error('Incentive status update failed', {
+        submissionId: req.params.id,
+        companyId: req.companyId,
+        userId: req.user?.id,
+        role: req.user?.role,
+        status: req.body?.status,
+        message: error?.message,
+        code: error?.code,
+        detail: error?.detail,
+        hint: error?.hint,
+        constraint: error?.constraint,
+        stack: error?.stack,
+      });
+
+      const isProd = String(process.env.NODE_ENV || '').toLowerCase() === 'production';
+      return res.status(500).json({
+        message: error?.message || 'Internal server error',
+        ...(isProd
+          ? {}
+          : {
+              pg: {
+                code: error?.code,
+                detail: error?.detail,
+                hint: error?.hint,
+                constraint: error?.constraint,
+              },
+            }),
+      });
     }
   },
 );

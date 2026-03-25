@@ -213,11 +213,20 @@ export default function EmployeeIncentives() {
     setCalculatedIncentive(incentive);
   }, [requestForm.product_name, requestForm.sms_quantity, requestForm.rate, requestForm.price, requestForm.package_type]);
 
+  const rateInvalid = ['Bulk SMS', 'WhatsApp SMS'].includes(requestForm.product_name)
+    && requestForm.rate !== ''
+    && Number(requestForm.rate) >= 1;
+
   const handleFileChange = (e) => {
     setRequestForm({ ...requestForm, screenshot: e.target.files[0] });
   };
 
   const handleSubmit = async () => {
+    if (rateInvalid) {
+      setMessage({ type: 'error', text: 'Rate must be entered in paisa (example 0.12) and must be less than 1.' });
+      return;
+    }
+
     const formData = new FormData();
     Object.keys(requestForm).forEach(key => {
       if (key === 'screenshot' && requestForm.screenshot) {
@@ -317,7 +326,7 @@ export default function EmployeeIncentives() {
           {['Bulk SMS', 'WhatsApp SMS'].includes(requestForm.product_name) && (
             <>
               <TextField fullWidth label="SMS Quantity" type="number" margin="normal" value={requestForm.sms_quantity} onChange={(e) => setRequestForm({ ...requestForm, sms_quantity: e.target.value })} />
-              <TextField fullWidth label="Rate" type="number" margin="normal" value={requestForm.rate} onChange={(e) => setRequestForm({ ...requestForm, rate: e.target.value })} />
+              <TextField fullWidth label="Rate" type="number" margin="normal" value={requestForm.rate} onChange={(e) => setRequestForm({ ...requestForm, rate: e.target.value })} error={rateInvalid} helperText={rateInvalid ? "Enter paisa rate like 0.12 (must be < 1)." : "Example: 0.12"} inputProps={{ step: "0.01", min: 0, max: 0.9999 }} />
             </>
           )}
 
