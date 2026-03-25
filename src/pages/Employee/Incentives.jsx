@@ -57,11 +57,11 @@ const getIncentiveDetails = (productName) => {
       <Box sx={{ mt: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
         <Typography variant="subtitle2" fontWeight={600}>Incentive Details for Bulk SMS:</Typography>
         <Typography variant="body2">Rate: 0.08 - 0.14</Typography>
-        <Typography variant="body2">Quantity 100K-199K: â‚¹200</Typography>
-        <Typography variant="body2">Quantity 200K-299K: â‚¹250</Typography>
-        <Typography variant="body2">Quantity 300K-399K: â‚¹300</Typography>
-        <Typography variant="body2">Quantity 400K-499K: â‚¹400</Typography>
-        <Typography variant="body2">Quantity 500K-900K: â‚¹500</Typography>
+        <Typography variant="body2">Quantity 100Lakh-199Lakh: Rs.200</Typography>
+        <Typography variant="body2">Quantity 200Lakh-299Lakh: Rs.250</Typography>
+        <Typography variant="body2">Quantity 300Lakh-399Lakh: Rs.300</Typography>
+        <Typography variant="body2">Quantity 400Lakh-499Lakh: Rs.400</Typography>
+        <Typography variant="body2">Quantity 500Lakh-900Lakh: Rs.500</Typography>
         <Typography variant="body2">Quantity 1M-1.5M: 2% of price</Typography>
         <Typography variant="body2" sx={{ mt: 1, fontStyle: 'italic' }}>Renewal packages get half incentive.</Typography>
       </Box>
