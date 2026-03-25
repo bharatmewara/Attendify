@@ -191,7 +191,7 @@ const [openEditDialog, setOpenEditDialog] = useState(false);
   const handleLoginAsEmployee = async (emp) => {
     try {
       const response = await apiRequest(`/employees/${emp.id}/impersonate`);
-      const impersonationUrl = `${window.location.origin}${import.meta.env.BASE_URL}?token=${encodeURIComponent(response.token)}`;
+      const impersonationUrl = `${window.location.origin}${import.meta.env.BASE_URL}app/dashboard?token=${encodeURIComponent(response.token)}`;
       window.open(impersonationUrl, '_blank', 'noopener,noreferrer');
       setMessage(`Opened ${emp.first_name} ${emp.last_name} in a new tab`);
     } catch (error) {

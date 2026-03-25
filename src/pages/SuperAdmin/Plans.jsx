@@ -223,9 +223,9 @@ export default function PlansPage() {
         </Alert>
       </Snackbar>
 
-      <Grid container spacing={3}>
+      <Grid spacing={3}>
         {plans.map((plan, index) => (
-          <Grid item xs={12} md={4} key={plan.id}>
+          <Grid xs={12} md={4} key={plan.id}>
             <Card
               sx={{
                 borderRadius: 3,
@@ -397,8 +397,8 @@ export default function PlansPage() {
           </Typography>
         </DialogTitle>
         <DialogContent>
-          <Grid container spacing={3} sx={{ mt: 1 }}>
-            <Grid item xs={12} sm={8}>
+          <Grid spacing={3} sx={{ mt: 1 }}>
+            <Grid xs={12} sm={8}>
               <TextField
                 fullWidth
                 label="Plan Name"
@@ -407,7 +407,7 @@ export default function PlansPage() {
                 required
               />
             </Grid>
-            <Grid item xs={12} sm={4}>
+            <Grid xs={12} sm={4}>
               <TextField
                 fullWidth
                 label="Employee Limit"
@@ -417,7 +417,7 @@ export default function PlansPage() {
                 required
               />
             </Grid>
-            <Grid item xs={12}>
+            <Grid xs={12}>
               <TextField
                 fullWidth
                 label="Description"
@@ -428,7 +428,7 @@ export default function PlansPage() {
                 placeholder="Brief description of the plan"
               />
             </Grid>
-            <Grid item xs={12} sm={6}>
+            <Grid xs={12} sm={6}>
               <TextField
                 fullWidth
                 label="Monthly Price (₹)"
@@ -438,7 +438,7 @@ export default function PlansPage() {
                 required
               />
             </Grid>
-            <Grid item xs={12} sm={6}>
+            <Grid xs={12} sm={6}>
               <TextField
                 fullWidth
                 label="Yearly Price (₹)"
@@ -449,7 +449,7 @@ export default function PlansPage() {
                 helperText={`Savings: ${calculateSavings(formData.price_monthly, formData.price_yearly)}%`}
               />
             </Grid>
-            <Grid item xs={12}>
+            <Grid xs={12}>
               <FormControlLabel
                 control={
                   <Switch
@@ -460,17 +460,17 @@ export default function PlansPage() {
                 label="Active Plan"
               />
             </Grid>
-            <Grid item xs={12}>
+            <Grid xs={12}>
               <Divider />
             </Grid>
-            <Grid item xs={12}>
+            <Grid xs={12}>
               <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 2 }}>
                 Features & Modules
               </Typography>
               <Paper sx={{ p: 2, bgcolor: 'grey.50' }}>
-                <Grid container spacing={2}>
+                <Grid spacing={2}>
                   {Object.keys(formData.features).map((feature) => (
-                    <Grid item xs={12} sm={6} key={feature}>
+                    <Grid xs={12} sm={6} key={feature}>
                       <FormControlLabel
                         control={
                           <Switch

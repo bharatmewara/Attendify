@@ -31,9 +31,9 @@ const DashboardHome = () => {
           </Typography>
         </Paper>
 
-        <Grid container spacing={2.5} mb={3.5}>
+        <Grid spacing={2.5} mb={3.5}>
           {metrics.map((metric) => (
-            <Grid size={{ xs: 12, sm: 6, lg: 3 }} key={metric.title}>
+            <Grid xs={12} sm={6} lg={3} key={metric.title}>
               <Paper
                 sx={{
                   p: 2.5,
@@ -57,11 +57,11 @@ const DashboardHome = () => {
         <Typography variant="h5" fontWeight={800} mb={2.2}>
           Core Modules
         </Typography>
-        <Grid container spacing={2.5} mb={3.5}>
+        <Grid spacing={2.5} mb={3.5}>
           {moduleCatalog.map((module) => {
             const Icon = module.icon;
             return (
-              <Grid size={{ xs: 12, md: 6 }} key={module.key}>
+              <Grid xs={12} md={6} key={module.key}>
                 <Paper
                   sx={{
                     p: 2.5,
@@ -103,9 +103,9 @@ const DashboardHome = () => {
         <Typography variant="h5" fontWeight={800} mb={2}>
           Panel Workspaces
         </Typography>
-        <Grid container spacing={2.5}>
+        <Grid spacing={2.5}>
           {panelCatalog.map((panel) => (
-            <Grid size={{ xs: 12, md: 4 }} key={panel.key}>
+            <Grid xs={12} md={4} key={panel.key}>
               <Paper
                 sx={{
                   p: 2.5,

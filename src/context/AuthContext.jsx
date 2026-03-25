@@ -13,6 +13,7 @@ const getUrlToken = () => {
 
 const persistSessionToken = (token) => {
   sessionStorage.setItem(TOKEN_KEY, token);
+  localStorage.setItem(TOKEN_KEY, token);
 };
 
 const persistLoginToken = (token) => {

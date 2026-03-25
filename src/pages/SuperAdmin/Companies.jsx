@@ -347,7 +347,7 @@ export default function CompaniesPage() {
   const handleLoginAsCompanyAdmin = async () => {
     try {
       const response = await apiRequest(`/superadmin/companies/${selectedCompany.id}/impersonate`);
-      const impersonationUrl = `${window.location.origin}${import.meta.env.BASE_URL}?token=${encodeURIComponent(response.token)}`;
+      const impersonationUrl = `${window.location.origin}${import.meta.env.BASE_URL}app/dashboard?token=${encodeURIComponent(response.token)}`;
       window.open(impersonationUrl, '_blank', 'noopener,noreferrer');
       setMessage('Company admin opened in a new tab');
     } catch (error) {
@@ -603,29 +603,29 @@ export default function CompaniesPage() {
             <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 3 }}>
               <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 0.5 }}>Company Details</Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2.5 }}>Basic company identity, contact details, and branding.</Typography>
-              <Grid container spacing={2}>
-                <Grid item xs={12} sm={6}>
+              <Grid spacing={2}>
+                <Grid xs={12} sm={6}>
                   <TextField fullWidth label="Company Name" value={formData.company_name} onChange={(e) => setFormData({ ...formData, company_name: e.target.value })} required />
                 </Grid>
-                <Grid item xs={12} sm={6}>
+                <Grid xs={12} sm={6}>
                   <TextField fullWidth label="Company Code" value={formData.company_code} onChange={(e) => setFormData({ ...formData, company_code: e.target.value })} helperText="Optional. Leave blank to auto-generate from company name." />
                 </Grid>
-                <Grid item xs={12} sm={6}>
+                <Grid xs={12} sm={6}>
                   <TextField fullWidth label="Email" type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} required />
                 </Grid>
-                <Grid item xs={12} sm={6}>
+                <Grid xs={12} sm={6}>
                   <TextField fullWidth label="Phone" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} />
                 </Grid>
-                <Grid item xs={12} sm={6}>
+                <Grid xs={12} sm={6}>
                   <TextField fullWidth label="Website" value={formData.website} onChange={(e) => setFormData({ ...formData, website: e.target.value })} />
                 </Grid>
-                <Grid item xs={12} sm={6}>
+                <Grid xs={12} sm={6}>
                   <TextField fullWidth label="Industry" value={formData.industry} onChange={(e) => setFormData({ ...formData, industry: e.target.value })} />
                 </Grid>
-                <Grid item xs={12}>
+                <Grid xs={12}>
                   <TextField fullWidth label="Address" multiline rows={3} value={formData.address} onChange={(e) => setFormData({ ...formData, address: e.target.value })} />
                 </Grid>
-                <Grid item xs={12} sm={6}>
+                <Grid xs={12} sm={6}>
                   <Button component="label" variant="outlined" startIcon={<UploadFile />} sx={{ borderRadius: 2 }}>
                     Attach Logo
                     <input hidden type="file" accept="image/*" onChange={(e) => setFormData({ ...formData, logo: e.target.files?.[0] || null })} />
@@ -642,14 +642,14 @@ export default function CompaniesPage() {
             <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 3 }}>
               <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 0.5 }}>Admin Access</Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2.5 }}>Create the primary company admin account used to manage the workspace.</Typography>
-              <Grid container spacing={2}>
-                <Grid item xs={12} sm={6}>
+              <Grid spacing={2}>
+                <Grid xs={12} sm={6}>
                   <TextField fullWidth label="Admin Email" type="email" value={formData.admin_email} onChange={(e) => setFormData({ ...formData, admin_email: e.target.value })} required />
                 </Grid>
-                <Grid item xs={12} sm={6}>
+                <Grid xs={12} sm={6}>
                   <TextField fullWidth label="Admin Password" type="password" value={formData.admin_password} onChange={(e) => setFormData({ ...formData, admin_password: e.target.value })} required />
                 </Grid>
-                <Grid item xs={12} sm={6}>
+                <Grid xs={12} sm={6}>
                   <TextField fullWidth label="Confirm Admin Password" type="password" value={formData.confirm_password} onChange={(e) => setFormData({ ...formData, confirm_password: e.target.value })} required />
                 </Grid>
               </Grid>
@@ -658,8 +658,8 @@ export default function CompaniesPage() {
             <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 3 }}>
               <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 0.5 }}>Subscription Setup</Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2.5 }}>Assign a plan now or leave the company on trial and configure billing later.</Typography>
-              <Grid container spacing={2}>
-                <Grid item xs={12} sm={6} md={4}>
+              <Grid spacing={2}>
+                <Grid xs={12} sm={6} md={4}>
                   <FormControl fullWidth size="small">
                     <InputLabel id="company-plan-label">Plan</InputLabel>
                     <Select labelId="company-plan-label" label="Plan" value={formData.plan_id} onChange={(e) => setFormData({ ...formData, plan_id: e.target.value })}>
@@ -670,7 +670,7 @@ export default function CompaniesPage() {
                     </Select>
                   </FormControl>
                 </Grid>
-                <Grid item xs={12} sm={6} md={4}>
+                <Grid xs={12} sm={6} md={4}>
                   <FormControl fullWidth size="small" disabled={!formData.plan_id}>
                     <InputLabel id="payment-status-label">Payment Status</InputLabel>
                     <Select labelId="payment-status-label" label="Payment Status" value={formData.payment_status} onChange={(e) => setFormData({ ...formData, payment_status: e.target.value })}>
@@ -679,7 +679,7 @@ export default function CompaniesPage() {
                     </Select>
                   </FormControl>
                 </Grid>
-                <Grid item xs={12} sm={6} md={4}>
+                <Grid xs={12} sm={6} md={4}>
                   <FormControl fullWidth size="small" disabled={!formData.plan_id}>
                     <InputLabel id="billing-cycle-label">Billing Cycle</InputLabel>
                     <Select labelId="billing-cycle-label" label="Billing Cycle" value={formData.billing_cycle} onChange={(e) => setFormData({ ...formData, billing_cycle: e.target.value })}>
@@ -723,8 +723,8 @@ export default function CompaniesPage() {
           </Typography>
         </DialogTitle>
         <DialogContent>
-          <Grid container spacing={3} sx={{ mt: 1 }}>
-            <Grid item xs={12} sm={6}>
+          <Grid spacing={3} sx={{ mt: 1 }}>
+            <Grid xs={12} sm={6}>
               <TextField
                 fullWidth
                 label="Company Name"
@@ -733,7 +733,7 @@ export default function CompaniesPage() {
                 required
               />
             </Grid>
-            <Grid item xs={12} sm={6}>
+            <Grid xs={12} sm={6}>
               <TextField
                 fullWidth
                 label="Email"
@@ -743,7 +743,7 @@ export default function CompaniesPage() {
                 required
               />
             </Grid>
-            <Grid item xs={12} sm={6}>
+            <Grid xs={12} sm={6}>
               <TextField
                 fullWidth
                 label="Phone"
@@ -751,7 +751,7 @@ export default function CompaniesPage() {
                 onChange={(e) => setEditFormData({ ...editFormData, phone: e.target.value })}
               />
             </Grid>
-            <Grid item xs={12} sm={6}>
+            <Grid xs={12} sm={6}>
               <TextField
                 fullWidth
                 label="Website"
@@ -759,7 +759,7 @@ export default function CompaniesPage() {
                 onChange={(e) => setEditFormData({ ...editFormData, website: e.target.value })}
               />
             </Grid>
-            <Grid item xs={12} sm={6}>
+            <Grid xs={12} sm={6}>
               <TextField
                 fullWidth
                 label="Industry"
@@ -767,7 +767,7 @@ export default function CompaniesPage() {
                 onChange={(e) => setEditFormData({ ...editFormData, industry: e.target.value })}
               />
             </Grid>
-            <Grid item xs={12}>
+            <Grid xs={12}>
               <TextField
                 fullWidth
                 label="Address"
@@ -865,14 +865,14 @@ export default function CompaniesPage() {
                     ₹{selectedCompany.subscription_amount || 0}
                   </Typography>
                 </Box>
-                <Grid container spacing={2}>
-                  <Grid item xs={6}>
+                <Grid spacing={2}>
+                  <Grid xs={6}>
                     <Typography variant="caption" color="text.secondary">Start Date</Typography>
                     <Typography variant="body2">
                       {selectedCompany.start_date ? new Date(selectedCompany.start_date).toLocaleDateString() : 'N/A'}
                     </Typography>
                   </Grid>
-                  <Grid item xs={6}>
+                  <Grid xs={6}>
                     <Typography variant="caption" color="text.secondary">End Date</Typography>
                     <Typography variant="body2">
                       {selectedCompany.end_date ? new Date(selectedCompany.end_date).toLocaleDateString() : 'N/A'}
@@ -929,7 +929,7 @@ export default function CompaniesPage() {
           </Typography>
         </DialogTitle>
         <DialogContent>
-          <Grid container spacing={3} sx={{ mt: 1 }}>
+          <Grid spacing={3} sx={{ mt: 1 }}>
             <Grid item xs={12} md={6}>
               <FormControl fullWidth size="small">
                 <InputLabel>Subscription Plan</InputLabel>
@@ -974,7 +974,7 @@ export default function CompaniesPage() {
               </FormControl>
             </Grid>
             {(selectedCompany?.plan_name || selectedCompany?.plan_id) && (
-              <Grid item xs={12}>
+              <Grid xs={12}>
                 <Alert severity="info">
                   Current: {(selectedCompany.plan_name || plans.find((p) => p.id == selectedCompany.plan_id)?.name) || 'No Plan'} ({selectedCompany.billing_cycle || 'N/A'}, ₹{selectedCompany.subscription_amount || 0})
                 </Alert>

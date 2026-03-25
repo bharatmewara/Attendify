@@ -69,6 +69,9 @@ export const tenantIsolation = (req, res, next) => {
     ((req.user.role === 'company_admin' || req.user.role === 'super_admin') ? requestedCompanyId : null);
 
   if (!derivedCompanyId) {
+    if (req.user.role === 'employee') {
+      return res.status(403).json({ message: 'Employee user must be associated with a company.' });
+    }
     return res.status(403).json({ message: 'No company association' });
   }
 

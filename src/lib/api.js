@@ -1,4 +1,27 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000/api';
+const rawApiBaseUrl = import.meta.env.VITE_API_BASE_URL || '';
+
+const normalizeApiBaseUrl = (url) => {
+  if (!url) return 'http://localhost:4000/api';
+
+  if (url.startsWith(':')) {
+    return `http://localhost${url}`;
+  }
+
+  if (url.startsWith('//')) {
+    return `${window.location.protocol}${url}`;
+  }
+
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    return `${window.location.protocol}//${url}`;
+  }
+
+  return url;
+};
+
+const API_BASE_URL = normalizeApiBaseUrl(rawApiBaseUrl);
+if (process.env.NODE_ENV === 'development') {
+  console.log('[api] API_BASE_URL =', API_BASE_URL);
+}
 const TOKEN_KEY = 'attendify_token';
 
 const getStoredToken = () => {

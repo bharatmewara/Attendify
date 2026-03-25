@@ -13,8 +13,9 @@ import {
   Typography,
   Snackbar,
 } from '@mui/material';
-import { AccessTime, EventAvailable, Bolt, ArrowForward } from '@mui/icons-material';
+import { ArrowForward, Bolt, EventAvailable } from '@mui/icons-material';
 import { apiRequest } from '../../lib/api';
+import { useAuth } from '../../context/AuthContext';
 
 const shellCardSx = {
   borderRadius: 3,
@@ -23,6 +24,7 @@ const shellCardSx = {
 
 export default function EmployeeDashboard() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [todayAttendance, setTodayAttendance] = useState(null);
   const [leaveBalance, setLeaveBalance] = useState([]);
   const [upcomingHolidays, setUpcomingHolidays] = useState([]);
@@ -41,6 +43,9 @@ export default function EmployeeDashboard() {
   };
 
   useEffect(() => {
+    if (user?.role !== 'employee') {
+      return;
+    }
     const loadData = async () => {
       try {
         const [attendanceData, balanceData] = await Promise.all([
@@ -74,7 +79,7 @@ export default function EmployeeDashboard() {
       }
     };
     loadData();
-  }, []);
+  }, [user]);
 
   const handlePunchIn = async () => {
     try {
@@ -99,6 +104,15 @@ export default function EmployeeDashboard() {
   };
 
   const totalRemaining = leaveBalance.reduce((sum, b) => sum + Number(b.remaining_days || 0), 0);
+
+  if (user?.role !== 'employee') {
+    return (
+      <Box sx={{ p: 4, maxWidth: 1200, mx: 'auto' }}>
+        <Typography variant="h4">Welcome, {user?.first_name || 'Admin'}.</Typography>
+        <Typography>This is the employee dashboard. As an admin, you can manage employees from the "Employees" section.</Typography>
+      </Box>
+    )
+  }
 
   return (
     <Box sx={{ p: 4, maxWidth: 1200, mx: 'auto' }}>
