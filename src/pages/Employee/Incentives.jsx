@@ -34,6 +34,8 @@ const requestInitial = {
   client_mobile_2: '',
   client_email: '',
   client_username: '',
+  client_panel_username: '',
+  client_panel_password: '',
   sms_quantity: '',
   rate: '',
   price: '',
@@ -43,7 +45,7 @@ const requestInitial = {
   screenshot: null,
 };
 
-const productOptions = [
+const fallbackProductOptions = [
   'Bulk SMS',
   'WhatsApp SMS',
   'WhatsApp Meta Setup',
@@ -53,136 +55,13 @@ const productOptions = [
   'RCS Recharge',
 ];
 
-const getIncentiveDetails = (productName) => {
-  if (productName === 'Bulk SMS') {
-    return (
-      <Box sx={{ mt: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
-        <Typography variant="subtitle2" fontWeight={600}>Incentive Details for Bulk SMS:</Typography>
-        <Typography variant="body2">Rate: 0.08 - 0.14</Typography>
-        <Typography variant="body2">Quantity 1Lakh-1.99Lakh: Rs.200</Typography>
-        <Typography variant="body2">Quantity 2Lakh-2.99Lakh: Rs.250</Typography>
-        <Typography variant="body2">Quantity 3Lakh-3.99Lakh: Rs.300</Typography>
-        <Typography variant="body2">Quantity 4Lakh-4.99Lakh: Rs.400</Typography>
-        <Typography variant="body2">Quantity 5Lakh-9Lakh: Rs.500</Typography>
-        <Typography variant="body2">Quantity 1M-1.5M: 2% of price</Typography>
-        <Typography variant="body2" sx={{ mt: 1, fontStyle: 'italic' }}>Renewal packages get half incentive.</Typography>
-      </Box>
-    );
-  } else if (productName === 'WhatsApp SMS') {
-    return (
-      <Box sx={{ mt: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
-        <Typography variant="subtitle2" fontWeight={600}>Incentive Details for WhatsApp SMS:</Typography>
-        <Typography variant="body2">Rate: 0.03 - 0.12</Typography>
-        <Typography variant="body2">50K-99K (Rate 0.03-0.04): â‚¹100</Typography>
-        <Typography variant="body2">100K-199K (Rate 0.05-0.06): â‚¹200; (Rate 0.06-0.12): â‚¹300</Typography>
-        <Typography variant="body2">200K-299K (Rate 0.03-0.04): â‚¹200; (Rate 0.05-0.06): â‚¹300; (Rate 0.07-0.12): â‚¹400</Typography>
-        <Typography variant="body2">300K-399K (Rate 0.03-0.04): â‚¹250; (Rate 0.05-0.06): â‚¹350; (Rate 0.07-0.12): â‚¹500</Typography>
-        <Typography variant="body2">400K-499K (Rate 0.03-0.04): â‚¹300; (Rate 0.05-0.06): â‚¹400; (Rate 0.07-0.12): â‚¹600</Typography>
-        <Typography variant="body2">500K+ (Rate 0.03-0.06): â‚¹400; (Rate 0.07-0.09): â‚¹900; (Rate 0.10-0.12): â‚¹1200</Typography>
-        <Typography variant="body2" sx={{ mt: 1, fontStyle: 'italic' }}>Renewal packages get half incentive.</Typography>
-      </Box>
-    );
-  } else if (productName === 'WhatsApp Meta Setup') {
-    return (
-      <Box sx={{ mt: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
-        <Typography variant="subtitle2" fontWeight={600}>Incentive Details for WhatsApp Meta Setup:</Typography>
-        <Typography variant="body2">Fixed Incentive: â‚¹100</Typography>
-        <Typography variant="body2" sx={{ mt: 1, fontStyle: 'italic' }}>Renewal packages get half incentive.</Typography>
-      </Box>
-    );
-  } else if (productName === 'WhatsApp Meta Recharge') {
-    return (
-      <Box sx={{ mt: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
-        <Typography variant="subtitle2" fontWeight={600}>Incentive Details for WhatsApp Meta Recharge:</Typography>
-        <Typography variant="body2">Price â‰¤ â‚¹5000: â‚¹100</Typography>
-        <Typography variant="body2" sx={{ mt: 1, fontStyle: 'italic' }}>Renewal packages get half incentive.</Typography>
-      </Box>
-    );
-  } else if (productName === 'WhatsApp Meta Subscription') {
-    return (
-      <Box sx={{ mt: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
-        <Typography variant="subtitle2" fontWeight={600}>Incentive Details for WhatsApp Meta Subscription:</Typography>
-        <Typography variant="body2">Fixed Incentive: â‚¹200</Typography>
-        <Typography variant="body2" sx={{ mt: 1, fontStyle: 'italic' }}>Renewal packages get half incentive.</Typography>
-      </Box>
-    );
-  } else if (productName === 'RCS Setup') {
-    return (
-      <Box sx={{ mt: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
-        <Typography variant="subtitle2" fontWeight={600}>Incentive Details for RCS Setup:</Typography>
-        <Typography variant="body2">Fixed Incentive: â‚¹100</Typography>
-        <Typography variant="body2" sx={{ mt: 1, fontStyle: 'italic' }}>Renewal packages get half incentive.</Typography>
-      </Box>
-    );
-  } else if (productName === 'RCS Recharge') {
-    return (
-      <Box sx={{ mt: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
-        <Typography variant="subtitle2" fontWeight={600}>Incentive Details for RCS Recharge:</Typography>
-        <Typography variant="body2">Price â‰¤ â‚¹15000: â‚¹100</Typography>
-        <Typography variant="body2" sx={{ mt: 1, fontStyle: 'italic' }}>Renewal packages get half incentive.</Typography>
-      </Box>
-    );
-  }
-  return null;
-};
-
-const calculateIncentivePreview = (productName, smsQuantity, rate, price, packageType) => {
-  let incentive = 0;
-  smsQuantity = Number(smsQuantity) || 0;
-  rate = Number(rate) || 0;
-  price = Number(price) || 0;
-
-  if (productName === 'Bulk SMS') {
-    if (rate >= 0.08 && rate <= 0.14) {
-      if (smsQuantity >= 100000 && smsQuantity < 200000) incentive = 200;
-      else if (smsQuantity >= 200000 && smsQuantity < 300000) incentive = 250;
-      else if (smsQuantity >= 300000 && smsQuantity < 400000) incentive = 300;
-      else if (smsQuantity >= 400000 && smsQuantity < 500000) incentive = 400;
-      else if (smsQuantity >= 500000 && smsQuantity <= 900000) incentive = 500;
-    }
-    if (smsQuantity >= 1000000 && smsQuantity <= 1500000) {
-      incentive += price * 0.02;
-    }
-  } else if (productName === 'WhatsApp SMS') {
-    if (smsQuantity >= 50000 && smsQuantity < 100000 && rate >= 0.03 && rate <= 0.04) incentive = 100;
-    else if (smsQuantity >= 100000 && smsQuantity < 200000) {
-        if (rate >= 0.05 && rate <= 0.06) incentive = 200;
-        else if (rate >= 0.06 && rate <= 0.12) incentive = 300;
-    } else if (smsQuantity >= 200000 && smsQuantity < 300000) {
-        if (rate >= 0.03 && rate <= 0.04) incentive = 200;
-        else if (rate >= 0.05 && rate <= 0.06) incentive = 300;
-        else if (rate >= 0.07 && rate <= 0.12) incentive = 400;
-    } else if (smsQuantity >= 300000 && smsQuantity < 400000) {
-        if (rate >= 0.03 && rate <= 0.04) incentive = 250;
-        else if (rate >= 0.05 && rate <= 0.06) incentive = 350;
-        else if (rate >= 0.07 && rate <= 0.12) incentive = 500;
-    } else if (smsQuantity >= 400000 && smsQuantity < 500000) {
-        if (rate >= 0.03 && rate <= 0.04) incentive = 300;
-        else if (rate >= 0.05 && rate <= 0.06) incentive = 400;
-        else if (rate >= 0.07 && rate <= 0.12) incentive = 600;
-    } else if (smsQuantity >= 500000) {
-        if (rate >= 0.03 && rate <= 0.06) incentive = 400;
-        else if (rate >= 0.07 && rate <= 0.09) incentive = 900;
-        else if (rate >= 0.10 && rate <= 0.12) incentive = 1200;
-    }
-  } else if (productName === 'WhatsApp Meta Setup') {
-    incentive = 100;
-  } else if (productName === 'WhatsApp Meta Recharge') {
-    if (price <= 5000) incentive = 100;
-  } else if (productName === 'WhatsApp Meta Subscription') {
-    incentive = 200;
-  } else if (productName === 'RCS Setup') {
-    incentive = 100;
-  } else if (productName === 'RCS Recharge') {
-    if (price <= 15000) incentive = 100;
-  }
-
-  if (packageType === 'renew') {
-    incentive /= 2;
-  }
-
-  return incentive;
-};
+const buildPreviewPayload = (form) => ({
+  product_name: form?.product_name,
+  package_type: form?.package_type,
+  sms_quantity: form?.sms_quantity === '' ? null : form?.sms_quantity,
+  rate: form?.rate === '' ? null : form?.rate,
+  price: form?.price === '' ? null : form?.price,
+});
 
 export default function EmployeeIncentives() {
   const [requests, setRequests] = useState([]);
@@ -191,6 +70,7 @@ export default function EmployeeIncentives() {
   const [message, setMessage] = useState({ type: '', text: '' });
   const [calculatedIncentive, setCalculatedIncentive] = useState(0);
   const [officeOnlyBlocked, setOfficeOnlyBlocked] = useState(false);
+  const [productOptions, setProductOptions] = useState(fallbackProductOptions);
 
   const [editOpen, setEditOpen] = useState(false);
   const [editForm, setEditForm] = useState(null);
@@ -215,18 +95,36 @@ export default function EmployeeIncentives() {
 
   useEffect(() => {
     loadData();
+    (async () => {
+      try {
+        const products = await apiRequest('/incentives/products');
+        if (Array.isArray(products) && products.length) {
+          setProductOptions(products);
+          if (!products.includes(requestForm.product_name)) {
+            setRequestForm((cur) => ({ ...cur, product_name: products[0] }));
+          }
+        }
+      } catch (error) {
+        // If employee is outside office network, this will be blocked; loadData already shows a warning.
+      }
+    })();
   }, []);
 
   useEffect(() => {
-    const incentive = calculateIncentivePreview(
-      requestForm.product_name,
-      requestForm.sms_quantity,
-      requestForm.rate,
-      requestForm.price,
-      requestForm.package_type
-    );
-    setCalculatedIncentive(incentive);
-  }, [requestForm.product_name, requestForm.sms_quantity, requestForm.rate, requestForm.price, requestForm.package_type]);
+    if (officeOnlyBlocked) return;
+    if (!requestForm.product_name || !requestForm.package_type) return;
+
+    const handle = setTimeout(async () => {
+      try {
+        const res = await apiRequest('/incentives/preview', { method: 'POST', body: buildPreviewPayload(requestForm) });
+        setCalculatedIncentive(Number(res?.incentive_amount || 0));
+      } catch {
+        // ignore preview failures (submit will still validate server-side)
+      }
+    }, 350);
+
+    return () => clearTimeout(handle);
+  }, [officeOnlyBlocked, requestForm.product_name, requestForm.sms_quantity, requestForm.rate, requestForm.price, requestForm.package_type]);
 
   const rateInvalid = ['Bulk SMS', 'WhatsApp SMS'].includes(requestForm.product_name)
     && requestForm.rate !== ''
@@ -245,6 +143,8 @@ export default function EmployeeIncentives() {
       client_mobile_2: row.client_mobile_2 || '',
       client_email: row.client_email || '',
       client_username: row.client_username || '',
+      client_panel_username: row.client_panel_username || '',
+      client_panel_password: '',
       sms_quantity: row.sms_quantity ?? '',
       rate: row.rate ?? '',
       price: row.price ?? '',
@@ -431,12 +331,16 @@ export default function EmployeeIncentives() {
           <TextField fullWidth label="Client Mobile No 2" margin="normal" value={requestForm.client_mobile_2} onChange={(e) => setRequestForm({ ...requestForm, client_mobile_2: e.target.value })} />
           <TextField fullWidth required label="Client Email" margin="normal" value={requestForm.client_email} onChange={(e) => setRequestForm({ ...requestForm, client_email: e.target.value })} />
           <TextField fullWidth label="Client User Name" margin="normal" value={requestForm.client_username} onChange={(e) => setRequestForm({ ...requestForm, client_username: e.target.value })} />
-          <TextField fullWidth select label="Product Name" margin="normal" value={requestForm.product_name} onChange={(e) => setRequestForm({ ...requestForm, product_name: e.target.value })}>
-            {productOptions.map(option => <MenuItem key={option} value={option}>{option}</MenuItem>)}
-          </TextField>
-          
-          {getIncentiveDetails(requestForm.product_name)}
-          
+          <TextField fullWidth label="Client Panel Username" margin="normal" value={requestForm.client_panel_username} onChange={(e) => setRequestForm({ ...requestForm, client_panel_username: e.target.value })} />
+          <TextField fullWidth label="Client Panel Password" type="password" margin="normal" value={requestForm.client_panel_password} onChange={(e) => setRequestForm({ ...requestForm, client_panel_password: e.target.value })} />
+           <TextField fullWidth select label="Product Name" margin="normal" value={requestForm.product_name} onChange={(e) => setRequestForm({ ...requestForm, product_name: e.target.value })}>
+             {productOptions.map(option => <MenuItem key={option} value={option}>{option}</MenuItem>)}
+           </TextField>
+
+          <Alert severity="info" sx={{ mt: 1 }}>
+            Incentive is calculated automatically based on admin rules.
+          </Alert>
+
           {['Bulk SMS', 'WhatsApp SMS'].includes(requestForm.product_name) && (
             <>
               <TextField fullWidth label="SMS Quantity" type="number" margin="normal" value={requestForm.sms_quantity} onChange={(e) => setRequestForm({ ...requestForm, sms_quantity: e.target.value })} />
@@ -488,6 +392,8 @@ export default function EmployeeIncentives() {
               <TextField fullWidth label="Client Mobile No 2" margin="normal" value={editForm.client_mobile_2} onChange={(e) => setEditForm({ ...editForm, client_mobile_2: e.target.value })} />
               <TextField fullWidth required label="Client Email" margin="normal" value={editForm.client_email} onChange={(e) => setEditForm({ ...editForm, client_email: e.target.value })} />
               <TextField fullWidth label="Client User Name" margin="normal" value={editForm.client_username} onChange={(e) => setEditForm({ ...editForm, client_username: e.target.value })} />
+              <TextField fullWidth label="Client Panel Username" margin="normal" value={editForm.client_panel_username} onChange={(e) => setEditForm({ ...editForm, client_panel_username: e.target.value })} />
+              <TextField fullWidth label="Client Panel Password" type="password" margin="normal" value={editForm.client_panel_password} onChange={(e) => setEditForm({ ...editForm, client_panel_password: e.target.value })} helperText="Leave blank to keep existing password." />
               <TextField fullWidth select label="Product Name" margin="normal" value={editForm.product_name} onChange={(e) => setEditForm({ ...editForm, product_name: e.target.value })}>
                 {productOptions.map(option => <MenuItem key={option} value={option}>{option}</MenuItem>)}
               </TextField>

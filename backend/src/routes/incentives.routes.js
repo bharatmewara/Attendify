@@ -5,6 +5,13 @@ import { authenticate, authorize, requireCompanyContext, tenantIsolation } from 
 import { enforceOfficePunchIpForEmployee } from '../middleware/networkPolicy.js';
 import { uploadIncentiveScreenshot } from '../middleware/incentive_uploads.js';
 import { sendEmail } from '../utils/email.js';
+import {
+  calculateIncentiveFromRules,
+  defaultIncentiveRulesConfigV1,
+  getActiveProductNamesFromRules,
+  isProductActiveInRules,
+  validateIncentiveRulesConfigV1,
+} from '../utils/incentive_rules.js';
 
 const router = express.Router();
 
@@ -74,7 +81,155 @@ const calculateIncentive = (productName, smsQuantity, rate, price, packageType) 
 
   return incentive;
 };
+const getCompanyIncentiveRulesConfig = async (companyId) => {
+  try {
+    const result = await query(
+      `SELECT config
+       FROM company_incentive_rules
+       WHERE company_id = $1::int
+         AND is_active = TRUE
+       LIMIT 1`,
+      [companyId],
+    );
+    return result.rows[0]?.config || null;
+  } catch (error) {
+    console.error('Incentive rules fetch failed', error);
+    return null;
+  }
+};
 
+const calculateCompanyIncentiveAmount = async ({
+  companyId,
+  productName,
+  smsQuantity,
+  rate,
+  price,
+  packageType,
+}) => {
+  const config = await getCompanyIncentiveRulesConfig(companyId);
+  const fromRules = calculateIncentiveFromRules({
+    config,
+    productName,
+    smsQuantity,
+    rate,
+    price,
+    packageType,
+  });
+
+  if (fromRules !== null && fromRules !== undefined) {
+    return { incentive: fromRules, config };
+  }
+
+  // fallback to legacy hardcoded rules
+  const legacy = calculateIncentive(productName, smsQuantity, rate, price, packageType);
+  return { incentive: legacy, config };
+};
+
+router.get(
+  '/rules',
+  authenticate,
+  authorize('company_admin', 'super_admin'),
+  tenantIsolation,
+  requireCompanyContext,
+  async (req, res) => {
+    try {
+      const config = await getCompanyIncentiveRulesConfig(req.companyId);
+      if (config) {
+        return res.json({ source: 'db', config });
+      }
+      return res.json({ source: 'default', config: defaultIncentiveRulesConfigV1() });
+    } catch (error) {
+      return res.status(500).json({ message: error.message });
+    }
+  },
+);
+
+router.put(
+  '/rules',
+  authenticate,
+  authorize('company_admin', 'super_admin'),
+  tenantIsolation,
+  requireCompanyContext,
+  async (req, res) => {
+    try {
+      const config = req.body?.config;
+      const validation = validateIncentiveRulesConfigV1(config);
+      if (!validation.ok) {
+        return res.status(400).json({ message: validation.message || 'Invalid config.' });
+      }
+
+      await query(
+        `INSERT INTO company_incentive_rules (company_id, config, is_active, created_at, updated_at)
+         VALUES ($1::int, $2::jsonb, TRUE, NOW(), NOW())
+         ON CONFLICT (company_id)
+         DO UPDATE SET
+           config = EXCLUDED.config,
+           is_active = TRUE,
+           updated_at = NOW()`,
+        [req.companyId, JSON.stringify(config)],
+      );
+
+      return res.json({ message: 'Incentive rules saved', config });
+    } catch (error) {
+      console.error('Incentive rules save failed', error);
+      return res.status(500).json({ message: error.message });
+    }
+  },
+);
+
+router.get(
+  '/products',
+  authenticate,
+  tenantIsolation,
+  requireCompanyContext,
+  enforceOfficePunchIpForEmployee,
+  async (req, res) => {
+    try {
+      const config = await getCompanyIncentiveRulesConfig(req.companyId);
+      const products = getActiveProductNamesFromRules(config);
+      if (products.length) return res.json(products);
+      return res.json(defaultIncentiveRulesConfigV1().products.map((p) => p.name));
+    } catch (error) {
+      return res.status(500).json({ message: error.message });
+    }
+  },
+);
+
+router.post(
+  '/preview',
+  authenticate,
+  authorize('employee'),
+  tenantIsolation,
+  requireCompanyContext,
+  enforceOfficePunchIpForEmployee,
+  async (req, res) => {
+    try {
+      const product_name = req.body?.product_name;
+      const package_type = req.body?.package_type;
+      const sms_quantity = req.body?.sms_quantity;
+      const rate = req.body?.rate;
+      const price = req.body?.price;
+
+      if (!product_name || !package_type) {
+        return res.status(400).json({ message: 'product_name and package_type are required.' });
+      }
+
+      const { incentive } = await calculateCompanyIncentiveAmount({
+        companyId: req.companyId,
+        productName: product_name,
+        smsQuantity: sms_quantity ? Number(sms_quantity) : null,
+        rate: rate === '' || rate === null || rate === undefined ? null : Number(rate),
+        price: price === '' || price === null || price === undefined ? null : Number(price),
+        packageType: package_type,
+      });
+
+      return res.json({ incentive_amount: Number(incentive || 0) });
+    } catch (error) {
+      console.error('Incentive preview failed', error);
+      return res.status(500).json({ message: error.message });
+    }
+  },
+);
 router.get('/submissions', authenticate, tenantIsolation, enforceOfficePunchIpForEmployee, async (req, res) => {
   try {
     let employeeId = null;
@@ -99,6 +254,11 @@ router.get('/submissions', authenticate, tenantIsolation, enforceOfficePunchIpFo
     queryText += ' ORDER BY sub.submitted_at DESC';
 
     const result = await query(queryText, params);
+    if (employeeId) {
+      for (const r of result.rows) {
+        delete r.client_panel_password;
+      }
+    }
     return res.json(result.rows);
   } catch (error) {
     return res.status(500).json({ message: error.message });
@@ -150,6 +310,8 @@ router.post(
       client_mobile_2,
       client_email,
       client_username,
+      client_panel_username,
+      client_panel_password,
       sms_quantity,
       rate,
       price,
@@ -177,13 +339,19 @@ router.post(
         return res.status(404).json({ message: 'Employee profile not found' });
       }
 
-      const incentive_amount = calculateIncentive(
-        product_name,
-        Number(sms_quantity),
-        Number(rate),
-        Number(price),
-        package_type,
-      );
+      const productActive = isProductActiveInRules(await getCompanyIncentiveRulesConfig(req.companyId), product_name);
+      if (productActive === false) {
+        return res.status(400).json({ message: 'This product is disabled by admin.' });
+      }
+
+      const { incentive: incentive_amount } = await calculateCompanyIncentiveAmount({
+        companyId: req.companyId,
+        productName: product_name,
+        smsQuantity: sms_quantity ? Number(sms_quantity) : null,
+        rate: rate === '' || rate === null || rate === undefined ? null : Number(rate),
+        price: price === '' || price === null || price === undefined ? null : Number(price),
+        packageType: package_type,
+      });
       const screenshot_path = toUploadsRelativePath(req.file);
 
       const result = await query(
@@ -197,7 +365,9 @@ router.post(
             client_mobile_2,
             client_email,
             client_username,
-            sms_quantity,
+      client_panel_username,
+      client_panel_password,
+      sms_quantity,
             rate,
             price,
             payment_mode,
@@ -206,7 +376,7 @@ router.post(
             incentive_amount,
             screenshot_path
           )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
          RETURNING *`,
         [
           req.companyId,
@@ -217,6 +387,8 @@ router.post(
           client_mobile_2 ? String(client_mobile_2) : null,
           String(client_email),
           client_username ? String(client_username) : null,
+          client_panel_username ? String(client_panel_username) : null,
+          client_panel_password ? String(client_panel_password) : null,
           sms_quantity ? Number(sms_quantity) : null,
           rate ? Number(rate) : null,
           price ? Number(price) : null,
@@ -323,6 +495,8 @@ router.put(
         'client_mobile_2',
         'client_email',
         'client_username',
+        'client_panel_username',
+        'client_panel_password',
         'sms_quantity',
         'rate',
         'price',
@@ -353,14 +527,19 @@ router.put(
           return res.status(400).json({ message: 'Rate must be entered in paisa (example 0.12) and must be less than 1.' });
         }
       }
+      const productActive = isProductActiveInRules(await getCompanyIncentiveRulesConfig(req.companyId), next.product_name);
+      if (productActive === false) {
+        return res.status(400).json({ message: 'This product is disabled by admin.' });
+      }
 
-      const incentive_amount = calculateIncentive(
-        String(next.product_name),
-        Number(next.sms_quantity),
-        Number(next.rate),
-        Number(next.price),
-        String(next.package_type),
-      );
+      const { incentive: incentive_amount } = await calculateCompanyIncentiveAmount({
+        companyId: req.companyId,
+        productName: String(next.product_name),
+        smsQuantity: next.sms_quantity !== '' && next.sms_quantity !== null && next.sms_quantity !== undefined ? Number(next.sms_quantity) : null,
+        rate: next.rate !== '' && next.rate !== null && next.rate !== undefined ? Number(next.rate) : null,
+        price: next.price !== '' && next.price !== null && next.price !== undefined ? Number(next.price) : null,
+        packageType: String(next.package_type),
+      });
 
       const screenshot_path = req.file ? toUploadsRelativePath(req.file) : current.screenshot_path;
 
@@ -372,17 +551,19 @@ router.put(
              client_mobile_2 = $4,
              client_email = $5,
              client_username = $6,
-             sms_quantity = $7,
-             rate = $8,
-             price = $9,
-             payment_mode = $10,
-             package_type = $11,
-             client_location = $12,
-             incentive_amount = $13,
-             screenshot_path = $14
-         WHERE id = $15::int
-           AND company_id = $16::int
-           AND employee_id = $17::int
+             client_panel_username = $7,
+             client_panel_password = $8,
+             sms_quantity = $9,
+             rate = $10,
+             price = $11,
+             payment_mode = $12,
+             package_type = $13,
+             client_location = $14,
+             incentive_amount = $15,
+             screenshot_path = $16
+         WHERE id = $17::int
+           AND company_id = $18::int
+           AND employee_id = $19::int
          RETURNING *`,
         [
           next.client_name,
@@ -391,6 +572,8 @@ router.put(
           next.client_mobile_2 || null,
           next.client_email,
           next.client_username || null,
+          next.client_panel_username || null,
+          next.client_panel_password || null,
           next.sms_quantity !== '' && next.sms_quantity !== null && next.sms_quantity !== undefined ? Number(next.sms_quantity) : null,
           next.rate !== '' && next.rate !== null && next.rate !== undefined ? Number(next.rate) : null,
           next.price !== '' && next.price !== null && next.price !== undefined ? Number(next.price) : null,
@@ -728,6 +911,89 @@ router.get(
     }
   },
 );
+router.get(
+  '/clients',
+  authenticate,
+  authorize('company_admin', 'super_admin'),
+  tenantIsolation,
+  requireCompanyContext,
+  async (req, res) => {
+    try {
+      const q = req.query.q ? String(req.query.q).trim() : '';
+
+      const result = await query(
+        `WITH base AS (
+          SELECT
+            COALESCE(NULLIF(client_mobile_1, ''), NULLIF(client_email, ''), CONCAT('submission:', id::text)) AS client_key,
+            *
+          FROM incentive_submissions
+          WHERE company_id = $1::int
+        ),
+        ranked AS (
+          SELECT
+            b.*, 
+            ROW_NUMBER() OVER (
+              PARTITION BY b.client_key
+              ORDER BY b.approved_at DESC NULLS LAST, b.submitted_at DESC
+            ) AS rn
+          FROM base b
+        ),
+        agg AS (
+          SELECT
+            client_key,
+            COUNT(*)::int AS submissions_count,
+            COUNT(*) FILTER (WHERE status = 'approved')::int AS approved_count,
+            COALESCE(SUM(price) FILTER (WHERE status = 'approved'), 0)::decimal(12,2) AS total_sales,
+            COALESCE(SUM(incentive_amount) FILTER (WHERE status = 'approved'), 0)::decimal(12,2) AS total_incentive
+          FROM ranked
+          GROUP BY client_key
+        )
+        SELECT
+          r.client_key,
+          r.client_name,
+          r.client_mobile_1,
+          r.client_mobile_2,
+          r.client_email,
+          r.client_username,
+          r.client_panel_username,
+          r.client_panel_password,
+          r.product_name AS last_product,
+          r.payment_mode AS last_payment_mode,
+          r.client_location AS last_location,
+          r.status AS last_status,
+          r.approved_at AS last_approved_at,
+          r.submitted_at AS last_submitted_at,
+          e.first_name,
+          e.last_name,
+          e.employee_code,
+          a.submissions_count,
+          a.approved_count,
+          a.total_sales,
+          a.total_incentive
+        FROM ranked r
+        JOIN agg a ON a.client_key = r.client_key
+        LEFT JOIN employees e ON e.id = r.employee_id
+        WHERE r.rn = 1
+          AND (
+            $2::text = ''
+            OR COALESCE(r.client_name, '') ILIKE ('%' || $2::text || '%')
+            OR COALESCE(r.client_mobile_1, '') ILIKE ('%' || $2::text || '%')
+            OR COALESCE(r.client_email, '') ILIKE ('%' || $2::text || '%')
+            OR COALESCE(r.client_username, '') ILIKE ('%' || $2::text || '%')
+            OR COALESCE(r.client_panel_username, '') ILIKE ('%' || $2::text || '%')
+          )
+        ORDER BY COALESCE(r.approved_at, r.submitted_at) DESC
+        LIMIT 500`,
+        [req.companyId, q],
+      );
+
+      return res.json(result.rows);
+    } catch (error) {
+      console.error('Clients list fetch failed', error);
+      return res.status(500).json({ message: error.message });
+    }
+  },
+);
 router.put(
   '/submissions/:id',
   authenticate,
@@ -745,6 +1011,8 @@ router.put(
         'client_mobile_2',
         'client_email',
         'client_username',
+        'client_panel_username',
+        'client_panel_password',
         'sms_quantity',
         'rate',
         'price',
@@ -786,13 +1054,24 @@ router.put(
       const next = { ...current, ...updates };
 
       const shouldRecalc = !Object.prototype.hasOwnProperty.call(updates, 'incentive_amount');
-      const computedIncentive = calculateIncentive(
-        String(next.product_name),
-        Number(next.sms_quantity),
-        Number(next.rate),
-        Number(next.price),
-        String(next.package_type),
-      );
+
+      const productActive = isProductActiveInRules(await getCompanyIncentiveRulesConfig(req.companyId), next.product_name);
+      if (productActive === false) {
+        return res.status(400).json({ message: 'This product is disabled by admin.' });
+      }
+
+      let computedIncentive = 0;
+      if (shouldRecalc) {
+        const { incentive } = await calculateCompanyIncentiveAmount({
+          companyId: req.companyId,
+          productName: String(next.product_name),
+          smsQuantity: next.sms_quantity !== '' && next.sms_quantity !== null && next.sms_quantity !== undefined ? Number(next.sms_quantity) : null,
+          rate: next.rate !== '' && next.rate !== null && next.rate !== undefined ? Number(next.rate) : null,
+          price: next.price !== '' && next.price !== null && next.price !== undefined ? Number(next.price) : null,
+          packageType: String(next.package_type),
+        });
+        computedIncentive = Number(incentive || 0);
+      }
 
       const finalIncentive = shouldRecalc ? computedIncentive : Number(next.incentive_amount);
       if (!Number.isFinite(finalIncentive) || finalIncentive < 0) {
@@ -807,15 +1086,17 @@ router.put(
              client_mobile_2 = $4,
              client_email = $5,
              client_username = $6,
-             sms_quantity = $7,
-             rate = $8,
-             price = $9,
-             payment_mode = $10,
-             package_type = $11,
-             client_location = $12,
-             incentive_amount = $13
-         WHERE id = $14::int
-           AND company_id = $15::int
+             client_panel_username = $7,
+             client_panel_password = $8,
+             sms_quantity = $9,
+             rate = $10,
+             price = $11,
+             payment_mode = $12,
+             package_type = $13,
+             client_location = $14,
+             incentive_amount = $15
+         WHERE id = $16::int
+           AND company_id = $17::int
          RETURNING *`,
         [
           next.client_name,
@@ -824,6 +1105,8 @@ router.put(
           next.client_mobile_2,
           next.client_email,
           next.client_username,
+          next.client_panel_username,
+          next.client_panel_password,
           next.sms_quantity !== '' && next.sms_quantity !== null && next.sms_quantity !== undefined ? Number(next.sms_quantity) : null,
           next.rate !== '' && next.rate !== null && next.rate !== undefined ? Number(next.rate) : null,
           next.price !== '' && next.price !== null && next.price !== undefined ? Number(next.price) : null,
@@ -1217,6 +1500,19 @@ router.put(
 );
 
 export default router;
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

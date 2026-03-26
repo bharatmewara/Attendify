@@ -150,6 +150,56 @@ const [openEditDialog, setOpenEditDialog] = useState(false);
     }
   };
 
+  const addDepartmentIfNeeded = async (value, mode = 'add') => {
+    if (value !== '__add__') {
+      if (mode === 'add') setFormData((cur) => ({ ...cur, department_id: value }));
+      else setEditFormData((cur) => ({ ...cur, department_id: value }));
+      return;
+    }
+
+    const name = window.prompt('Enter new department name:');
+    if (!name) return;
+
+    try {
+      const created = await apiRequest('/organization/departments', {
+        method: 'POST',
+        body: { name: String(name).trim(), description: '' },
+      });
+      const deptData = await apiRequest('/organization/departments');
+      setDepartments(deptData || []);
+      const id = created?.id ? String(created.id) : '';
+      if (mode === 'add') setFormData((cur) => ({ ...cur, department_id: id }));
+      else setEditFormData((cur) => ({ ...cur, department_id: id }));
+    } catch (error) {
+      setMessage(`error:${error.message}`);
+    }
+  };
+
+  const addDesignationIfNeeded = async (value, mode = 'add') => {
+    if (value !== '__add__') {
+      if (mode === 'add') setFormData((cur) => ({ ...cur, designation_id: value }));
+      else setEditFormData((cur) => ({ ...cur, designation_id: value }));
+      return;
+    }
+
+    const title = window.prompt('Enter new designation title:');
+    if (!title) return;
+
+    try {
+      const created = await apiRequest('/organization/designations', {
+        method: 'POST',
+        body: { title: String(title).trim(), description: '' },
+      });
+      const desigData = await apiRequest('/organization/designations');
+      setDesignations(desigData || []);
+      const id = created?.id ? String(created.id) : '';
+      if (mode === 'add') setFormData((cur) => ({ ...cur, designation_id: id }));
+      else setEditFormData((cur) => ({ ...cur, designation_id: id }));
+    } catch (error) {
+      setMessage(`error:${error.message}`);
+    }
+  };
+
   const handleOpenPerformance = (emp) => {
     if (!emp?.id) return;
     navigate(`/app/employees/${emp.id}/performance`);
@@ -551,8 +601,40 @@ const [openEditDialog, setOpenEditDialog] = useState(false);
                 <Box sx={{ borderLeft: '4px solid', borderColor: 'secondary.main', pl: 1, mb: 1 }}><Typography variant="h6" fontWeight={700} color="secondary">Employment Details</Typography></Box>
                 <Divider sx={{ mb: 2 }} />
                 <Grid container spacing={2}>
-                  <Grid item xs={12} sm={6} md={4}><TextField fullWidth select label="Department *" value={formData.department_id} onChange={(e) => setFormData({ ...formData, department_id: e.target.value })} error={!!errors.department_id} helperText={errors.department_id} required SelectProps={{ displayEmpty: true, MenuProps: { PaperProps: { style: { maxHeight: 300 }}}}}><MenuItem value="">Select Department</MenuItem>{departments.map((dept) => (<MenuItem key={dept.id} value={dept.id}>{dept.name}</MenuItem>))}</TextField></Grid>
-                  <Grid item xs={12} sm={6} md={4}><TextField fullWidth select label="Designation *" value={formData.designation_id} onChange={(e) => setFormData({ ...formData, designation_id: e.target.value })} error={!!errors.designation_id} helperText={errors.designation_id} required SelectProps={{ displayEmpty: true, MenuProps: { PaperProps: { style: { maxHeight: 300 }}}}}><MenuItem value="">Select Designation</MenuItem>{designations.map((desig) => (<MenuItem key={desig.id} value={desig.id}>{desig.title}</MenuItem>))}</TextField></Grid>
+                  <Grid item xs={12} sm={6} md={4}>
+                    <TextField
+                      fullWidth
+                      select
+                      label="Department *"
+                      value={formData.department_id}
+                      onChange={(e) => addDepartmentIfNeeded(e.target.value, 'add')}
+                      error={!!errors.department_id}
+                      helperText={errors.department_id}
+                      required
+                      SelectProps={{ displayEmpty: true, MenuProps: { PaperProps: { style: { maxHeight: 300 } } } }}
+                    >
+                      <MenuItem value="">Select Department</MenuItem>
+                      <MenuItem value="__add__">+ Add new department</MenuItem>
+                      {departments.map((dept) => (<MenuItem key={dept.id} value={String(dept.id)}>{dept.name}</MenuItem>))}
+                    </TextField>
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={4}>
+                    <TextField
+                      fullWidth
+                      select
+                      label="Designation *"
+                      value={formData.designation_id}
+                      onChange={(e) => addDesignationIfNeeded(e.target.value, 'add')}
+                      error={!!errors.designation_id}
+                      helperText={errors.designation_id}
+                      required
+                      SelectProps={{ displayEmpty: true, MenuProps: { PaperProps: { style: { maxHeight: 300 } } } }}
+                    >
+                      <MenuItem value="">Select Designation</MenuItem>
+                      <MenuItem value="__add__">+ Add new designation</MenuItem>
+                      {designations.map((desig) => (<MenuItem key={desig.id} value={String(desig.id)}>{desig.title}</MenuItem>))}
+                    </TextField>
+                  </Grid>
                   <Grid item xs={12} sm={6} md={4}><TextField fullWidth select label="Employment Type *" value={formData.employment_type} onChange={(e) => setFormData({ ...formData, employment_type: e.target.value })} SelectProps={{ displayEmpty: true }}><MenuItem value="">Select Employment Type</MenuItem><MenuItem value="full_time">Full Time</MenuItem><MenuItem value="part_time">Part Time</MenuItem><MenuItem value="contract">Contract</MenuItem><MenuItem value="intern">Intern</MenuItem></TextField></Grid>
                 </Grid>
               </Paper>
@@ -630,8 +712,34 @@ const [openEditDialog, setOpenEditDialog] = useState(false);
                 <Box sx={{ borderLeft: '4px solid', borderColor: 'secondary.main', pl: 1, mb: 1 }}><Typography variant="h6" fontWeight={700}>Employment Details</Typography></Box>
                 <Divider sx={{ mb: 2 }} />
                 <Grid container spacing={2}>
-                  <Grid item xs={12} sm={6}><TextField fullWidth select label="Department" value={editFormData.department_id} onChange={(e) => setEditFormData({ ...editFormData, department_id: e.target.value })} SelectProps={{ displayEmpty: true, MenuProps: { PaperProps: { style: { maxHeight: 300 }}}}}><MenuItem value="">Select Department</MenuItem>{departments.map((dept) => (<MenuItem key={dept.id} value={dept.id}>{dept.name}</MenuItem>))}</TextField></Grid>
-                  <Grid item xs={12} sm={6}><TextField fullWidth select label="Designation" value={editFormData.designation_id} onChange={(e) => setEditFormData({ ...editFormData, designation_id: e.target.value })} SelectProps={{ displayEmpty: true, MenuProps: { PaperProps: { style: { maxHeight: 300 }}}}}><MenuItem value="">Select Designation</MenuItem>{designations.map((desig) => (<MenuItem key={desig.id} value={desig.id}>{desig.title}</MenuItem>))}</TextField></Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      select
+                      label="Department"
+                      value={editFormData.department_id}
+                      onChange={(e) => addDepartmentIfNeeded(e.target.value, 'edit')}
+                      SelectProps={{ displayEmpty: true, MenuProps: { PaperProps: { style: { maxHeight: 300 } } } }}
+                    >
+                      <MenuItem value="">Select Department</MenuItem>
+                      <MenuItem value="__add__">+ Add new department</MenuItem>
+                      {departments.map((dept) => (<MenuItem key={dept.id} value={String(dept.id)}>{dept.name}</MenuItem>))}
+                    </TextField>
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      select
+                      label="Designation"
+                      value={editFormData.designation_id}
+                      onChange={(e) => addDesignationIfNeeded(e.target.value, 'edit')}
+                      SelectProps={{ displayEmpty: true, MenuProps: { PaperProps: { style: { maxHeight: 300 } } } }}
+                    >
+                      <MenuItem value="">Select Designation</MenuItem>
+                      <MenuItem value="__add__">+ Add new designation</MenuItem>
+                      {designations.map((desig) => (<MenuItem key={desig.id} value={String(desig.id)}>{desig.title}</MenuItem>))}
+                    </TextField>
+                  </Grid>
                   <Grid item xs={12} sm={6}><TextField fullWidth select label="Employment Type" value={editFormData.employment_type} onChange={(e) => setEditFormData({ ...editFormData, employment_type: e.target.value })} SelectProps={{ displayEmpty: true }}><MenuItem value="">Select Employment Type</MenuItem><MenuItem value="full_time">Full Time</MenuItem><MenuItem value="part_time">Part Time</MenuItem><MenuItem value="contract">Contract</MenuItem><MenuItem value="intern">Intern</MenuItem></TextField></Grid>
                 </Grid>
               </Paper>

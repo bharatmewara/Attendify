@@ -546,3 +546,14 @@ ALTER TABLE IF EXISTS payroll_calculations
 
 ALTER TABLE IF EXISTS payroll_calculations
   ADD COLUMN IF NOT EXISTS extra_income DECIMAL(10,2) DEFAULT 0;
+
+-- Leave types hotfix: add updated_at if missing
+ALTER TABLE IF EXISTS leave_types
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+
+-- Incentive submissions hotfix: add client panel credentials
+ALTER TABLE IF EXISTS incentive_submissions
+  ADD COLUMN IF NOT EXISTS client_panel_username VARCHAR(255);
+
+ALTER TABLE IF EXISTS incentive_submissions
+  ADD COLUMN IF NOT EXISTS client_panel_password VARCHAR(255);

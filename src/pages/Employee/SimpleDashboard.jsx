@@ -101,7 +101,10 @@ export default function EmployeeDashboard() {
   const perfSummary = perfInfo?.summary || null;
   const perfTarget = perfInfo?.target_sales_amount ? Number(perfInfo.target_sales_amount) : null;
   const perfSales = Number(perfSummary?.sales_total || 0);
+  const perfIncentives = Number(perfSummary?.incentives_total || 0);
+  const perfClients = Number(perfSummary?.clients_total || 0);
   const perfPct = perfTarget ? (perfSales / perfTarget) * 100 : null;
+  const perfLeft = perfTarget ? Math.max(0, perfTarget - perfSales) : null;
   const perfNudge =
     perfPct === null ? '' :
       perfPct >= 100 ? 'Target completed. Great work!' :
@@ -198,8 +201,9 @@ export default function EmployeeDashboard() {
           </Alert>
         ) : perfTarget ? (
           <Alert severity={perfPct >= 100 ? 'success' : perfPct >= 75 ? 'info' : 'warning'} sx={{ mt: 1.5, textAlign: 'left' }}>
-            <strong>Target:</strong> {perfTarget.toLocaleString()} | <strong>Sales:</strong> {perfSales.toLocaleString()}
-            {perfNudge ? ` - ${perfNudge}` : ''}
+            <strong>Target:</strong> {perfTarget.toLocaleString()} | <strong>Sales:</strong> {perfSales.toLocaleString()} |{' '}
+            <strong>Left:</strong> {perfLeft?.toLocaleString()} | <strong>Clients:</strong> {perfClients} | <strong>Incentive:</strong> {perfIncentives.toFixed(2)}
+            {perfNudge ? ` — ${perfNudge}` : ''}
           </Alert>
         ) : null}
       </Card>

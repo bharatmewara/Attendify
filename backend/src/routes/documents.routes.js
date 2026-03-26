@@ -1,4 +1,4 @@
-import express from 'express';
+﻿import express from 'express';
 import { query } from '../db.js';
 import { authenticate, authorize, requireCompanyContext, tenantIsolation } from '../middleware/auth.middleware.js';
 
@@ -64,10 +64,22 @@ router.post('/', authenticate, authorize('company_admin', 'super_admin'), tenant
     }
 
     const employee = empResult.rows[0];
-
     // Get company details
     const companyResult = await query('SELECT * FROM companies WHERE id = $1', [req.companyId]);
     const company = companyResult.rows[0];
+
+    const companyCode = String(company?.company_name || '')
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((word) => (word[0] || '').toUpperCase())
+      .join('') || 'COMP';
+
+    const joiningDate = employee.joining_date ? new Date(employee.joining_date) : new Date();
+    const joiningDateCode = Number.isNaN(joiningDate.getTime())
+      ? new Date().toISOString().split('T')[0].replace(/-/g, '')
+      : joiningDate.toISOString().split('T')[0].replace(/-/g, '');
+
+    const serialNumber = `${companyCode}/${joiningDateCode}${employee.employee_code}`;
 
     // Replace placeholders in content
     let finalContent = content
@@ -79,6 +91,7 @@ router.post('/', authenticate, authorize('company_admin', 'super_admin'), tenant
       .replace(/\{joining_date\}/g, employee.joining_date || '')
       .replace(/\{company_name\}/g, company.company_name)
       .replace(/\{company_address\}/g, company.address || '')
+      .replace(/\{serial_number\}/g, serialNumber)
       .replace(/\{date\}/g, new Date().toLocaleDateString());
 
     // In real app, generate PDF here
@@ -113,7 +126,7 @@ We look forward to welcoming you to our team.
 Sincerely,
 {company_name}
 {company_address}
-Date: {date}`
+Serial No: {serial_number}\nDate: {date}`
     },
     appointment_letter: {
       title: 'Appointment Letter',
@@ -129,7 +142,7 @@ Please report to the HR department on your joining date.
 
 Best regards,
 {company_name}
-Date: {date}`
+Serial No: {serial_number}\nDate: {date}`
     },
     agreement: {
       title: 'Employment Agreement',
@@ -154,3 +167,5 @@ Signed,
 });
 
 export default router;
+
+

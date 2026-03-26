@@ -70,6 +70,7 @@ export default function EmployeePerformance() {
   const target = data?.target_sales_amount ? Number(data.target_sales_amount) : null;
   const salesTotal = Number(summary?.sales_total || 0);
   const progressPct = target ? Math.min(100, Math.round((salesTotal / target) * 100)) : null;
+  const targetLeft = target ? Math.max(0, target - salesTotal) : null;
 
   return (
     <Box sx={{ p: 3, maxWidth: 1200, mx: 'auto' }}>
@@ -127,9 +128,41 @@ export default function EmployeePerformance() {
                 <Typography fontWeight={800}>Target:</Typography>
                 <Typography>{target ? target.toLocaleString() : 'Not set'}</Typography>
                 {progressPct !== null ? <Chip label={`Progress: ${progressPct}%`} /> : null}
+                {targetLeft !== null ? <Chip variant="outlined" label={`Left: ${targetLeft.toLocaleString()}`} /> : null}
                 <Typography color="text.secondary">{motivationalMessage({ target, salesTotal })}</Typography>
               </Stack>
             </Stack>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent>
+            <Typography variant="h6" fontWeight={900} sx={{ mb: 1.5 }}>Payment Breakdown</Typography>
+            <TableContainer component={Paper} variant="outlined">
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Payment Mode</TableCell>
+                    <TableCell>Total</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {(data?.payment_breakdown || []).map((row) => (
+                    <TableRow key={row.payment_mode}>
+                      <TableCell>{row.payment_mode}</TableCell>
+                      <TableCell>{Number(row.total || 0).toLocaleString()}</TableCell>
+                    </TableRow>
+                  ))}
+                  {(data?.payment_breakdown || []).length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={2}>
+                        <Typography variant="body2" color="text.secondary">No payment data for this month.</Typography>
+                      </TableCell>
+                    </TableRow>
+                  ) : null}
+                </TableBody>
+              </Table>
+            </TableContainer>
           </CardContent>
         </Card>
 
@@ -177,4 +210,3 @@ export default function EmployeePerformance() {
     </Box>
   );
 }
-

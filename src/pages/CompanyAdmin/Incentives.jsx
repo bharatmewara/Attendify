@@ -87,6 +87,16 @@ export default function IncentivesManagement() {
   const [targetSalesAmount, setTargetSalesAmount] = useState('');
   const [targetEmployeeId, setTargetEmployeeId] = useState(''); // empty => all employees
 
+  const [rulesText, setRulesText] = useState('');
+  const [rulesSource, setRulesSource] = useState('');
+  const [rulesLoading, setRulesLoading] = useState(false);
+
+  const [clientQuery, setClientQuery] = useState('');
+  const [clients, setClients] = useState([]);
+  const [clientsLoading, setClientsLoading] = useState(false);
+  const [clientDialogOpen, setClientDialogOpen] = useState(false);
+  const [selectedClient, setSelectedClient] = useState(null);
+
   const loadQueue = async () => {
     try {
       const req = await apiRequest('/incentives/submissions');
@@ -145,6 +155,30 @@ export default function IncentivesManagement() {
     }
   };
 
+  const loadClients = async (q = clientQuery) => {
+    try {
+      setClientsLoading(true);
+      const qs = new URLSearchParams();
+      if (q) qs.set('q', q);
+      const rows = await apiRequest(`/incentives/clients?${qs.toString()}`);
+      setClients(rows || []);
+    } catch (error) {
+      setMessage({ type: 'error', text: error.message });
+    } finally {
+      setClientsLoading(false);
+    }
+  };
+
+  const openClient = (row) => {
+    setSelectedClient(row);
+    setClientDialogOpen(true);
+  };
+
+  const closeClient = () => {
+    setClientDialogOpen(false);
+    setSelectedClient(null);
+  };
+
   const saveTargetTiers = async () => {
     try {
       const tiers = (tierDraft || []).map((t) => ({
@@ -169,6 +203,30 @@ export default function IncentivesManagement() {
       { min_sales_amount: 250000, target_total_salary: 22000 },
     ];
     setTierDraft(defaults);
+  };
+
+  const loadIncentiveRules = async () => {
+    try {
+      setRulesLoading(true);
+      const res = await apiRequest('/incentives/rules');
+      setRulesSource(res?.source || '');
+      setRulesText(JSON.stringify(res?.config || {}, null, 2));
+    } catch (error) {
+      setMessage({ type: 'error', text: error.message });
+    } finally {
+      setRulesLoading(false);
+    }
+  };
+
+  const saveIncentiveRules = async () => {
+    try {
+      const parsed = JSON.parse(rulesText || '{}');
+      await apiRequest('/incentives/rules', { method: 'PUT', body: { config: parsed } });
+      setMessage({ type: 'success', text: 'Incentive rules saved.' });
+      await loadIncentiveRules();
+    } catch (error) {
+      setMessage({ type: 'error', text: `Rules save failed: ${error.message}` });
+    }
   };
 
   const saveMonthlyTargets = async () => {
@@ -204,6 +262,8 @@ export default function IncentivesManagement() {
     loadEmployees();
     loadTargetTiers();
     loadPerformance(perfMonth, perfYear);
+    loadClients('');
+    loadIncentiveRules();
   }, []);
 
   const queueRows = useMemo(() => requests.filter((r) => r.status === 'pending'), [requests]);
@@ -250,6 +310,8 @@ export default function IncentivesManagement() {
       client_mobile_2: row.client_mobile_2 || '',
       client_email: row.client_email || '',
       client_username: row.client_username || '',
+      client_panel_username: row.client_panel_username || '',
+      client_panel_password: '',
       sms_quantity: row.sms_quantity ?? '',
       rate: row.rate ?? '',
       price: row.price ?? '',
@@ -290,6 +352,8 @@ export default function IncentivesManagement() {
         client_mobile_2: editForm.client_mobile_2,
         client_email: editForm.client_email,
         client_username: editForm.client_username,
+        client_panel_username: editForm.client_panel_username,
+        ...(editForm.client_panel_password ? { client_panel_password: editForm.client_panel_password } : {}),
         sms_quantity: normalizeNumberOrNull(editForm.sms_quantity),
         rate: normalizeNumberOrNull(editForm.rate),
         price: normalizeNumberOrNull(editForm.price),
@@ -588,6 +652,70 @@ export default function IncentivesManagement() {
           <CardContent>
             <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between" alignItems={{ xs: 'stretch', md: 'center' }}>
               <Box>
+                <Typography variant="h6" fontWeight={800}>Clients</Typography>
+                <Typography color="text.secondary">All clients secured (from incentive submissions) with search.</Typography>
+              </Box>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25} alignItems={{ xs: 'stretch', sm: 'center' }}>
+                <TextField
+                  size="small"
+                  label="Search (name/mobile/email)"
+                  value={clientQuery}
+                  onChange={(e) => setClientQuery(e.target.value)}
+                  sx={{ minWidth: { xs: '100%', sm: 320 } }}
+                />
+                <Button variant="contained" onClick={() => loadClients(clientQuery)} disabled={clientsLoading}>Search</Button>
+                <Button variant="outlined" onClick={() => { setClientQuery(''); loadClients(''); }} disabled={clientsLoading}>Reset</Button>
+              </Stack>
+            </Stack>
+
+            <TableContainer component={Paper} variant="outlined" sx={{ mt: 2 }}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Client</TableCell>
+                    <TableCell>Mobile</TableCell>
+                    <TableCell>Email</TableCell>
+                    <TableCell>Panel User</TableCell>
+                    <TableCell>Password</TableCell>
+                    <TableCell>Employee</TableCell>
+                    <TableCell>Total Sales</TableCell>
+                    <TableCell>Approved</TableCell>
+                    <TableCell align="right">View</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {clients.map((row) => (
+                    <TableRow key={row.client_key}>
+                      <TableCell>{row.client_name || 'N/A'}</TableCell>
+                      <TableCell>{row.client_mobile_1 || 'N/A'}</TableCell>
+                      <TableCell>{row.client_email || 'N/A'}</TableCell>
+                      <TableCell>{row.client_panel_username || 'N/A'}</TableCell>
+                      <TableCell>{row.client_panel_password ? '********' : 'N/A'}</TableCell>
+                      <TableCell>{row.first_name ? `${row.first_name} ${row.last_name} (${row.employee_code || 'N/A'})` : 'N/A'}</TableCell>
+                      <TableCell>{Number(row.total_sales || 0).toLocaleString()}</TableCell>
+                      <TableCell>{Number(row.approved_count || 0)}/{Number(row.submissions_count || 0)}</TableCell>
+                      <TableCell align="right">
+                        <Button size="small" variant="text" onClick={() => openClient(row)}>View</Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {clients.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={9}>
+                        <Typography variant="body2" color="text.secondary">No clients found.</Typography>
+                      </TableCell>
+                    </TableRow>
+                  ) : null}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent>
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between" alignItems={{ xs: 'stretch', md: 'center' }}>
+              <Box>
                 <Typography variant="h6" fontWeight={800}>Targets & Salary Tiers</Typography>
                 <Typography color="text.secondary">Set company tiers and monthly targets (all or per employee).</Typography>
               </Box>
@@ -707,6 +835,35 @@ export default function IncentivesManagement() {
             </Stack>
           </CardContent>
         </Card>
+
+        <Card>
+          <CardContent>
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between" alignItems={{ xs: 'stretch', md: 'center' }}>
+              <Box>
+                <Typography variant="h6" fontWeight={800}>Incentive Rules</Typography>
+                <Typography color="text.secondary">Edit products + incentive calculation (JSON). Source: {rulesSource || 'unknown'}.</Typography>
+              </Box>
+              <Stack direction="row" spacing={1.25} flexWrap="wrap" justifyContent={{ xs: 'flex-start', md: 'flex-end' }}>
+                <Button variant="outlined" onClick={loadIncentiveRules} disabled={rulesLoading}>Reload</Button>
+                <Button variant="contained" onClick={saveIncentiveRules} disabled={rulesLoading}>Save Rules</Button>
+              </Stack>
+            </Stack>
+
+            <TextField
+              multiline
+              minRows={12}
+              fullWidth
+              sx={{ mt: 2, fontFamily: 'monospace' }}
+              value={rulesText}
+              onChange={(e) => setRulesText(e.target.value)}
+              placeholder={`{\n  \"version\": 1,\n  \"products\": []\n}`}
+            />
+
+            <Alert severity="info" sx={{ mt: 2 }}>
+              After saving, employee submit/preview uses these rules. If you disable a product, employees cannot submit it.
+            </Alert>
+          </CardContent>
+        </Card>
       </Stack>
 
       <Menu
@@ -755,6 +912,8 @@ export default function IncentivesManagement() {
               <Typography><b>Client Mobile 2:</b> {selected.client_mobile_2 || 'N/A'}</Typography>
               <Typography><b>Client Email:</b> {selected.client_email || 'N/A'}</Typography>
               <Typography><b>Client User Name:</b> {selected.client_username || 'N/A'}</Typography>
+              <Typography><b>Client Panel Username:</b> {selected.client_panel_username || 'N/A'}</Typography>
+              <Typography><b>Client Panel Password:</b> {selected.client_panel_password ? '********' : 'N/A'}</Typography>
               <Divider />
               <Typography><b>Quantity:</b> {selected.sms_quantity ?? 'N/A'}</Typography>
               <Typography><b>Rate:</b> {selected.rate ?? 'N/A'}</Typography>
@@ -806,6 +965,8 @@ export default function IncentivesManagement() {
                 <TextField fullWidth label="Client Mobile 2" value={editForm.client_mobile_2} onChange={(e) => setEditForm({ ...editForm, client_mobile_2: e.target.value })} />
                 <TextField fullWidth label="Client Email" value={editForm.client_email} onChange={(e) => setEditForm({ ...editForm, client_email: e.target.value })} />
                 <TextField fullWidth label="Client Username" value={editForm.client_username} onChange={(e) => setEditForm({ ...editForm, client_username: e.target.value })} />
+                <TextField fullWidth label="Client Panel Username" value={editForm.client_panel_username} onChange={(e) => setEditForm({ ...editForm, client_panel_username: e.target.value })} />
+                <TextField fullWidth label="Client Panel Password" type="password" value={editForm.client_panel_password} onChange={(e) => setEditForm({ ...editForm, client_panel_password: e.target.value })} helperText="Leave blank to keep existing password." />
               </Stack>
 
               {['Bulk SMS', 'WhatsApp SMS'].includes(editForm.product_name) ? (
@@ -903,6 +1064,37 @@ export default function IncentivesManagement() {
         </DialogContent>
         <DialogActions>
           <Button onClick={closePerformanceDetails}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={clientDialogOpen} onClose={closeClient} maxWidth="sm" fullWidth>
+        <DialogTitle>Client Info</DialogTitle>
+        <DialogContent dividers>
+          {selectedClient ? (
+            <Stack spacing={1.25}>
+              <Typography><b>Client:</b> {selectedClient.client_name || 'N/A'}</Typography>
+              <Typography><b>Mobile 1:</b> {selectedClient.client_mobile_1 || 'N/A'}</Typography>
+              <Typography><b>Mobile 2:</b> {selectedClient.client_mobile_2 || 'N/A'}</Typography>
+              <Typography><b>Email:</b> {selectedClient.client_email || 'N/A'}</Typography>
+              <Divider />
+              <Typography><b>Client Username:</b> {selectedClient.client_username || 'N/A'}</Typography>
+              <Typography><b>Panel Username:</b> {selectedClient.client_panel_username || 'N/A'}</Typography>
+              <Typography><b>Panel Password:</b> {selectedClient.client_panel_password || 'N/A'}</Typography>
+              <Divider />
+              <Typography><b>Total Sales:</b> {Number(selectedClient.total_sales || 0).toLocaleString()}</Typography>
+              <Typography><b>Total Incentive:</b> {Number(selectedClient.total_incentive || 0).toFixed(2)}</Typography>
+              <Typography><b>Approved / Submitted:</b> {Number(selectedClient.approved_count || 0)}/{Number(selectedClient.submissions_count || 0)}</Typography>
+              <Divider />
+              <Typography><b>Last Product:</b> {selectedClient.last_product || 'N/A'}</Typography>
+              <Typography><b>Last Payment Mode:</b> {selectedClient.last_payment_mode || 'N/A'}</Typography>
+              <Typography><b>Last Location:</b> {selectedClient.last_location || 'N/A'}</Typography>
+              <Typography><b>Last Employee:</b> {selectedClient.first_name ? `${selectedClient.first_name} ${selectedClient.last_name} (${selectedClient.employee_code || 'N/A'})` : 'N/A'}</Typography>
+              <Typography><b>Last Date:</b> {selectedClient.last_approved_at ? new Date(selectedClient.last_approved_at).toLocaleString() : selectedClient.last_submitted_at ? new Date(selectedClient.last_submitted_at).toLocaleString() : 'N/A'}</Typography>
+            </Stack>
+          ) : null}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeClient}>Close</Button>
         </DialogActions>
       </Dialog>
     </Box>

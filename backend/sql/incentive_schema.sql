@@ -61,3 +61,10 @@ CREATE TABLE IF NOT EXISTS incentive_earnings (
 
 CREATE INDEX IF NOT EXISTS idx_incentive_earnings_company_month ON incentive_earnings(company_id, earned_year, earned_month);
 CREATE INDEX IF NOT EXISTS idx_incentive_earnings_employee_month ON incentive_earnings(employee_id, earned_year, earned_month);
+
+-- Client panel credentials (optional)
+ALTER TABLE IF EXISTS incentive_submissions
+  ADD COLUMN IF NOT EXISTS client_panel_username VARCHAR(255);
+
+ALTER TABLE IF EXISTS incentive_submissions
+  ADD COLUMN IF NOT EXISTS client_panel_password VARCHAR(255);
