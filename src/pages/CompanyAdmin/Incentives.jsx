@@ -25,10 +25,20 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import { Check, Close, Info, MoreVert } from '@mui/icons-material';
+import { Check, Close, Edit, Info, MoreVert, Visibility } from '@mui/icons-material';
 import { API_BASE_URL, apiRequest } from '../../lib/api';
 
 const uploadsBaseUrl = API_BASE_URL.replace(/\/api\/?$/, '');
+
+const productOptions = [
+  'Bulk SMS',
+  'WhatsApp SMS',
+  'WhatsApp Meta Setup',
+  'WhatsApp Meta Recharge',
+  'WhatsApp Meta Subscription',
+  'RCS Setup',
+  'RCS Recharge',
+];
 
 const toScreenshotUrl = (screenshotPath) => {
   if (!screenshotPath) return '';
@@ -40,12 +50,23 @@ const toScreenshotUrl = (screenshotPath) => {
   return `${uploadsBaseUrl}/${relative}`;
 };
 
+const normalizeNumberOrNull = (value) => {
+  if (value === '' || value === null || value === undefined) return null;
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+};
+
 export default function IncentivesManagement() {
   const [requests, setRequests] = useState([]);
   const [earnings, setEarnings] = useState([]);
+  const [employees, setEmployees] = useState([]);
   const [message, setMessage] = useState({ type: '', text: '' });
+
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [selected, setSelected] = useState(null);
+
+  const [editOpen, setEditOpen] = useState(false);
+  const [editForm, setEditForm] = useState(null);
 
   const now = useMemo(() => new Date(), []);
   const [earningsMonth, setEarningsMonth] = useState(now.getMonth() + 1);
@@ -54,10 +75,112 @@ export default function IncentivesManagement() {
   const [menuAnchorEl, setMenuAnchorEl] = useState(null);
   const [menuRow, setMenuRow] = useState(null);
 
+  const [perfMonth, setPerfMonth] = useState(now.getMonth() + 1);
+  const [perfYear, setPerfYear] = useState(now.getFullYear());
+  const [performanceEmployees, setPerformanceEmployees] = useState([]);
+  const [performanceDialogOpen, setPerformanceDialogOpen] = useState(false);
+  const [performanceDetails, setPerformanceDetails] = useState(null);
+
+  const [tierDraft, setTierDraft] = useState([]);
+  const [targetsMonth, setTargetsMonth] = useState(now.getMonth() + 1);
+  const [targetsYear, setTargetsYear] = useState(now.getFullYear());
+  const [targetSalesAmount, setTargetSalesAmount] = useState('');
+  const [targetEmployeeId, setTargetEmployeeId] = useState(''); // empty => all employees
+
   const loadQueue = async () => {
     try {
       const req = await apiRequest('/incentives/submissions');
       setRequests(req || []);
+    } catch (error) {
+      setMessage({ type: 'error', text: error.message });
+    }
+  };
+
+  const loadEmployees = async () => {
+    try {
+      const rows = await apiRequest('/employees');
+      setEmployees(rows || []);
+    } catch (error) {
+      setMessage({ type: 'error', text: error.message });
+    }
+  };
+
+  const loadPerformance = async (month = perfMonth, year = perfYear) => {
+    try {
+      const qs = new URLSearchParams();
+      qs.set('month', String(month));
+      qs.set('year', String(year));
+      const data = await apiRequest(`/incentives/performance?${qs.toString()}`);
+      setPerformanceEmployees(data?.employees || []);
+    } catch (error) {
+      setMessage({ type: 'error', text: error.message });
+    }
+  };
+
+  const openPerformanceDetails = async (employeeId) => {
+    try {
+      const qs = new URLSearchParams();
+      qs.set('month', String(perfMonth));
+      qs.set('year', String(perfYear));
+      qs.set('employee_id', String(employeeId));
+      const data = await apiRequest(`/incentives/performance?${qs.toString()}`);
+      setPerformanceDetails(data || null);
+      setPerformanceDialogOpen(true);
+    } catch (error) {
+      setMessage({ type: 'error', text: error.message });
+    }
+  };
+
+  const closePerformanceDetails = () => {
+    setPerformanceDialogOpen(false);
+    setPerformanceDetails(null);
+  };
+
+  const loadTargetTiers = async () => {
+    try {
+      const rows = await apiRequest('/incentives/targets/tiers');
+      setTierDraft((rows || []).map((r) => ({ min_sales_amount: Number(r.min_sales_amount), target_total_salary: Number(r.target_total_salary) })));
+    } catch (error) {
+      setMessage({ type: 'error', text: error.message });
+    }
+  };
+
+  const saveTargetTiers = async () => {
+    try {
+      const tiers = (tierDraft || []).map((t) => ({
+        min_sales_amount: Number(t.min_sales_amount),
+        target_total_salary: Number(t.target_total_salary),
+      }));
+      await apiRequest('/incentives/targets/tiers', { method: 'PUT', body: { tiers } });
+      setMessage({ type: 'success', text: 'Target tiers saved.' });
+      await loadTargetTiers();
+    } catch (error) {
+      setMessage({ type: 'error', text: error.message });
+    }
+  };
+
+  const loadDefaultTargetTiers = async () => {
+    const defaults = [
+      { min_sales_amount: 80000, target_total_salary: 11000 },
+      { min_sales_amount: 120000, target_total_salary: 12000 },
+      { min_sales_amount: 150000, target_total_salary: 15000 },
+      { min_sales_amount: 180000, target_total_salary: 18000 },
+      { min_sales_amount: 200000, target_total_salary: 20000 },
+      { min_sales_amount: 250000, target_total_salary: 22000 },
+    ];
+    setTierDraft(defaults);
+  };
+
+  const saveMonthlyTargets = async () => {
+    try {
+      const payload = {
+        month: Number(targetsMonth),
+        year: Number(targetsYear),
+        target_sales_amount: Number(targetSalesAmount || 0),
+        ...(targetEmployeeId ? { employee_id: Number(targetEmployeeId) } : {}),
+      };
+      await apiRequest('/incentives/targets/monthly', { method: 'PUT', body: payload });
+      setMessage({ type: 'success', text: 'Monthly targets updated.' });
     } catch (error) {
       setMessage({ type: 'error', text: error.message });
     }
@@ -78,6 +201,9 @@ export default function IncentivesManagement() {
   useEffect(() => {
     loadQueue();
     loadEarnings(earningsMonth, earningsYear);
+    loadEmployees();
+    loadTargetTiers();
+    loadPerformance(perfMonth, perfYear);
   }, []);
 
   const queueRows = useMemo(() => requests.filter((r) => r.status === 'pending'), [requests]);
@@ -112,6 +238,78 @@ export default function IncentivesManagement() {
     setSelected(null);
   };
 
+  const openEdit = (row) => {
+    setEditForm({
+      id: row.id,
+      client_name: row.client_name || '',
+      product_name: row.product_name || productOptions[0],
+      package_type: row.package_type || 'new',
+      payment_mode: row.payment_mode || '',
+      client_location: row.client_location || '',
+      client_mobile_1: row.client_mobile_1 || '',
+      client_mobile_2: row.client_mobile_2 || '',
+      client_email: row.client_email || '',
+      client_username: row.client_username || '',
+      sms_quantity: row.sms_quantity ?? '',
+      rate: row.rate ?? '',
+      price: row.price ?? '',
+      incentive_amount: row.incentive_amount ?? '',
+    });
+    setEditOpen(true);
+  };
+
+  const closeEdit = () => {
+    setEditOpen(false);
+    setEditForm(null);
+  };
+
+  const editRateInvalid = useMemo(() => {
+    if (!editForm) return false;
+    const needsRate = ['Bulk SMS', 'WhatsApp SMS'].includes(editForm.product_name);
+    if (!needsRate) return false;
+    if (editForm.rate === '' || editForm.rate === null || editForm.rate === undefined) return false;
+    const r = Number(editForm.rate);
+    return !Number.isFinite(r) || r < 0 || r >= 1;
+  }, [editForm]);
+
+  const saveEdit = async () => {
+    if (!editForm) return;
+    if (editRateInvalid) {
+      setMessage({ type: 'error', text: 'Rate must be entered in paisa (example 0.12) and must be less than 1.' });
+      return;
+    }
+
+    try {
+      const payload = {
+        client_name: editForm.client_name,
+        product_name: editForm.product_name,
+        package_type: editForm.package_type,
+        payment_mode: editForm.payment_mode,
+        client_location: editForm.client_location,
+        client_mobile_1: editForm.client_mobile_1,
+        client_mobile_2: editForm.client_mobile_2,
+        client_email: editForm.client_email,
+        client_username: editForm.client_username,
+        sms_quantity: normalizeNumberOrNull(editForm.sms_quantity),
+        rate: normalizeNumberOrNull(editForm.rate),
+        price: normalizeNumberOrNull(editForm.price),
+        incentive_amount: normalizeNumberOrNull(editForm.incentive_amount),
+      };
+
+      await apiRequest(`/incentives/submissions/${editForm.id}`, {
+        method: 'PUT',
+        body: payload,
+      });
+
+      setMessage({ type: 'success', text: 'Incentive updated.' });
+      closeEdit();
+      await loadQueue();
+      await loadEarnings(earningsMonth, earningsYear);
+    } catch (error) {
+      setMessage({ type: 'error', text: error.message });
+    }
+  };
+
   const openRowMenu = (event, row) => {
     setMenuAnchorEl(event.currentTarget);
     setMenuRow(row);
@@ -130,6 +328,11 @@ export default function IncentivesManagement() {
 
     if (action === 'details') {
       openDetails(row);
+      return;
+    }
+
+    if (action === 'edit') {
+      openEdit(row);
       return;
     }
 
@@ -272,6 +475,7 @@ export default function IncentivesManagement() {
                     <TableCell>Type</TableCell>
                     <TableCell>Payment Mode</TableCell>
                     <TableCell>Date</TableCell>
+                    <TableCell align="right">Actions</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -283,11 +487,22 @@ export default function IncentivesManagement() {
                       <TableCell>{String(row.package_type || '').toLowerCase() === 'renew' ? 'Renew' : 'New'}</TableCell>
                       <TableCell>{row.payment_mode || 'N/A'}</TableCell>
                       <TableCell>{row.earned_at ? new Date(row.earned_at).toLocaleString() : 'N/A'}</TableCell>
+                      <TableCell align="right">
+                        <IconButton
+                          size="small"
+                          aria-label="actions"
+                          aria-controls={isMenuOpen ? menuId : undefined}
+                          aria-haspopup="true"
+                          onClick={(e) => openRowMenu(e, row)}
+                        >
+                          <MoreVert fontSize="small" />
+                        </IconButton>
+                      </TableCell>
                     </TableRow>
                   ))}
                   {earnings.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={6}>
+                      <TableCell colSpan={7}>
                         <Typography variant="body2" color="text.secondary">No earnings for selected month.</Typography>
                       </TableCell>
                     </TableRow>
@@ -295,6 +510,201 @@ export default function IncentivesManagement() {
                 </TableBody>
               </Table>
             </TableContainer>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent>
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between" alignItems={{ xs: 'stretch', md: 'center' }}>
+              <Box>
+                <Typography variant="h6" fontWeight={800}>Employee Performance (Sales)</Typography>
+                <Typography color="text.secondary">How many clients each employee closed and sales details.</Typography>
+              </Box>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ xs: 'stretch', sm: 'center' }}>
+                <TextField
+                  size="small"
+                  label="Month"
+                  type="number"
+                  value={perfMonth}
+                  onChange={(e) => setPerfMonth(Math.max(1, Math.min(12, Number(e.target.value) || 1)))}
+                  inputProps={{ min: 1, max: 12 }}
+                  sx={{ width: { xs: '100%', sm: 120 } }}
+                />
+                <TextField
+                  size="small"
+                  label="Year"
+                  type="number"
+                  value={perfYear}
+                  onChange={(e) => setPerfYear(Number(e.target.value) || now.getFullYear())}
+                  sx={{ width: { xs: '100%', sm: 140 } }}
+                />
+                <Button variant="contained" onClick={() => loadPerformance(perfMonth, perfYear)}>Load</Button>
+              </Stack>
+            </Stack>
+
+            <TableContainer component={Paper} variant="outlined" sx={{ mt: 2 }}>
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Employee</TableCell>
+                    <TableCell>Clients</TableCell>
+                    <TableCell>New</TableCell>
+                    <TableCell>Renew</TableCell>
+                    <TableCell>Sales</TableCell>
+                    <TableCell>Incentives</TableCell>
+                    <TableCell align="right">Details</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {performanceEmployees.map((row) => (
+                    <TableRow key={row.employee_id}>
+                      <TableCell>{row.first_name} {row.last_name} ({row.employee_code || 'N/A'})</TableCell>
+                      <TableCell>{Number(row.clients_total || 0)}</TableCell>
+                      <TableCell>{Number(row.new_count || 0)}</TableCell>
+                      <TableCell>{Number(row.renew_count || 0)}</TableCell>
+                      <TableCell>{Number(row.sales_total || 0).toLocaleString()}</TableCell>
+                      <TableCell>{Number(row.incentives_total || 0).toFixed(2)}</TableCell>
+                      <TableCell align="right">
+                        <IconButton size="small" onClick={() => openPerformanceDetails(row.employee_id)} aria-label="view performance">
+                          <Visibility fontSize="small" />
+                        </IconButton>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {performanceEmployees.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={7}>
+                        <Typography variant="body2" color="text.secondary">No performance data for selected month.</Typography>
+                      </TableCell>
+                    </TableRow>
+                  ) : null}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent>
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between" alignItems={{ xs: 'stretch', md: 'center' }}>
+              <Box>
+                <Typography variant="h6" fontWeight={800}>Targets & Salary Tiers</Typography>
+                <Typography color="text.secondary">Set company tiers and monthly targets (all or per employee).</Typography>
+              </Box>
+              <Stack direction="row" spacing={1.25} justifyContent={{ xs: 'flex-start', md: 'flex-end' }} flexWrap="wrap">
+                <Button variant="outlined" onClick={loadDefaultTargetTiers}>Load Defaults</Button>
+                <Button variant="contained" onClick={saveTargetTiers}>Save Tiers</Button>
+              </Stack>
+            </Stack>
+
+            <TableContainer component={Paper} variant="outlined" sx={{ mt: 2 }}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Min Sales</TableCell>
+                    <TableCell>Target Salary</TableCell>
+                    <TableCell align="right">Actions</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {(tierDraft || []).map((tier, idx) => (
+                    <TableRow key={`${tier.min_sales_amount}-${idx}`}>
+                      <TableCell>
+                        <TextField
+                          size="small"
+                          type="number"
+                          value={tier.min_sales_amount}
+                          onChange={(e) => {
+                            const next = [...tierDraft];
+                            next[idx] = { ...next[idx], min_sales_amount: e.target.value };
+                            setTierDraft(next);
+                          }}
+                          inputProps={{ min: 0 }}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <TextField
+                          size="small"
+                          type="number"
+                          value={tier.target_total_salary}
+                          onChange={(e) => {
+                            const next = [...tierDraft];
+                            next[idx] = { ...next[idx], target_total_salary: e.target.value };
+                            setTierDraft(next);
+                          }}
+                          inputProps={{ min: 0 }}
+                        />
+                      </TableCell>
+                      <TableCell align="right">
+                        <Button
+                          size="small"
+                          variant="text"
+                          color="error"
+                          onClick={() => setTierDraft((current) => current.filter((_, i) => i !== idx))}
+                        >
+                          Remove
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {(tierDraft || []).length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={3}>
+                        <Typography variant="body2" color="text.secondary">No tiers configured yet.</Typography>
+                      </TableCell>
+                    </TableRow>
+                  ) : null}
+                </TableBody>
+              </Table>
+            </TableContainer>
+
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} sx={{ mt: 2 }} alignItems={{ xs: 'stretch', md: 'center' }}>
+              <Button variant="outlined" onClick={() => setTierDraft((current) => [...(current || []), { min_sales_amount: 0, target_total_salary: 0 }])}>
+                Add Tier
+              </Button>
+              <Divider flexItem orientation="vertical" sx={{ display: { xs: 'none', md: 'block' } }} />
+              <Typography fontWeight={700}>Monthly Target</Typography>
+              <TextField
+                size="small"
+                label="Month"
+                type="number"
+                value={targetsMonth}
+                onChange={(e) => setTargetsMonth(Math.max(1, Math.min(12, Number(e.target.value) || 1)))}
+                inputProps={{ min: 1, max: 12 }}
+                sx={{ width: { xs: '100%', sm: 120 } }}
+              />
+              <TextField
+                size="small"
+                label="Year"
+                type="number"
+                value={targetsYear}
+                onChange={(e) => setTargetsYear(Number(e.target.value) || now.getFullYear())}
+                sx={{ width: { xs: '100%', sm: 140 } }}
+              />
+              <TextField
+                size="small"
+                select
+                label="Employee"
+                value={targetEmployeeId}
+                onChange={(e) => setTargetEmployeeId(e.target.value)}
+                sx={{ minWidth: 220 }}
+              >
+                <MenuItem value="">All Employees</MenuItem>
+                {employees.map((e) => (
+                  <MenuItem key={e.id} value={String(e.id)}>{e.first_name} {e.last_name} ({e.employee_code || 'N/A'})</MenuItem>
+                ))}
+              </TextField>
+              <TextField
+                size="small"
+                label="Target Sales"
+                type="number"
+                value={targetSalesAmount}
+                onChange={(e) => setTargetSalesAmount(e.target.value)}
+                inputProps={{ min: 0 }}
+                sx={{ width: { xs: '100%', sm: 160 } }}
+              />
+              <Button variant="contained" onClick={saveMonthlyTargets}>Save Target</Button>
+            </Stack>
           </CardContent>
         </Card>
       </Stack>
@@ -311,14 +721,22 @@ export default function IncentivesManagement() {
           <Info fontSize="small" style={{ marginRight: 10 }} />
           Details
         </MenuItem>
-        <MenuItem onClick={() => handleMenuAction('approve')}>
-          <Check fontSize="small" style={{ marginRight: 10 }} />
-          Approve
+        <MenuItem onClick={() => handleMenuAction('edit')}>
+          <Edit fontSize="small" style={{ marginRight: 10 }} />
+          Edit
         </MenuItem>
-        <MenuItem onClick={() => handleMenuAction('reject')}>
-          <Close fontSize="small" style={{ marginRight: 10 }} />
-          Reject
-        </MenuItem>
+        {menuRow?.status === 'pending' ? (
+          <MenuItem onClick={() => handleMenuAction('approve')}>
+            <Check fontSize="small" style={{ marginRight: 10 }} />
+            Approve
+          </MenuItem>
+        ) : null}
+        {menuRow?.status === 'pending' ? (
+          <MenuItem onClick={() => handleMenuAction('reject')}>
+            <Close fontSize="small" style={{ marginRight: 10 }} />
+            Reject
+          </MenuItem>
+        ) : null}
       </Menu>
 
       <Dialog open={detailsOpen} onClose={closeDetails} maxWidth="sm" fullWidth>
@@ -359,6 +777,132 @@ export default function IncentivesManagement() {
               <Button variant="outlined" color="error" onClick={() => { handleUpdateStatus(selected.id, 'rejected'); closeDetails(); }}>Reject</Button>
             </>
           ) : null}
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={editOpen} onClose={closeEdit} maxWidth="md" fullWidth>
+        <DialogTitle>Edit Incentive</DialogTitle>
+        <DialogContent dividers>
+          {editForm ? (
+            <Stack spacing={1.5}>
+              <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}>
+                <TextField fullWidth label="Client Name" value={editForm.client_name} onChange={(e) => setEditForm({ ...editForm, client_name: e.target.value })} />
+                <TextField fullWidth select label="Product" value={editForm.product_name} onChange={(e) => setEditForm({ ...editForm, product_name: e.target.value })}>
+                  {productOptions.map((p) => <MenuItem key={p} value={p}>{p}</MenuItem>)}
+                </TextField>
+              </Stack>
+
+              <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}>
+                <TextField fullWidth select label="Type" value={editForm.package_type} onChange={(e) => setEditForm({ ...editForm, package_type: e.target.value })}>
+                  <MenuItem value="new">New</MenuItem>
+                  <MenuItem value="renew">Renew</MenuItem>
+                </TextField>
+                <TextField fullWidth label="Payment Mode" value={editForm.payment_mode} onChange={(e) => setEditForm({ ...editForm, payment_mode: e.target.value })} />
+                <TextField fullWidth label="Client Location" value={editForm.client_location} onChange={(e) => setEditForm({ ...editForm, client_location: e.target.value })} />
+              </Stack>
+
+              <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}>
+                <TextField fullWidth label="Client Mobile 1" value={editForm.client_mobile_1} onChange={(e) => setEditForm({ ...editForm, client_mobile_1: e.target.value })} />
+                <TextField fullWidth label="Client Mobile 2" value={editForm.client_mobile_2} onChange={(e) => setEditForm({ ...editForm, client_mobile_2: e.target.value })} />
+                <TextField fullWidth label="Client Email" value={editForm.client_email} onChange={(e) => setEditForm({ ...editForm, client_email: e.target.value })} />
+                <TextField fullWidth label="Client Username" value={editForm.client_username} onChange={(e) => setEditForm({ ...editForm, client_username: e.target.value })} />
+              </Stack>
+
+              {['Bulk SMS', 'WhatsApp SMS'].includes(editForm.product_name) ? (
+                <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}>
+                  <TextField fullWidth label="SMS Quantity" type="number" value={editForm.sms_quantity} onChange={(e) => setEditForm({ ...editForm, sms_quantity: e.target.value })} />
+                  <TextField
+                    fullWidth
+                    label="Rate"
+                    type="number"
+                    value={editForm.rate}
+                    onChange={(e) => setEditForm({ ...editForm, rate: e.target.value })}
+                    error={editRateInvalid}
+                    helperText={editRateInvalid ? 'Enter paisa rate like 0.12 (must be < 1).' : 'Example: 0.12'}
+                    inputProps={{ step: '0.01', min: 0, max: 0.9999 }}
+                  />
+                </Stack>
+              ) : null}
+
+              <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}>
+                <TextField fullWidth label="Price" type="number" value={editForm.price} onChange={(e) => setEditForm({ ...editForm, price: e.target.value })} />
+                <TextField fullWidth label="Incentive Amount" type="number" value={editForm.incentive_amount} onChange={(e) => setEditForm({ ...editForm, incentive_amount: e.target.value })} helperText="Leave blank to auto-calculate on save." />
+              </Stack>
+            </Stack>
+          ) : null}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeEdit}>Cancel</Button>
+          <Button variant="contained" onClick={saveEdit} disabled={!editForm || editRateInvalid}>Save</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={performanceDialogOpen} onClose={closePerformanceDetails} maxWidth="md" fullWidth>
+        <DialogTitle>Employee Performance</DialogTitle>
+        <DialogContent dividers>
+          {performanceDetails ? (
+            <Stack spacing={2}>
+              <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between">
+                <Box>
+                  <Typography fontWeight={800}>
+                    {performanceDetails.employee?.first_name} {performanceDetails.employee?.last_name} ({performanceDetails.employee?.employee_code || 'N/A'})
+                  </Typography>
+                  <Typography color="text.secondary">
+                    {new Date(performanceDetails.year, performanceDetails.month - 1).toLocaleString('en-IN', { month: 'long', year: 'numeric' })}
+                  </Typography>
+                </Box>
+                <Stack direction="row" spacing={1} flexWrap="wrap">
+                  <Chip label={`Clients: ${Number(performanceDetails.summary?.clients_total || 0)}`} />
+                  <Chip label={`New: ${Number(performanceDetails.summary?.new_count || 0)}`} />
+                  <Chip label={`Renew: ${Number(performanceDetails.summary?.renew_count || 0)}`} />
+                  <Chip color="primary" label={`Sales: ${Number(performanceDetails.summary?.sales_total || 0).toLocaleString()}`} />
+                  <Chip color="success" label={`Incentives: ${Number(performanceDetails.summary?.incentives_total || 0).toFixed(2)}`} />
+                </Stack>
+              </Stack>
+
+              <Divider />
+
+              <Typography variant="subtitle2" fontWeight={800}>Approved Sales Details</Typography>
+              <TableContainer component={Paper} variant="outlined">
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Client</TableCell>
+                      <TableCell>Product</TableCell>
+                      <TableCell>Type</TableCell>
+                      <TableCell>Payment</TableCell>
+                      <TableCell>Price</TableCell>
+                      <TableCell>Incentive</TableCell>
+                      <TableCell>Date</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {(performanceDetails.details || []).map((row) => (
+                      <TableRow key={row.id}>
+                        <TableCell>{row.client_name}</TableCell>
+                        <TableCell>{row.product_name}</TableCell>
+                        <TableCell>{String(row.package_type || '').toLowerCase() === 'renew' ? 'Renew' : 'New'}</TableCell>
+                        <TableCell>{row.payment_mode || 'N/A'}</TableCell>
+                        <TableCell>{Number(row.price || 0).toLocaleString()}</TableCell>
+                        <TableCell>{Number(row.incentive_amount || 0).toFixed(2)}</TableCell>
+                        <TableCell>{row.approved_at ? new Date(row.approved_at).toLocaleDateString('en-IN') : 'N/A'}</TableCell>
+                      </TableRow>
+                    ))}
+                    {(performanceDetails.details || []).length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={7}>
+                          <Typography variant="body2" color="text.secondary">No approved sales found.</Typography>
+                        </TableCell>
+                      </TableRow>
+                    ) : null}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </Stack>
+          ) : null}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closePerformanceDetails}>Close</Button>
         </DialogActions>
       </Dialog>
     </Box>

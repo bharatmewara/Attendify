@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+﻿import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Alert,
@@ -13,7 +13,7 @@ import {
   Typography,
   Snackbar,
 } from '@mui/material';
-import { ArrowForward, Bolt, EventAvailable } from '@mui/icons-material';
+import { ArrowForward, Bolt, EventAvailable, TrendingUp } from '@mui/icons-material';
 import { apiRequest } from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
 
@@ -30,6 +30,8 @@ export default function EmployeeDashboard() {
   const [upcomingHolidays, setUpcomingHolidays] = useState([]);
   const [nearHoliday, setNearHoliday] = useState(null);
   const [message, setMessage] = useState({ type: '', text: '' });
+  const [perfInfo, setPerfInfo] = useState(null);
+  const [perfOfficeBlocked, setPerfOfficeBlocked] = useState(false);
   
   const fetchTodayAttendance = async () => {
     try {
@@ -74,12 +76,39 @@ export default function EmployeeDashboard() {
           .filter((h) => h.days_left >= 0 && h.days_left <= 4)
           .sort((a, b) => a.days_left - b.days_left)[0] || null;
         setNearHoliday(nearest);
+
+        try {
+          const nowDate = new Date();
+          const month = nowDate.getMonth() + 1;
+          const yearNum = nowDate.getFullYear();
+          const perf = await apiRequest(`/incentives/performance?month=${month}&year=${yearNum}`);
+          setPerfInfo(perf || null);
+          setPerfOfficeBlocked(false);
+        } catch (perfError) {
+          const msg = String(perfError?.message || '');
+          if (msg.toLowerCase().includes('office') || msg.includes('403')) {
+            setPerfOfficeBlocked(true);
+            setPerfInfo(null);
+          }
+        }
       } catch (error) {
         setMessage({ type: 'error', text: error.message });
       }
     };
     loadData();
   }, [user]);
+
+  const perfSummary = perfInfo?.summary || null;
+  const perfTarget = perfInfo?.target_sales_amount ? Number(perfInfo.target_sales_amount) : null;
+  const perfSales = Number(perfSummary?.sales_total || 0);
+  const perfPct = perfTarget ? (perfSales / perfTarget) * 100 : null;
+  const perfNudge =
+    perfPct === null ? '' :
+      perfPct >= 100 ? 'Target completed. Great work!' :
+        perfPct >= 90 ? 'Just a little push more left - your reward is waiting.' :
+          perfPct >= 75 ? 'Almost there. Keep it up, you can do it.' :
+            perfPct >= 50 ? 'Good progress. Keep pushing towards your target.' :
+              'Start strong - every client counts.';
 
   const handlePunchIn = async () => {
     try {
@@ -163,6 +192,16 @@ export default function EmployeeDashboard() {
             ))}
           </Alert>
         ) : null}
+        {perfOfficeBlocked ? (
+          <Alert severity="warning" sx={{ mt: 1.5, textAlign: 'left' }}>
+            Sales, targets, and incentive details are available only from office-approved network.
+          </Alert>
+        ) : perfTarget ? (
+          <Alert severity={perfPct >= 100 ? 'success' : perfPct >= 75 ? 'info' : 'warning'} sx={{ mt: 1.5, textAlign: 'left' }}>
+            <strong>Target:</strong> {perfTarget.toLocaleString()} | <strong>Sales:</strong> {perfSales.toLocaleString()}
+            {perfNudge ? ` - ${perfNudge}` : ''}
+          </Alert>
+        ) : null}
       </Card>
 
       {/* Leave Balance */}
@@ -222,6 +261,9 @@ export default function EmployeeDashboard() {
                   <Button fullWidth variant="outlined" onClick={() => navigate('/app/leave')} startIcon={<EventAvailable />}>
                     Apply for Leave
                   </Button>
+                  <Button fullWidth variant="outlined" onClick={() => navigate('/app/performance')} startIcon={<TrendingUp />}>
+                    My Performance
+                  </Button>
                 </Stack>
               </CardContent>
             </Card>
@@ -257,3 +299,4 @@ export default function EmployeeDashboard() {
     </Box>
   );
 }
+

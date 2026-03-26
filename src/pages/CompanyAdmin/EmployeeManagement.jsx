@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Button,
@@ -61,6 +62,7 @@ const fileToDataUrl = (file) =>
   });
 
 export default function EmployeeManagement() {
+  const navigate = useNavigate();
   const [employees, setEmployees] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [designations, setDesignations] = useState([]);
@@ -146,6 +148,11 @@ const [openEditDialog, setOpenEditDialog] = useState(false);
     } catch (error) {
       setMessage(`error:${error.message}`);
     }
+  };
+
+  const handleOpenPerformance = (emp) => {
+    if (!emp?.id) return;
+    navigate(`/app/employees/${emp.id}/performance`);
   };
 
   const handleSendOnboardingEmail = async (emp) => {
@@ -462,9 +469,14 @@ const [openEditDialog, setOpenEditDialog] = useState(false);
                       />
                     </TableCell>
                     <TableCell>
-                      <Tooltip title="View Details">
-                        <IconButton size="small" color="primary" onClick={() => handleOpenView(emp)}>
+                      <Tooltip title="Performance Dashboard">
+                        <IconButton size="small" color="primary" onClick={() => handleOpenPerformance(emp)}>
                           <Visibility fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Profile">
+                        <IconButton size="small" color="info" onClick={() => handleOpenView(emp)}>
+                          <Person fontSize="small" />
                         </IconButton>
                       </Tooltip>
                       <Tooltip title="Edit">

@@ -1,4 +1,4 @@
-import { query } from '../db.js';
+﻿import { query } from '../db.js';
 import { getClientIp } from '../utils/network.js';
 
 export const isCompanyIpAllowedByPolicy = async (companyId, ip, policyField) => {
@@ -61,4 +61,12 @@ export const enforcePunchIp = async (req, res, next) => {
     });
   }
   return next();
+};
+
+// Use punch_allowed policy to limit certain employee actions to office networks.
+export const enforceOfficePunchIpForEmployee = async (req, res, next) => {
+  if (req.user?.role !== 'employee') {
+    return next();
+  }
+  return enforcePunchIp(req, res, next);
 };

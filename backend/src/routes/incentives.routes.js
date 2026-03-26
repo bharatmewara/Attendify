@@ -2,6 +2,7 @@
 import path from 'path';
 import { query } from '../db.js';
 import { authenticate, authorize, requireCompanyContext, tenantIsolation } from '../middleware/auth.middleware.js';
+import { enforceOfficePunchIpForEmployee } from '../middleware/networkPolicy.js';
 import { uploadIncentiveScreenshot } from '../middleware/incentive_uploads.js';
 import { sendEmail } from '../utils/email.js';
 
@@ -74,7 +75,7 @@ const calculateIncentive = (productName, smsQuantity, rate, price, packageType) 
   return incentive;
 };
 
-router.get('/submissions', authenticate, tenantIsolation, async (req, res) => {
+router.get('/submissions', authenticate, tenantIsolation, enforceOfficePunchIpForEmployee, async (req, res) => {
   try {
     let employeeId = null;
     if (req.user.role === 'employee') {
@@ -104,7 +105,7 @@ router.get('/submissions', authenticate, tenantIsolation, async (req, res) => {
   }
 });
 
-router.get('/earnings', authenticate, tenantIsolation, async (req, res) => {
+router.get('/earnings', authenticate, tenantIsolation, enforceOfficePunchIpForEmployee, async (req, res) => {
   try {
     let employeeId = null;
     if (req.user.role === 'employee') {
@@ -139,6 +140,7 @@ router.post(
   authenticate,
   authorize('employee'),
   tenantIsolation,
+  enforceOfficePunchIpForEmployee,
   uploadIncentiveScreenshot.single('screenshot'),
   async (req, res) => {
     const {
@@ -283,6 +285,704 @@ router.post(
 );
 
 router.put(
+  '/submissions/:id/self',
+  authenticate,
+  authorize('employee'),
+  tenantIsolation,
+  requireCompanyContext,
+  enforceOfficePunchIpForEmployee,
+  uploadIncentiveScreenshot.single('screenshot'),
+  async (req, res) => {
+    try {
+      const submissionId = Number(req.params.id);
+      const employeeId = await resolveEmployeeIdForUser(req.user.id);
+      if (!employeeId) {
+        return res.status(404).json({ message: 'Employee profile not found' });
+      }
+
+      const currentResult = await query(
+        `SELECT *
+         FROM incentive_submissions
+         WHERE id = $1::int
+           AND company_id = $2::int
+           AND employee_id = $3::int`,
+        [submissionId, req.companyId, employeeId],
+      );
+      if (!currentResult.rows.length) {
+        return res.status(404).json({ message: 'Incentive submission not found' });
+      }
+      const current = currentResult.rows[0];
+      if (String(current.status) !== 'pending') {
+        return res.status(400).json({ message: 'Only pending submissions can be edited.' });
+      }
+
+      const allowed = [
+        'client_name',
+        'product_name',
+        'client_mobile_1',
+        'client_mobile_2',
+        'client_email',
+        'client_username',
+        'sms_quantity',
+        'rate',
+        'price',
+        'payment_mode',
+        'package_type',
+        'client_location',
+      ];
+
+      const updates = {};
+      for (const key of allowed) {
+        if (Object.prototype.hasOwnProperty.call(req.body || {}, key)) {
+          updates[key] = req.body[key];
+        }
+      }
+
+      const next = { ...current, ...updates };
+
+      if (!next.client_name || !next.product_name || !next.package_type) {
+        return res.status(400).json({ message: 'Client name, product name, and package type are required.' });
+      }
+      if (!next.client_mobile_1 || !next.client_email) {
+        return res.status(400).json({ message: 'Client mobile number and email are required.' });
+      }
+
+      if (Object.prototype.hasOwnProperty.call(updates, 'rate') && updates.rate !== null && updates.rate !== undefined && updates.rate !== '') {
+        const rateValue = Number(updates.rate);
+        if (!Number.isFinite(rateValue) || rateValue < 0 || rateValue >= 1) {
+          return res.status(400).json({ message: 'Rate must be entered in paisa (example 0.12) and must be less than 1.' });
+        }
+      }
+
+      const incentive_amount = calculateIncentive(
+        String(next.product_name),
+        Number(next.sms_quantity),
+        Number(next.rate),
+        Number(next.price),
+        String(next.package_type),
+      );
+
+      const screenshot_path = req.file ? toUploadsRelativePath(req.file) : current.screenshot_path;
+
+      const result = await query(
+        `UPDATE incentive_submissions
+         SET client_name = $1,
+             product_name = $2,
+             client_mobile_1 = $3,
+             client_mobile_2 = $4,
+             client_email = $5,
+             client_username = $6,
+             sms_quantity = $7,
+             rate = $8,
+             price = $9,
+             payment_mode = $10,
+             package_type = $11,
+             client_location = $12,
+             incentive_amount = $13,
+             screenshot_path = $14
+         WHERE id = $15::int
+           AND company_id = $16::int
+           AND employee_id = $17::int
+         RETURNING *`,
+        [
+          next.client_name,
+          next.product_name,
+          next.client_mobile_1,
+          next.client_mobile_2 || null,
+          next.client_email,
+          next.client_username || null,
+          next.sms_quantity !== '' && next.sms_quantity !== null && next.sms_quantity !== undefined ? Number(next.sms_quantity) : null,
+          next.rate !== '' && next.rate !== null && next.rate !== undefined ? Number(next.rate) : null,
+          next.price !== '' && next.price !== null && next.price !== undefined ? Number(next.price) : null,
+          next.payment_mode || null,
+          next.package_type,
+          next.client_location || null,
+          incentive_amount,
+          screenshot_path,
+          submissionId,
+          req.companyId,
+          employeeId,
+        ],
+      );
+
+      return res.json(result.rows[0]);
+    } catch (error) {
+      console.error('Employee incentive self-edit failed', error);
+      return res.status(500).json({ message: error.message });
+    }
+  },
+);
+
+router.get(
+  '/targets/tiers',
+  authenticate,
+  tenantIsolation,
+  requireCompanyContext,
+  async (req, res) => {
+    try {
+      const result = await query(
+        `SELECT company_id, min_sales_amount, target_total_salary, is_active
+         FROM company_sales_target_tiers
+         WHERE company_id = $1::int
+           AND is_active = TRUE
+         ORDER BY min_sales_amount ASC`,
+        [req.companyId],
+      );
+      return res.json(result.rows);
+    } catch (error) {
+      return res.status(500).json({ message: error.message });
+    }
+  },
+);
+
+router.put(
+  '/targets/tiers',
+  authenticate,
+  authorize('company_admin', 'super_admin'),
+  tenantIsolation,
+  requireCompanyContext,
+  async (req, res) => {
+    try {
+      const tiers = Array.isArray(req.body?.tiers) ? req.body.tiers : null;
+      if (!tiers || !tiers.length) {
+        return res.status(400).json({ message: 'tiers[] is required' });
+      }
+
+      const normalized = tiers
+        .map((t) => ({
+          min_sales_amount: Number(t.min_sales_amount),
+          target_total_salary: Number(t.target_total_salary),
+        }))
+        .filter((t) => Number.isFinite(t.min_sales_amount) && t.min_sales_amount >= 0 && Number.isFinite(t.target_total_salary) && t.target_total_salary >= 0)
+        .sort((a, b) => a.min_sales_amount - b.min_sales_amount);
+
+      if (!normalized.length) {
+        return res.status(400).json({ message: 'tiers[] must contain valid numeric values' });
+      }
+
+      await query(
+        `UPDATE company_sales_target_tiers
+         SET is_active = FALSE,
+             updated_at = NOW()
+         WHERE company_id = $1::int`,
+        [req.companyId],
+      );
+
+      for (const tier of normalized) {
+        await query(
+          `INSERT INTO company_sales_target_tiers (company_id, min_sales_amount, target_total_salary, is_active, created_at, updated_at)
+           VALUES ($1::int, $2::decimal(12,2), $3::decimal(10,2), TRUE, NOW(), NOW())
+           ON CONFLICT (company_id, min_sales_amount)
+           DO UPDATE SET
+             target_total_salary = EXCLUDED.target_total_salary,
+             is_active = TRUE,
+             updated_at = NOW()`,
+          [req.companyId, tier.min_sales_amount, tier.target_total_salary],
+        );
+      }
+
+      const result = await query(
+        `SELECT company_id, min_sales_amount, target_total_salary, is_active
+         FROM company_sales_target_tiers
+         WHERE company_id = $1::int
+           AND is_active = TRUE
+         ORDER BY min_sales_amount ASC`,
+        [req.companyId],
+      );
+      return res.json(result.rows);
+    } catch (error) {
+      console.error('Target tier update failed', error);
+      return res.status(500).json({ message: error.message });
+    }
+  },
+);
+
+router.get(
+  '/targets/monthly',
+  authenticate,
+  tenantIsolation,
+  requireCompanyContext,
+  async (req, res) => {
+    try {
+      const month = req.query.month ? Number(req.query.month) : (new Date().getMonth() + 1);
+      const year = req.query.year ? Number(req.query.year) : (new Date().getFullYear());
+
+      let employeeId = null;
+      if (req.user.role === 'employee') {
+        employeeId = await resolveEmployeeIdForUser(req.user.id);
+      } else {
+        employeeId = req.query.employee_id ? Number(req.query.employee_id) : null;
+      }
+
+      if (req.user.role === 'employee' && !employeeId) {
+        return res.json(null);
+      }
+
+      const result = await query(
+        `SELECT employee_id, month, year, target_sales_amount
+         FROM employee_monthly_sales_targets
+         WHERE company_id = $1::int
+           AND ($2::int IS NULL OR employee_id = $2::int)
+           AND month = $3::int
+           AND year = $4::int`,
+        [req.companyId, employeeId, month, year],
+      );
+
+      if (employeeId) {
+        return res.json(result.rows[0] || null);
+      }
+      return res.json(result.rows);
+    } catch (error) {
+      return res.status(500).json({ message: error.message });
+    }
+  },
+);
+
+router.put(
+  '/targets/monthly',
+  authenticate,
+  authorize('company_admin', 'super_admin'),
+  tenantIsolation,
+  requireCompanyContext,
+  async (req, res) => {
+    try {
+      const month = Number(req.body?.month);
+      const year = Number(req.body?.year);
+      const target_sales_amount = Number(req.body?.target_sales_amount);
+      const employee_id = req.body?.employee_id ? Number(req.body.employee_id) : null;
+
+      if (!(month >= 1 && month <= 12) || !Number.isInteger(year) || !Number.isFinite(target_sales_amount) || target_sales_amount < 0) {
+        return res.status(400).json({ message: 'month (1-12), year, and target_sales_amount are required' });
+      }
+
+      let employeeIds = [];
+      if (employee_id) {
+        employeeIds = [employee_id];
+      } else {
+        const empResult = await query(
+          `SELECT id FROM employees WHERE company_id = $1::int AND status = 'active'`,
+          [req.companyId],
+        );
+        employeeIds = empResult.rows.map((r) => r.id);
+      }
+
+      for (const empId of employeeIds) {
+        await query(
+          `INSERT INTO employee_monthly_sales_targets (company_id, employee_id, month, year, target_sales_amount, set_by, set_at)
+           VALUES ($1::int, $2::int, $3::int, $4::int, $5::decimal(12,2), $6::int, NOW())
+           ON CONFLICT (company_id, employee_id, month, year)
+           DO UPDATE SET
+             target_sales_amount = EXCLUDED.target_sales_amount,
+             set_by = EXCLUDED.set_by,
+             set_at = NOW()`,
+          [req.companyId, empId, month, year, target_sales_amount, req.user.id],
+        );
+      }
+
+      return res.json({ message: 'Monthly targets updated', count: employeeIds.length });
+    } catch (error) {
+      console.error('Monthly targets update failed', error);
+      return res.status(500).json({ message: error.message });
+    }
+  },
+);
+
+router.get(
+  '/performance',
+  authenticate,
+  tenantIsolation,
+  requireCompanyContext,
+  enforceOfficePunchIpForEmployee,
+  async (req, res) => {
+    try {
+      const month = req.query.month ? Number(req.query.month) : (new Date().getMonth() + 1);
+      const year = req.query.year ? Number(req.query.year) : (new Date().getFullYear());
+
+      let employeeId = null;
+      if (req.user.role === 'employee') {
+        employeeId = await resolveEmployeeIdForUser(req.user.id);
+        if (!employeeId) {
+          return res.json({ month, year, summary: null, details: [] });
+        }
+      } else {
+        employeeId = req.query.employee_id ? Number(req.query.employee_id) : null;
+      }
+
+      if (!employeeId) {
+        const list = await query(
+          `SELECT
+             e.id AS employee_id,
+             e.first_name,
+             e.last_name,
+             e.employee_code,
+             COALESCE(COUNT(s.id), 0)::int AS clients_total,
+             COALESCE(SUM(s.price), 0)::decimal(12,2) AS sales_total,
+             COALESCE(SUM(s.incentive_amount), 0)::decimal(12,2) AS incentives_total,
+             COALESCE(COUNT(s.id) FILTER (WHERE s.package_type = 'new'), 0)::int AS new_count,
+             COALESCE(COUNT(s.id) FILTER (WHERE s.package_type = 'renew'), 0)::int AS renew_count
+           FROM employees e
+           LEFT JOIN incentive_submissions s
+             ON s.employee_id = e.id
+            AND s.company_id = e.company_id
+            AND s.status = 'approved'
+            AND s.approved_at IS NOT NULL
+            AND EXTRACT(MONTH FROM s.approved_at) = $2
+            AND EXTRACT(YEAR FROM s.approved_at) = $3
+           WHERE e.company_id = $1::int
+           GROUP BY e.id
+           ORDER BY sales_total DESC`,
+          [req.companyId, month, year],
+        );
+
+        return res.json({ month, year, employees: list.rows });
+      }
+
+      const summaryResult = await query(
+        `SELECT
+           COALESCE(COUNT(*), 0)::int AS clients_total,
+           COALESCE(SUM(price), 0)::decimal(12,2) AS sales_total,
+           COALESCE(SUM(incentive_amount), 0)::decimal(12,2) AS incentives_total,
+           COALESCE(SUM(sms_quantity), 0)::bigint AS sms_total,
+           COALESCE(COUNT(*) FILTER (WHERE package_type = 'new'), 0)::int AS new_count,
+           COALESCE(COUNT(*) FILTER (WHERE package_type = 'renew'), 0)::int AS renew_count
+         FROM incentive_submissions
+         WHERE company_id = $1::int
+           AND employee_id = $2::int
+           AND status = 'approved'
+           AND approved_at IS NOT NULL
+           AND EXTRACT(MONTH FROM approved_at) = $3
+           AND EXTRACT(YEAR FROM approved_at) = $4`,
+        [req.companyId, employeeId, month, year],
+      );
+      const summary = summaryResult.rows[0];
+
+      const paymentsResult = await query(
+        `SELECT COALESCE(payment_mode, 'Unknown') AS payment_mode, COALESCE(SUM(price), 0)::decimal(12,2) AS total
+         FROM incentive_submissions
+         WHERE company_id = $1::int
+           AND employee_id = $2::int
+           AND status = 'approved'
+           AND approved_at IS NOT NULL
+           AND EXTRACT(MONTH FROM approved_at) = $3
+           AND EXTRACT(YEAR FROM approved_at) = $4
+         GROUP BY COALESCE(payment_mode, 'Unknown')
+         ORDER BY total DESC`,
+        [req.companyId, employeeId, month, year],
+      );
+
+      const detailsResult = await query(
+        `SELECT id, client_name, product_name, package_type, payment_mode, price, incentive_amount, sms_quantity, rate, client_location, approved_at, submitted_at
+         FROM incentive_submissions
+         WHERE company_id = $1::int
+           AND employee_id = $2::int
+           AND status = 'approved'
+           AND approved_at IS NOT NULL
+           AND EXTRACT(MONTH FROM approved_at) = $3
+           AND EXTRACT(YEAR FROM approved_at) = $4
+         ORDER BY approved_at DESC`,
+        [req.companyId, employeeId, month, year],
+      );
+
+      const targetResult = await query(
+        `SELECT target_sales_amount
+         FROM employee_monthly_sales_targets
+         WHERE company_id = $1::int
+           AND employee_id = $2::int
+           AND month = $3::int
+           AND year = $4::int`,
+        [req.companyId, employeeId, month, year],
+      );
+      const target_sales_amount = targetResult.rows[0]?.target_sales_amount ?? null;
+
+      const tierResult = await query(
+        `SELECT min_sales_amount, target_total_salary
+         FROM company_sales_target_tiers
+         WHERE company_id = $1::int
+           AND is_active = TRUE
+           AND min_sales_amount <= $2::decimal(12,2)
+         ORDER BY min_sales_amount DESC
+         LIMIT 1`,
+        [req.companyId, summary.sales_total || 0],
+      );
+
+      const employeeResult = await query(
+        `SELECT id, first_name, last_name, employee_code
+         FROM employees
+         WHERE id = $1::int AND company_id = $2::int`,
+        [employeeId, req.companyId],
+      );
+
+      return res.json({
+        month,
+        year,
+        employee: employeeResult.rows[0] || { id: employeeId },
+        target_sales_amount,
+        tier_applied: tierResult.rows[0] || null,
+        summary,
+        payment_breakdown: paymentsResult.rows,
+        details: detailsResult.rows,
+      });
+    } catch (error) {
+      console.error('Performance fetch failed', error);
+      return res.status(500).json({ message: error.message });
+    }
+  },
+);
+router.put(
+  '/submissions/:id',
+  authenticate,
+  authorize('company_admin', 'super_admin'),
+  tenantIsolation,
+  requireCompanyContext,
+  async (req, res) => {
+    try {
+      const submissionId = Number(req.params.id);
+
+      const allowed = [
+        'client_name',
+        'product_name',
+        'client_mobile_1',
+        'client_mobile_2',
+        'client_email',
+        'client_username',
+        'sms_quantity',
+        'rate',
+        'price',
+        'payment_mode',
+        'package_type',
+        'client_location',
+        'incentive_amount',
+      ];
+
+      const updates = {};
+      for (const key of allowed) {
+        if (Object.prototype.hasOwnProperty.call(req.body || {}, key)) {
+          updates[key] = req.body[key];
+        }
+      }
+
+      if (!Object.keys(updates).length) {
+        return res.status(400).json({ message: 'No fields provided to update.' });
+      }
+
+      if (Object.prototype.hasOwnProperty.call(updates, 'rate') && updates.rate !== null && updates.rate !== undefined && updates.rate !== '') {
+        const rateValue = Number(updates.rate);
+        if (!Number.isFinite(rateValue) || rateValue < 0 || rateValue >= 1) {
+          return res.status(400).json({ message: 'Rate must be entered in paisa (example 0.12) and must be less than 1.' });
+        }
+      }
+
+      const currentResult = await query(
+        `SELECT *
+         FROM incentive_submissions
+         WHERE id = $1::int AND company_id = $2::int`,
+        [submissionId, req.companyId],
+      );
+      if (!currentResult.rows.length) {
+        return res.status(404).json({ message: 'Incentive submission not found' });
+      }
+      const current = currentResult.rows[0];
+
+      const next = { ...current, ...updates };
+
+      const shouldRecalc = !Object.prototype.hasOwnProperty.call(updates, 'incentive_amount');
+      const computedIncentive = calculateIncentive(
+        String(next.product_name),
+        Number(next.sms_quantity),
+        Number(next.rate),
+        Number(next.price),
+        String(next.package_type),
+      );
+
+      const finalIncentive = shouldRecalc ? computedIncentive : Number(next.incentive_amount);
+      if (!Number.isFinite(finalIncentive) || finalIncentive < 0) {
+        return res.status(400).json({ message: 'Incentive amount must be a valid non-negative number.' });
+      }
+
+      const result = await query(
+        `UPDATE incentive_submissions
+         SET client_name = $1,
+             product_name = $2,
+             client_mobile_1 = $3,
+             client_mobile_2 = $4,
+             client_email = $5,
+             client_username = $6,
+             sms_quantity = $7,
+             rate = $8,
+             price = $9,
+             payment_mode = $10,
+             package_type = $11,
+             client_location = $12,
+             incentive_amount = $13
+         WHERE id = $14::int
+           AND company_id = $15::int
+         RETURNING *`,
+        [
+          next.client_name,
+          next.product_name,
+          next.client_mobile_1,
+          next.client_mobile_2,
+          next.client_email,
+          next.client_username,
+          next.sms_quantity !== '' && next.sms_quantity !== null && next.sms_quantity !== undefined ? Number(next.sms_quantity) : null,
+          next.rate !== '' && next.rate !== null && next.rate !== undefined ? Number(next.rate) : null,
+          next.price !== '' && next.price !== null && next.price !== undefined ? Number(next.price) : null,
+          next.payment_mode,
+          next.package_type,
+          next.client_location,
+          finalIncentive,
+          submissionId,
+          req.companyId,
+        ],
+      );
+
+      const updated = result.rows[0];
+
+      try {
+        if (updated.status === 'approved' && updated.approved_at) {
+          await query(
+            `INSERT INTO incentive_earnings (
+              company_id, employee_id, submission_id,
+              earned_month, earned_year, earned_at,
+              client_name, product_name, package_type, payment_mode, price, incentive_amount, client_location,
+              submitted_at, approved_by, approved_at
+            )
+            VALUES (
+              $1::int, $2::int, $3::int,
+              EXTRACT(MONTH FROM $4::timestamptz)::int,
+              EXTRACT(YEAR FROM $4::timestamptz)::int,
+              $4::timestamptz,
+              $5, $6, $7, $8, $9::decimal(10,2), $10::decimal(10,2), $11,
+              $12::timestamptz, $13::int, $14::timestamptz
+            )
+            ON CONFLICT (submission_id)
+            DO UPDATE SET
+              earned_month = EXCLUDED.earned_month,
+              earned_year = EXCLUDED.earned_year,
+              earned_at = EXCLUDED.earned_at,
+              client_name = EXCLUDED.client_name,
+              product_name = EXCLUDED.product_name,
+              package_type = EXCLUDED.package_type,
+              payment_mode = EXCLUDED.payment_mode,
+              price = EXCLUDED.price,
+              incentive_amount = EXCLUDED.incentive_amount,
+              client_location = EXCLUDED.client_location,
+              approved_by = EXCLUDED.approved_by,
+              approved_at = EXCLUDED.approved_at`,
+            [
+              updated.company_id,
+              updated.employee_id,
+              updated.id,
+              updated.approved_at,
+              updated.client_name,
+              updated.product_name,
+              updated.package_type,
+              updated.payment_mode,
+              updated.price || 0,
+              updated.incentive_amount,
+              updated.client_location,
+              updated.submitted_at,
+              updated.approved_by,
+              updated.approved_at,
+            ],
+          );
+
+          const monthYearResult = await query(
+            `SELECT EXTRACT(MONTH FROM $1::timestamptz) AS month, EXTRACT(YEAR FROM $1::timestamptz) AS year`,
+            [updated.approved_at],
+          );
+          const month = Number(monthYearResult.rows[0]?.month);
+          const year = Number(monthYearResult.rows[0]?.year);
+
+          const totalResult = await query(
+            `SELECT COALESCE(SUM(incentive_amount), 0) AS total
+             FROM incentive_submissions
+             WHERE employee_id = $1
+               AND company_id = $2
+               AND status = 'approved'
+               AND approved_at IS NOT NULL
+               AND EXTRACT(MONTH FROM approved_at) = $3
+               AND EXTRACT(YEAR FROM approved_at) = $4`,
+            [updated.employee_id, req.companyId, month, year],
+          );
+          const total = Number(totalResult.rows[0]?.total || 0);
+          const payrollResult = await query(
+            `SELECT id, basic_salary, total_allowances, total_deductions, late_penalties, early_leave_penalties, working_days, present_days
+             FROM payroll_calculations
+             WHERE employee_id = $1::int
+               AND company_id = $2::int
+               AND month = $3::int
+               AND year = $4::int
+             LIMIT 1`,
+            [updated.employee_id, req.companyId, month, year],
+          );
+
+          const payroll = payrollResult.rows[0];
+          if (payroll) {
+            const salesResult = await query(
+              `SELECT COALESCE(SUM(price), 0) AS total
+               FROM incentive_submissions
+               WHERE employee_id = $1
+                 AND company_id = $2
+                 AND status = 'approved'
+                 AND approved_at IS NOT NULL
+                 AND EXTRACT(MONTH FROM approved_at) = $3
+                 AND EXTRACT(YEAR FROM approved_at) = $4`,
+              [updated.employee_id, req.companyId, month, year],
+            );
+
+            const salesTotal = Number(salesResult.rows[0]?.total || 0);
+
+            const tierResult = await query(
+              `SELECT min_sales_amount, target_total_salary
+               FROM company_sales_target_tiers
+               WHERE company_id = $1::int
+                 AND is_active = TRUE
+                 AND min_sales_amount <= $2::decimal(12,2)
+               ORDER BY min_sales_amount DESC
+               LIMIT 1`,
+              [req.companyId, salesTotal],
+            );
+
+            const targetTotalSalary = Number(tierResult.rows[0]?.target_total_salary || 0);
+            const basicSalary = Number(payroll.basic_salary || 0);
+            const workingDays = Number(payroll.working_days || 26);
+            const presentDays = Number(payroll.present_days || 0);
+
+            const extraIncome = Math.max(0, targetTotalSalary - basicSalary);
+            const earnedBasic = (basicSalary / workingDays) * presentDays;
+            const earnedExtra = (extraIncome / workingDays) * presentDays;
+
+            const grossSalary = earnedBasic + earnedExtra + Number(payroll.total_allowances || 0) + total;
+            const netSalary = grossSalary - Number(payroll.total_deductions || 0) - Number(payroll.late_penalties || 0) - Number(payroll.early_leave_penalties || 0);
+
+            await query(
+              `UPDATE payroll_calculations
+               SET incentives = $1::decimal(10,2),
+                   sales_total = $2::decimal(12,2),
+                   target_total_salary = $3::decimal(10,2),
+                   extra_income = $4::decimal(10,2),
+                   gross_salary = $5::decimal(10,2),
+                   net_salary = $6::decimal(10,2),
+                   processed_at = NOW()
+               WHERE id = $7::int
+                 AND company_id = $8::int`,
+              [total, salesTotal, targetTotalSalary, extraIncome, grossSalary, netSalary, payroll.id, req.companyId],
+            );
+          }
+        }
+      } catch (syncError) {
+        console.error('Incentive edit sync failed', syncError);
+      }
+
+      return res.json(updated);
+    } catch (error) {
+      console.error('Incentive edit failed', error);
+      return res.status(500).json({ message: error.message });
+    }
+  },
+);
+router.put(
   '/submissions/:id/status',
   authenticate,
   authorize('company_admin', 'super_admin'),
@@ -413,19 +1113,70 @@ router.put(
             [updated.employee_id, req.companyId, month, year],
           );
           const total = Number(totalResult.rows[0]?.total || 0);
-
-          await query(
-            `UPDATE payroll_calculations
-             SET incentives = $1::decimal(10,2),
-                 gross_salary = (gross_salary - incentives + $1::decimal(10,2)),
-                 net_salary = (net_salary - incentives + $1::decimal(10,2)),
-                 processed_at = NOW()
-             WHERE employee_id = $2::int
-               AND company_id = $3::int
-               AND month = $4::int
-               AND year = $5::int`,
-            [total, updated.employee_id, req.companyId, month, year],
+          const payrollResult = await query(
+            `SELECT id, basic_salary, total_allowances, total_deductions, late_penalties, early_leave_penalties, working_days, present_days
+             FROM payroll_calculations
+             WHERE employee_id = $1::int
+               AND company_id = $2::int
+               AND month = $3::int
+               AND year = $4::int
+             LIMIT 1`,
+            [updated.employee_id, req.companyId, month, year],
           );
+
+          const payroll = payrollResult.rows[0];
+          if (payroll) {
+            const salesResult = await query(
+              `SELECT COALESCE(SUM(price), 0) AS total
+               FROM incentive_submissions
+               WHERE employee_id = $1
+                 AND company_id = $2
+                 AND status = 'approved'
+                 AND approved_at IS NOT NULL
+                 AND EXTRACT(MONTH FROM approved_at) = $3
+                 AND EXTRACT(YEAR FROM approved_at) = $4`,
+              [updated.employee_id, req.companyId, month, year],
+            );
+
+            const salesTotal = Number(salesResult.rows[0]?.total || 0);
+
+            const tierResult = await query(
+              `SELECT min_sales_amount, target_total_salary
+               FROM company_sales_target_tiers
+               WHERE company_id = $1::int
+                 AND is_active = TRUE
+                 AND min_sales_amount <= $2::decimal(12,2)
+               ORDER BY min_sales_amount DESC
+               LIMIT 1`,
+              [req.companyId, salesTotal],
+            );
+
+            const targetTotalSalary = Number(tierResult.rows[0]?.target_total_salary || 0);
+            const basicSalary = Number(payroll.basic_salary || 0);
+            const workingDays = Number(payroll.working_days || 26);
+            const presentDays = Number(payroll.present_days || 0);
+
+            const extraIncome = Math.max(0, targetTotalSalary - basicSalary);
+            const earnedBasic = (basicSalary / workingDays) * presentDays;
+            const earnedExtra = (extraIncome / workingDays) * presentDays;
+
+            const grossSalary = earnedBasic + earnedExtra + Number(payroll.total_allowances || 0) + total;
+            const netSalary = grossSalary - Number(payroll.total_deductions || 0) - Number(payroll.late_penalties || 0) - Number(payroll.early_leave_penalties || 0);
+
+            await query(
+              `UPDATE payroll_calculations
+               SET incentives = $1::decimal(10,2),
+                   sales_total = $2::decimal(12,2),
+                   target_total_salary = $3::decimal(10,2),
+                   extra_income = $4::decimal(10,2),
+                   gross_salary = $5::decimal(10,2),
+                   net_salary = $6::decimal(10,2),
+                   processed_at = NOW()
+               WHERE id = $7::int
+                 AND company_id = $8::int`,
+              [total, salesTotal, targetTotalSalary, extraIncome, grossSalary, netSalary, payroll.id, req.companyId],
+            );
+          }
         }
       } catch (syncError) {
         console.error('Payroll incentive sync failed', syncError);
@@ -466,3 +1217,9 @@ router.put(
 );
 
 export default router;
+
+
+
+
+
+

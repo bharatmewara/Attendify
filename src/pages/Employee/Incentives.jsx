@@ -10,6 +10,7 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  IconButton,
   MenuItem,
   Paper,
   Stack,
@@ -20,9 +21,10 @@ import {
   TableHead,
   TableRow,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material';
-import { Add, UploadFile } from '@mui/icons-material';
+import { Add, Edit, UploadFile } from '@mui/icons-material';
 import { apiRequest } from '../../lib/api';
 
 const requestInitial = {
@@ -188,13 +190,26 @@ export default function EmployeeIncentives() {
   const [requestForm, setRequestForm] = useState(requestInitial);
   const [message, setMessage] = useState({ type: '', text: '' });
   const [calculatedIncentive, setCalculatedIncentive] = useState(0);
+  const [officeOnlyBlocked, setOfficeOnlyBlocked] = useState(false);
+
+  const [editOpen, setEditOpen] = useState(false);
+  const [editForm, setEditForm] = useState(null);
+  const [editFile, setEditFile] = useState(null);
 
   const loadData = async () => {
     try {
       const req = await apiRequest('/incentives/submissions');
       setRequests(req || []);
+      setOfficeOnlyBlocked(false);
     } catch (error) {
-      setMessage({ type: 'error', text: error.message });
+      const msg = String(error?.message || 'Request failed');
+      if (msg.toLowerCase().includes('office') || msg.includes('403')) {
+        setOfficeOnlyBlocked(true);
+        setRequests([]);
+        setMessage({ type: 'warning', text: 'Incentives are available only from office-approved network.' });
+        return;
+      }
+      setMessage({ type: 'error', text: msg });
     }
   };
 
@@ -221,7 +236,87 @@ export default function EmployeeIncentives() {
     setRequestForm({ ...requestForm, screenshot: e.target.files[0] });
   };
 
+  const openEdit = (row) => {
+    setEditForm({
+      id: row.id,
+      client_name: row.client_name || '',
+      product_name: row.product_name || 'Bulk SMS',
+      client_mobile_1: row.client_mobile_1 || '',
+      client_mobile_2: row.client_mobile_2 || '',
+      client_email: row.client_email || '',
+      client_username: row.client_username || '',
+      sms_quantity: row.sms_quantity ?? '',
+      rate: row.rate ?? '',
+      price: row.price ?? '',
+      payment_mode: row.payment_mode || '',
+      package_type: row.package_type || 'new',
+      client_location: row.client_location || '',
+    });
+    setEditFile(null);
+    setEditOpen(true);
+  };
+
+  const closeEdit = () => {
+    setEditOpen(false);
+    setEditForm(null);
+    setEditFile(null);
+  };
+
+  const editRateInvalid = editForm
+    ? ['Bulk SMS', 'WhatsApp SMS'].includes(editForm.product_name)
+      && editForm.rate !== ''
+      && Number(editForm.rate) >= 1
+    : false;
+
+  const handleEditFileChange = (e) => {
+    setEditFile(e.target.files[0] || null);
+  };
+
+  const saveEdit = async () => {
+    if (!editForm) return;
+    if (editRateInvalid) {
+      setMessage({ type: 'error', text: 'Rate must be entered in paisa (example 0.12) and must be less than 1.' });
+      return;
+    }
+
+    try {
+      const formData = new FormData();
+      Object.keys(editForm).forEach((key) => {
+        if (key === 'id') return;
+        if (editForm[key] !== null && editForm[key] !== undefined && editForm[key] !== '') {
+          formData.append(key, editForm[key]);
+        }
+      });
+      if (editFile) {
+        formData.append('screenshot', editFile);
+      }
+
+      await apiRequest(`/incentives/submissions/${editForm.id}/self`, {
+        method: 'PUT',
+        body: formData,
+        headers: {}, // browser sets multipart boundary
+      });
+
+      setMessage({ type: 'success', text: 'Submission updated.' });
+      closeEdit();
+      await loadData();
+    } catch (error) {
+      const msg = String(error?.message || 'Request failed');
+      if (msg.toLowerCase().includes('office') || msg.includes('403')) {
+        setOfficeOnlyBlocked(true);
+        setMessage({ type: 'warning', text: 'Editing incentives is allowed only from office-approved network.' });
+        closeEdit();
+        return;
+      }
+      setMessage({ type: 'error', text: msg });
+    }
+  };
+
   const handleSubmit = async () => {
+    if (officeOnlyBlocked) {
+      setMessage({ type: 'warning', text: 'Incentive submission is available only from office-approved network.' });
+      return;
+    }
     if (rateInvalid) {
       setMessage({ type: 'error', text: 'Rate must be entered in paisa (example 0.12) and must be less than 1.' });
       return;
@@ -263,7 +358,7 @@ export default function EmployeeIncentives() {
                 <Typography variant="h5" fontWeight={800}>My Incentives</Typography>
                 <Typography color="text.secondary">Submit incentive sales requests and track approval status.</Typography>
               </Box>
-              <Button variant="contained" startIcon={<Add />} onClick={() => setOpenRequestDialog(true)}>
+              <Button variant="contained" startIcon={<Add />} onClick={() => setOpenRequestDialog(true)} disabled={officeOnlyBlocked}>
                 Submit Incentive Request
               </Button>
             </Stack>
@@ -283,6 +378,7 @@ export default function EmployeeIncentives() {
                     <TableCell>Incentive</TableCell>
                     <TableCell>Status</TableCell>
                     <TableCell>Submitted At</TableCell>
+                    <TableCell align="right">Edit</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -300,6 +396,19 @@ export default function EmployeeIncentives() {
                         />
                       </TableCell>
                       <TableCell>{new Date(row.submitted_at).toLocaleString()}</TableCell>
+                      <TableCell align="right">
+                        <Tooltip title={officeOnlyBlocked ? 'Office network required' : 'Edit (pending only)'}>
+                          <span>
+                            <IconButton
+                              size="small"
+                              onClick={() => openEdit(row)}
+                              disabled={officeOnlyBlocked || String(row.status) !== 'pending'}
+                            >
+                              <Edit fontSize="small" />
+                            </IconButton>
+                          </span>
+                        </Tooltip>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -312,6 +421,11 @@ export default function EmployeeIncentives() {
       <Dialog open={openRequestDialog} onClose={() => setOpenRequestDialog(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Submit Incentive Request</DialogTitle>
         <DialogContent>
+          {officeOnlyBlocked ? (
+            <Alert severity="warning" sx={{ mt: 2 }}>
+              Incentive submission is available only from office-approved network.
+            </Alert>
+          ) : null}
           <TextField fullWidth required label="Client Name" margin="normal" value={requestForm.client_name} onChange={(e) => setRequestForm({ ...requestForm, client_name: e.target.value })} />
           <TextField fullWidth required label="Client Mobile No 1" margin="normal" value={requestForm.client_mobile_1} onChange={(e) => setRequestForm({ ...requestForm, client_mobile_1: e.target.value })} />
           <TextField fullWidth label="Client Mobile No 2" margin="normal" value={requestForm.client_mobile_2} onChange={(e) => setRequestForm({ ...requestForm, client_mobile_2: e.target.value })} />
@@ -355,7 +469,55 @@ export default function EmployeeIncentives() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenRequestDialog(false)}>Cancel</Button>
-          <Button variant="contained" onClick={handleSubmit}>Submit</Button>
+          <Button variant="contained" onClick={handleSubmit} disabled={officeOnlyBlocked}>Submit</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={editOpen} onClose={closeEdit} maxWidth="sm" fullWidth>
+        <DialogTitle>Edit Submission</DialogTitle>
+        <DialogContent>
+          {officeOnlyBlocked ? (
+            <Alert severity="warning" sx={{ mt: 2 }}>
+              Editing incentives is available only from office-approved network.
+            </Alert>
+          ) : null}
+          {editForm ? (
+            <>
+              <TextField fullWidth required label="Client Name" margin="normal" value={editForm.client_name} onChange={(e) => setEditForm({ ...editForm, client_name: e.target.value })} />
+              <TextField fullWidth required label="Client Mobile No 1" margin="normal" value={editForm.client_mobile_1} onChange={(e) => setEditForm({ ...editForm, client_mobile_1: e.target.value })} />
+              <TextField fullWidth label="Client Mobile No 2" margin="normal" value={editForm.client_mobile_2} onChange={(e) => setEditForm({ ...editForm, client_mobile_2: e.target.value })} />
+              <TextField fullWidth required label="Client Email" margin="normal" value={editForm.client_email} onChange={(e) => setEditForm({ ...editForm, client_email: e.target.value })} />
+              <TextField fullWidth label="Client User Name" margin="normal" value={editForm.client_username} onChange={(e) => setEditForm({ ...editForm, client_username: e.target.value })} />
+              <TextField fullWidth select label="Product Name" margin="normal" value={editForm.product_name} onChange={(e) => setEditForm({ ...editForm, product_name: e.target.value })}>
+                {productOptions.map(option => <MenuItem key={option} value={option}>{option}</MenuItem>)}
+              </TextField>
+
+              {['Bulk SMS', 'WhatsApp SMS'].includes(editForm.product_name) && (
+                <>
+                  <TextField fullWidth label="SMS Quantity" type="number" margin="normal" value={editForm.sms_quantity} onChange={(e) => setEditForm({ ...editForm, sms_quantity: e.target.value })} />
+                  <TextField fullWidth label="Rate" type="number" margin="normal" value={editForm.rate} onChange={(e) => setEditForm({ ...editForm, rate: e.target.value })} error={editRateInvalid} helperText={editRateInvalid ? "Enter paisa rate like 0.12 (must be < 1)." : "Example: 0.12"} inputProps={{ step: "0.01", min: 0, max: 0.9999 }} />
+                </>
+              )}
+
+              <TextField fullWidth label="Price" type="number" margin="normal" value={editForm.price} onChange={(e) => setEditForm({ ...editForm, price: e.target.value })} />
+              <TextField fullWidth label="Payment Mode" margin="normal" value={editForm.payment_mode} onChange={(e) => setEditForm({ ...editForm, payment_mode: e.target.value })} />
+              <TextField fullWidth select label="Client Package Type" margin="normal" value={editForm.package_type} onChange={(e) => setEditForm({ ...editForm, package_type: e.target.value })}>
+                <MenuItem value="new">New</MenuItem>
+                <MenuItem value="renew">Renew</MenuItem>
+              </TextField>
+              <TextField fullWidth label="Client Location" margin="normal" value={editForm.client_location} onChange={(e) => setEditForm({ ...editForm, client_location: e.target.value })} />
+
+              <Button component="label" variant="outlined" startIcon={<UploadFile />} sx={{ mt: 1 }} disabled={officeOnlyBlocked}>
+                Replace Screenshot (Optional)
+                <input type="file" hidden onChange={handleEditFileChange} />
+              </Button>
+              {editFile ? <Typography variant="body2" sx={{ mt: 1 }}>{editFile.name}</Typography> : null}
+            </>
+          ) : null}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeEdit}>Cancel</Button>
+          <Button variant="contained" onClick={saveEdit} disabled={!editForm || editRateInvalid || officeOnlyBlocked}>Save</Button>
         </DialogActions>
       </Dialog>
     </Box>

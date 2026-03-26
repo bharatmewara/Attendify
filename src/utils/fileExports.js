@@ -36,6 +36,13 @@ export const buildPayslipHtml = ({ payroll, employee, companyName, template = {}
   const heading = template.heading || 'Payslip';
   const note = template.note || 'Computer generated payslip';
 
+  const workingDays = Number(payroll.working_days || 26);
+  const presentDays = Number(payroll.present_days || 0);
+  const basicSalary = Number(payroll.basic_salary || 0);
+  const extraIncome = Number(payroll.extra_income || 0);
+  const earnedBasic = workingDays ? (basicSalary / workingDays) * presentDays : basicSalary;
+  const earnedExtra = workingDays ? (extraIncome / workingDays) * presentDays : extraIncome;
+
   return `<!doctype html>
 <html>
   <head>
@@ -80,8 +87,10 @@ export const buildPayslipHtml = ({ payroll, employee, companyName, template = {}
         <div>
           <strong>Earnings</strong>
           <table>
-            <tr><th>Basic Salary</th><td>${currency(payroll.basic_salary)}</td></tr>
+            <tr><th>Basic Salary (Prorated)</th><td>${currency(earnedBasic)}</td></tr>
+            <tr><th>Extra Income (Target)</th><td>${currency(earnedExtra)}</td></tr>
             <tr><th>Allowances</th><td>${currency(payroll.total_allowances)}</td></tr>
+            <tr><th>Incentives</th><td>${currency(payroll.incentives)}</td></tr>
             <tr><th>Gross Salary</th><td>${currency(payroll.gross_salary)}</td></tr>
           </table>
         </div>
@@ -99,6 +108,8 @@ export const buildPayslipHtml = ({ payroll, employee, companyName, template = {}
           <tr><th>Present Days</th><td>${payroll.present_days || 0}</td></tr>
           <tr><th>Absent Days</th><td>${payroll.absent_days || 0}</td></tr>
           <tr><th>Leave Days</th><td>${payroll.leave_days || 0}</td></tr>
+          ${payroll.sales_total !== undefined ? `<tr><th>Sales Total</th><td>${currency(payroll.sales_total)}</td></tr>` : ''}
+          ${payroll.target_total_salary !== undefined && Number(payroll.target_total_salary || 0) > 0 ? `<tr><th>Target Salary Tier</th><td>${currency(payroll.target_total_salary)}</td></tr>` : ''}
           <tr><th>Net Salary</th><td><strong>${currency(payroll.net_salary)}</strong></td></tr>
         </table>
       </div>
