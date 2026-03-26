@@ -27,6 +27,7 @@ import {
 } from '@mui/material';
 import { Check, Close, Edit, Info, MoreVert, Visibility } from '@mui/icons-material';
 import { API_BASE_URL, apiRequest } from '../../lib/api';
+import IncentiveRulesManager from '../../components/IncentiveRulesManager';
 
 const uploadsBaseUrl = API_BASE_URL.replace(/\/api\/?$/, '');
 
@@ -840,27 +841,25 @@ export default function IncentivesManagement() {
           <CardContent>
             <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between" alignItems={{ xs: 'stretch', md: 'center' }}>
               <Box>
-                <Typography variant="h6" fontWeight={800}>Incentive Rules</Typography>
-                <Typography color="text.secondary">Edit products + incentive calculation (JSON). Source: {rulesSource || 'unknown'}.</Typography>
+                <Typography variant="h6" fontWeight={800}>Incentive Rules Manager</Typography>
+                <Typography color="text.secondary">Edit products + incentive calculations. Source: {rulesSource || 'default'}.</Typography>
               </Box>
               <Stack direction="row" spacing={1.25} flexWrap="wrap" justifyContent={{ xs: 'flex-start', md: 'flex-end' }}>
-                <Button variant="outlined" onClick={loadIncentiveRules} disabled={rulesLoading}>Reload</Button>
-                <Button variant="contained" onClick={saveIncentiveRules} disabled={rulesLoading}>Save Rules</Button>
+                <Button variant="outlined" onClick={loadIncentiveRules} disabled={rulesLoading}>
+                  Reload
+                </Button>
+                <Button variant="contained" onClick={saveIncentiveRules} disabled={rulesLoading}>
+                  Save Rules
+                </Button>
               </Stack>
             </Stack>
 
-            <TextField
-              multiline
-              minRows={12}
-              fullWidth
-              sx={{ mt: 2, fontFamily: 'monospace' }}
-              value={rulesText}
-              onChange={(e) => setRulesText(e.target.value)}
-              placeholder={`{\n  \"version\": 1,\n  \"products\": []\n}`}
-            />
+            <Box sx={{ mt: 2 }}>
+              <IncentiveRulesManager rulesText={rulesText} onRulesChange={setRulesText} />
+            </Box>
 
             <Alert severity="info" sx={{ mt: 2 }}>
-              After saving, employee submit/preview uses these rules. If you disable a product, employees cannot submit it.
+              After saving, employee submit forms use these rules. If you disable a product, employees cannot submit it.
             </Alert>
           </CardContent>
         </Card>
