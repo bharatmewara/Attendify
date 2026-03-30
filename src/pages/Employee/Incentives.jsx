@@ -27,6 +27,11 @@ import {
 import { Add, Edit, UploadFile } from '@mui/icons-material';
 import { apiRequest } from '../../lib/api';
 
+const capitalizeStatus = (status) => {
+  if (!status) return '';
+  return String(status).charAt(0).toUpperCase() + String(status).slice(1).toLowerCase();
+};
+
 const requestInitial = {
   client_name: '',
   product_name: 'Bulk SMS',
@@ -291,7 +296,7 @@ export default function EmployeeIncentives() {
                       <TableCell>
                         <Chip
                           size="small"
-                          label={row.status}
+                          label={capitalizeStatus(row.status)}
                           color={row.status === 'approved' ? 'success' : row.status === 'rejected' ? 'error' : 'warning'}
                         />
                       </TableCell>

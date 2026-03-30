@@ -21,6 +21,7 @@ import PayrollManagement from './pages/CompanyAdmin/PayrollManagement';
 import HRDocuments from './pages/CompanyAdmin/HRDocuments';
 import HolidayManagement from './pages/CompanyAdmin/HolidayManagement';
 import IncentivesManagement from './pages/CompanyAdmin/Incentives';
+import ClientsManagement from './pages/CompanyAdmin/Clients';
 import EmployeeIncentives from './pages/Employee/Incentives';
 import EmployeeDocuments from './pages/Employee/Documents';
 import EmployeePerformance from './pages/Employee/Performance';
@@ -94,6 +95,7 @@ function App() {
               <Route path="shifts" element={<ShiftManagement />} />
               <Route path="payroll" element={<PayrollManagement />} />
               <Route path="incentives" element={<IncentiveRouter />} />
+              <Route path="clients" element={<ClientsManagement />} />
               <Route path="performance" element={<EmployeePerformance />} />
               <Route path="documents" element={<DocumentsRouter />} />
               <Route path="holidays" element={<HolidayManagement />} />

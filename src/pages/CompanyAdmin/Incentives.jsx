@@ -29,6 +29,11 @@ import { Check, Close, Edit, Info, MoreVert, Visibility } from '@mui/icons-mater
 import { API_BASE_URL, apiRequest } from '../../lib/api';
 import IncentiveRulesManager from '../../components/IncentiveRulesManager';
 
+const capitalizeStatus = (status) => {
+  if (!status) return '';
+  return String(status).charAt(0).toUpperCase() + String(status).slice(1).toLowerCase();
+};
+
 const uploadsBaseUrl = API_BASE_URL.replace(/\/api\/?$/, '');
 
 const productOptions = [
@@ -92,12 +97,6 @@ export default function IncentivesManagement() {
   const [rulesSource, setRulesSource] = useState('');
   const [rulesLoading, setRulesLoading] = useState(false);
 
-  const [clientQuery, setClientQuery] = useState('');
-  const [clients, setClients] = useState([]);
-  const [clientsLoading, setClientsLoading] = useState(false);
-  const [clientDialogOpen, setClientDialogOpen] = useState(false);
-  const [selectedClient, setSelectedClient] = useState(null);
-
   const loadQueue = async () => {
     try {
       const req = await apiRequest('/incentives/submissions');
@@ -154,30 +153,6 @@ export default function IncentivesManagement() {
     } catch (error) {
       setMessage({ type: 'error', text: error.message });
     }
-  };
-
-  const loadClients = async (q = clientQuery) => {
-    try {
-      setClientsLoading(true);
-      const qs = new URLSearchParams();
-      if (q) qs.set('q', q);
-      const rows = await apiRequest(`/incentives/clients?${qs.toString()}`);
-      setClients(rows || []);
-    } catch (error) {
-      setMessage({ type: 'error', text: error.message });
-    } finally {
-      setClientsLoading(false);
-    }
-  };
-
-  const openClient = (row) => {
-    setSelectedClient(row);
-    setClientDialogOpen(true);
-  };
-
-  const closeClient = () => {
-    setClientDialogOpen(false);
-    setSelectedClient(null);
   };
 
   const saveTargetTiers = async () => {
@@ -263,12 +238,11 @@ export default function IncentivesManagement() {
     loadEmployees();
     loadTargetTiers();
     loadPerformance(perfMonth, perfYear);
-    loadClients('');
     loadIncentiveRules();
   }, []);
 
-  const queueRows = useMemo(() => requests.filter((r) => r.status === 'pending'), [requests]);
-  const pendingCount = queueRows.length;
+  const queueRows = useMemo(() => requests.filter((r) => r.status === 'Pending'), [requests]);
+  const PendingCount = queueRows.length;
 
   const earningsTotal = useMemo(
     () => earnings.reduce((sum, r) => sum + Number(r.incentive_amount || 0), 0),
@@ -402,12 +376,12 @@ export default function IncentivesManagement() {
     }
 
     if (action === 'approve') {
-      await handleUpdateStatus(row.id, 'approved');
+      await handleUpdateStatus(row.id, 'Approved');
       return;
     }
 
     if (action === 'reject') {
-      await handleUpdateStatus(row.id, 'rejected');
+      await handleUpdateStatus(row.id, 'Rejected');
     }
   };
 
@@ -424,9 +398,9 @@ export default function IncentivesManagement() {
             <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems="center" spacing={2}>
               <Box>
                 <Typography variant="h5" fontWeight={800}>Incentive Management</Typography>
-                <Typography color="text.secondary">Approve pending incentive submissions and track monthly earnings.</Typography>
+                <Typography color="text.secondary">Approve Pending incentive submissions and track monthly earnings.</Typography>
               </Box>
-              <Chip color={pendingCount ? 'warning' : 'success'} label={`Pending Requests: ${pendingCount}`} />
+              <Chip color={PendingCount ? 'warning' : 'success'} label={`Pending Requests: ${PendingCount}`} />
             </Stack>
           </CardContent>
         </Card>
@@ -486,7 +460,7 @@ export default function IncentivesManagement() {
                   {queueRows.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={10}>
-                        <Typography variant="body2" color="text.secondary">No pending requests.</Typography>
+                        <Typography variant="body2" color="text.secondary">No Pending requests.</Typography>
                       </TableCell>
                     </TableRow>
                   ) : null}
@@ -640,70 +614,6 @@ export default function IncentivesManagement() {
                     <TableRow>
                       <TableCell colSpan={7}>
                         <Typography variant="body2" color="text.secondary">No performance data for selected month.</Typography>
-                      </TableCell>
-                    </TableRow>
-                  ) : null}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent>
-            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between" alignItems={{ xs: 'stretch', md: 'center' }}>
-              <Box>
-                <Typography variant="h6" fontWeight={800}>Clients</Typography>
-                <Typography color="text.secondary">All clients secured (from incentive submissions) with search.</Typography>
-              </Box>
-              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25} alignItems={{ xs: 'stretch', sm: 'center' }}>
-                <TextField
-                  size="small"
-                  label="Search (name/mobile/email)"
-                  value={clientQuery}
-                  onChange={(e) => setClientQuery(e.target.value)}
-                  sx={{ minWidth: { xs: '100%', sm: 320 } }}
-                />
-                <Button variant="contained" onClick={() => loadClients(clientQuery)} disabled={clientsLoading}>Search</Button>
-                <Button variant="outlined" onClick={() => { setClientQuery(''); loadClients(''); }} disabled={clientsLoading}>Reset</Button>
-              </Stack>
-            </Stack>
-
-            <TableContainer component={Paper} variant="outlined" sx={{ mt: 2 }}>
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Client</TableCell>
-                    <TableCell>Mobile</TableCell>
-                    <TableCell>Email</TableCell>
-                    <TableCell>Panel User</TableCell>
-                    <TableCell>Password</TableCell>
-                    <TableCell>Employee</TableCell>
-                    <TableCell>Total Sales</TableCell>
-                    <TableCell>Approved</TableCell>
-                    <TableCell align="right">View</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {clients.map((row) => (
-                    <TableRow key={row.client_key}>
-                      <TableCell>{row.client_name || 'N/A'}</TableCell>
-                      <TableCell>{row.client_mobile_1 || 'N/A'}</TableCell>
-                      <TableCell>{row.client_email || 'N/A'}</TableCell>
-                      <TableCell>{row.client_panel_username || 'N/A'}</TableCell>
-                      <TableCell>{row.client_panel_password ? '********' : 'N/A'}</TableCell>
-                      <TableCell>{row.first_name ? `${row.first_name} ${row.last_name} (${row.employee_code || 'N/A'})` : 'N/A'}</TableCell>
-                      <TableCell>{Number(row.total_sales || 0).toLocaleString()}</TableCell>
-                      <TableCell>{Number(row.approved_count || 0)}/{Number(row.submissions_count || 0)}</TableCell>
-                      <TableCell align="right">
-                        <Button size="small" variant="text" onClick={() => openClient(row)}>View</Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  {clients.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={9}>
-                        <Typography variant="body2" color="text.secondary">No clients found.</Typography>
                       </TableCell>
                     </TableRow>
                   ) : null}
@@ -881,13 +791,13 @@ export default function IncentivesManagement() {
           <Edit fontSize="small" style={{ marginRight: 10 }} />
           Edit
         </MenuItem>
-        {menuRow?.status === 'pending' ? (
+        {menuRow?.status === 'Pending' ? (
           <MenuItem onClick={() => handleMenuAction('approve')}>
             <Check fontSize="small" style={{ marginRight: 10 }} />
             Approve
           </MenuItem>
         ) : null}
-        {menuRow?.status === 'pending' ? (
+        {menuRow?.status === 'Pending' ? (
           <MenuItem onClick={() => handleMenuAction('reject')}>
             <Close fontSize="small" style={{ marginRight: 10 }} />
             Reject
@@ -919,7 +829,7 @@ export default function IncentivesManagement() {
               <Typography><b>Price:</b> {selected.price ?? 'N/A'}</Typography>
               <Typography><b>Payment Mode:</b> {selected.payment_mode || 'N/A'}</Typography>
               <Typography><b>Calculated Incentive:</b> {Number(selected.incentive_amount || 0).toFixed(2)}</Typography>
-              <Typography><b>Status:</b> {selected.status}</Typography>
+              <Typography><b>Status:</b> {capitalizeStatus(selected.status)}</Typography>
               <Typography><b>Submitted At:</b> {selected.submitted_at ? new Date(selected.submitted_at).toLocaleString() : 'N/A'}</Typography>
               <Typography><b>Screenshot:</b> {selected.screenshot_path ? (
                 <Button size="small" variant="text" href={toScreenshotUrl(selected.screenshot_path)} target="_blank" rel="noreferrer">Open</Button>
@@ -929,10 +839,10 @@ export default function IncentivesManagement() {
         </DialogContent>
         <DialogActions>
           <Button onClick={closeDetails}>Close</Button>
-          {selected?.status === 'pending' ? (
+          {selected?.status === 'Pending' ? (
             <>
-              <Button variant="contained" color="success" onClick={() => { handleUpdateStatus(selected.id, 'approved'); closeDetails(); }}>Approve</Button>
-              <Button variant="outlined" color="error" onClick={() => { handleUpdateStatus(selected.id, 'rejected'); closeDetails(); }}>Reject</Button>
+              <Button variant="contained" color="success" onClick={() => { handleUpdateStatus(selected.id, 'Approved'); closeDetails(); }}>Approve</Button>
+              <Button variant="outlined" color="error" onClick={() => { handleUpdateStatus(selected.id, 'Rejected'); closeDetails(); }}>Reject</Button>
             </>
           ) : null}
         </DialogActions>
@@ -1045,13 +955,13 @@ export default function IncentivesManagement() {
                         <TableCell>{row.payment_mode || 'N/A'}</TableCell>
                         <TableCell>{Number(row.price || 0).toLocaleString()}</TableCell>
                         <TableCell>{Number(row.incentive_amount || 0).toFixed(2)}</TableCell>
-                        <TableCell>{row.approved_at ? new Date(row.approved_at).toLocaleDateString('en-IN') : 'N/A'}</TableCell>
+                        <TableCell>{row.Approved_at ? new Date(row.Approved_at).toLocaleDateString('en-IN') : 'N/A'}</TableCell>
                       </TableRow>
                     ))}
                     {(performanceDetails.details || []).length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={7}>
-                          <Typography variant="body2" color="text.secondary">No approved sales found.</Typography>
+                          <Typography variant="body2" color="text.secondary">No Approved sales found.</Typography>
                         </TableCell>
                       </TableRow>
                     ) : null}
@@ -1063,37 +973,6 @@ export default function IncentivesManagement() {
         </DialogContent>
         <DialogActions>
           <Button onClick={closePerformanceDetails}>Close</Button>
-        </DialogActions>
-      </Dialog>
-
-      <Dialog open={clientDialogOpen} onClose={closeClient} maxWidth="sm" fullWidth>
-        <DialogTitle>Client Info</DialogTitle>
-        <DialogContent dividers>
-          {selectedClient ? (
-            <Stack spacing={1.25}>
-              <Typography><b>Client:</b> {selectedClient.client_name || 'N/A'}</Typography>
-              <Typography><b>Mobile 1:</b> {selectedClient.client_mobile_1 || 'N/A'}</Typography>
-              <Typography><b>Mobile 2:</b> {selectedClient.client_mobile_2 || 'N/A'}</Typography>
-              <Typography><b>Email:</b> {selectedClient.client_email || 'N/A'}</Typography>
-              <Divider />
-              <Typography><b>Client Username:</b> {selectedClient.client_username || 'N/A'}</Typography>
-              <Typography><b>Panel Username:</b> {selectedClient.client_panel_username || 'N/A'}</Typography>
-              <Typography><b>Panel Password:</b> {selectedClient.client_panel_password || 'N/A'}</Typography>
-              <Divider />
-              <Typography><b>Total Sales:</b> {Number(selectedClient.total_sales || 0).toLocaleString()}</Typography>
-              <Typography><b>Total Incentive:</b> {Number(selectedClient.total_incentive || 0).toFixed(2)}</Typography>
-              <Typography><b>Approved / Submitted:</b> {Number(selectedClient.approved_count || 0)}/{Number(selectedClient.submissions_count || 0)}</Typography>
-              <Divider />
-              <Typography><b>Last Product:</b> {selectedClient.last_product || 'N/A'}</Typography>
-              <Typography><b>Last Payment Mode:</b> {selectedClient.last_payment_mode || 'N/A'}</Typography>
-              <Typography><b>Last Location:</b> {selectedClient.last_location || 'N/A'}</Typography>
-              <Typography><b>Last Employee:</b> {selectedClient.first_name ? `${selectedClient.first_name} ${selectedClient.last_name} (${selectedClient.employee_code || 'N/A'})` : 'N/A'}</Typography>
-              <Typography><b>Last Date:</b> {selectedClient.last_approved_at ? new Date(selectedClient.last_approved_at).toLocaleString() : selectedClient.last_submitted_at ? new Date(selectedClient.last_submitted_at).toLocaleString() : 'N/A'}</Typography>
-            </Stack>
-          ) : null}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={closeClient}>Close</Button>
         </DialogActions>
       </Dialog>
     </Box>

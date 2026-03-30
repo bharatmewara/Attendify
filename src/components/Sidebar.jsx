@@ -1,5 +1,20 @@
-import { Avatar, Box, Drawer, List, ListItemButton, ListItemText, Stack, Typography } from '@mui/material';
+import { Avatar, Box, Drawer, List, ListItemButton, ListItemIcon, ListItemText, Stack, Typography } from '@mui/material';
 import { Link, useLocation } from 'react-router-dom';
+import {
+  Dashboard,
+  Business,
+  BarChart,
+  People,
+  CheckCircle,
+  Edit,
+  EventNote,
+  AccessTime,
+  Celebration,
+  MonetizationOn,
+  Person,
+  AccountBalanceWallet,
+  Description,
+} from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import { API_BASE_URL } from '../lib/api';
 
@@ -12,34 +27,35 @@ const Sidebar = ({ mobileOpen, onClose, companyProfile }) => {
   const getNavItems = () => {
     if (user?.role === 'super_admin') {
       return [
-        { label: 'Dashboard', to: '/app/dashboard' },
-        { label: 'Companies', to: '/app/companies' },
-        { label: 'Plans', to: '/app/plans' },
-        { label: 'Analytics', to: '/app/analytics' },
+        { label: 'Dashboard', to: '/app/dashboard', icon: Dashboard },
+        { label: 'Companies', to: '/app/companies', icon: Business },
+        { label: 'Plans', to: '/app/plans', icon: BarChart },
+        { label: 'Analytics', to: '/app/analytics', icon: BarChart },
       ];
     }
     if (user?.role === 'company_admin') {
       return [
-        { label: 'Dashboard', to: '/app/dashboard' },
-        { label: 'Employees', to: '/app/employees' },
-        { label: 'Attendance', to: '/app/attendance' },
-        { label: 'Attendance ER', to: '/app/attendance-er' },
-        { label: 'Leave', to: '/app/leave' },
-        { label: 'Shifts', to: '/app/shifts' },
-        { label: 'Holidays', to: '/app/holidays' },
-        { label: 'Incentives', to: '/app/incentives' },
-        { label: 'Payroll', to: '/app/payroll' },
-        { label: 'Documents', to: '/app/documents' },
+        { label: 'Dashboard', to: '/app/dashboard', icon: Dashboard },
+        { label: 'Employees', to: '/app/employees', icon: People },
+        { label: 'Attendance', to: '/app/attendance', icon: CheckCircle },
+        { label: 'Attendance ER', to: '/app/attendance-er', icon: Edit },
+        { label: 'Leave', to: '/app/leave', icon: EventNote },
+        { label: 'Shifts', to: '/app/shifts', icon: AccessTime },
+        { label: 'Holidays', to: '/app/holidays', icon: Celebration },
+        { label: 'Incentives', to: '/app/incentives', icon: MonetizationOn },
+        { label: 'Clients', to: '/app/clients', icon: Person },
+        { label: 'Payroll', to: '/app/payroll', icon: AccountBalanceWallet },
+        { label: 'Documents', to: '/app/documents', icon: Description },
       ];
     }
     if (user?.role === 'employee') {
       return [
-        { label: 'Dashboard', to: '/app/dashboard' },
-        { label: 'My Attendance', to: '/app/attendance' },
-        { label: 'My ER Requests', to: '/app/attendance-er' },
-        { label: 'My Leave', to: '/app/leave' },
-        { label: 'My Incentives', to: '/app/incentives' },
-        { label: 'My Documents', to: '/app/documents' },
+        { label: 'Dashboard', to: '/app/dashboard', icon: Dashboard },
+        { label: 'My Attendance', to: '/app/attendance', icon: CheckCircle },
+        { label: 'My ER Requests', to: '/app/attendance-er', icon: Edit },
+        { label: 'My Leave', to: '/app/leave', icon: EventNote },
+        { label: 'My Incentives', to: '/app/incentives', icon: MonetizationOn },
+        { label: 'My Documents', to: '/app/documents', icon: Description },
       ];
     }
     return [];
@@ -59,17 +75,19 @@ const Sidebar = ({ mobileOpen, onClose, companyProfile }) => {
       : 'Employee Portal';
 
   const content = (
-    <Box sx={{ p: 2, height: '100%', bgcolor: '#0F172A', color: '#E2E8F0' }}>
-      <Stack spacing={0.5} mb={2}>
+    <Box sx={{ height: '100%', bgcolor: '#0F172A', color: '#E2E8F0', display: 'flex', flexDirection: 'column', overflow: 'auto' }}>
+      <Stack spacing={0.5} sx={{ p: 2, pb: 1, flexShrink: 0 }}>
         {logoSrc ? <Avatar src={logoSrc} variant="rounded" sx={{ width: 56, height: 56, mb: 0.5 }} /> : null}
         <Typography fontWeight={800}>{brandName}</Typography>
         <Typography variant="caption" sx={{ color: '#94A3B8' }}>
           {subLabel}
         </Typography>
       </Stack>
-      <List>
+      <List sx={{ width: '100%', bgcolor: 'transparent', overflow: 'visible', flex: 1, p: 2, pt: 1 }}>
         {navItems.map((item) => {
-          const isActive = location.pathname === item.to;
+          const isActive = location.pathname.startsWith(item.to);
+          const IconComponent = item.icon;
+          const itemColor = isActive ? '#F8FAFC' : '#CBD5E1';
           return (
             <ListItemButton
               key={item.to}
@@ -79,12 +97,33 @@ const Sidebar = ({ mobileOpen, onClose, companyProfile }) => {
               sx={{
                 borderRadius: 2,
                 mb: 0.5,
-                color: isActive ? '#F8FAFC' : '#CBD5E1',
-                bgcolor: isActive ? 'rgba(56,189,248,0.24)' : 'transparent',
-                '&:hover': { bgcolor: 'rgba(148,163,184,0.18)' },
+                backgroundColor: isActive ? 'rgba(56,189,248,0.24) !important' : 'transparent !important',
+                '&:hover': { backgroundColor: 'rgba(148,163,184,0.18) !important' },
+                '&:active': { backgroundColor: 'transparent !important' },
+                '& .MuiListItemIcon-root': { 
+                  color: `${itemColor} !important`,
+                  minWidth: 40,
+                },
+                '& .MuiListItemText-primary': { 
+                  color: `${itemColor} !important`, 
+                  fontSize: '14px !important', 
+                  fontWeight: '600 !important' 
+                },
               }}
             >
-              <ListItemText primary={item.label} primaryTypographyProps={{ fontSize: 14, fontWeight: 600 }} />
+              <ListItemIcon sx={{ color: `${itemColor} !important`, minWidth: 40 }}>
+                <IconComponent fontSize="small" />
+              </ListItemIcon>
+              <ListItemText 
+                primary={item.label} 
+                primaryTypographyProps={{ 
+                  sx: { 
+                    color: `${itemColor} !important`, 
+                    fontSize: '14px !important', 
+                    fontWeight: '600 !important' 
+                  } 
+                }} 
+              />
             </ListItemButton>
           );
         })}
