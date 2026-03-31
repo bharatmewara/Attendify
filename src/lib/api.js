@@ -1,28 +1,46 @@
-const rawApiBaseUrl = import.meta.env.VITE_API_BASE_URL || '';
-
-const normalizeApiBaseUrl = (url) => {
-  if (!url) return 'http://localhost:4000/api';
-
-  if (url.startsWith(':')) {
-    return `http://localhost${url}`;
+﻿const normalizeApiBaseUrl = (url) => {
+  const value = (url || '').toString().trim();
+  if (!value) {
+    return 'http://localhost:4000/api';
   }
 
-  if (url.startsWith('//')) {
-    return `${window.location.protocol}${url}`;
+  let normalized = value;
+
+  if (normalized.startsWith('//')) {
+    if (typeof window !== 'undefined' && window.location?.protocol) {
+      normalized = `${window.location.protocol}${normalized}`;
+    } else {
+      normalized = `http:${normalized}`;
+    }
+  } else if (!/^https?:\/\//i.test(normalized)) {
+    if (typeof window !== 'undefined' && window.location?.protocol) {
+      normalized = `${window.location.protocol}//${normalized}`;
+    } else {
+      normalized = `http://${normalized}`;
+    }
   }
 
-  if (!url.startsWith('http://') && !url.startsWith('https://')) {
-    return `${window.location.protocol}//${url}`;
+  const forceHttp = (import.meta.env.VITE_FORCE_HTTP || '').toString().trim().toLowerCase() === 'true';
+  if (forceHttp && normalized.toLowerCase().startsWith('https://')) {
+    normalized = `http://${normalized.slice(8)}`;
   }
 
-  return url;
+  return normalized;
 };
 
-const API_BASE_URL = normalizeApiBaseUrl(rawApiBaseUrl);
-if (process.env.NODE_ENV === 'development') {
-  console.log('[api] API_BASE_URL =', API_BASE_URL);
-}
+const API_BASE_URL = normalizeApiBaseUrl(import.meta.env.VITE_API_BASE_URL);
 const TOKEN_KEY = 'attendify_token';
+
+if (typeof window !== 'undefined') {
+  const pageIsHttps = window.location?.protocol === 'https:';
+  const apiIsHttp = API_BASE_URL.toLowerCase().startsWith('http://');
+  if (pageIsHttps && apiIsHttp) {
+    console.warn(
+      '[Attendify] API is HTTP but the app is loaded over HTTPS. This will be blocked in browsers. ' +
+        'Use an HTTPS API endpoint (recommended) or serve the app over HTTP during local testing.'
+    );
+  }
+}
 
 const getStoredToken = () => {
   if (typeof window === 'undefined') {
