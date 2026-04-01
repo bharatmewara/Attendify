@@ -1,10 +1,15 @@
-﻿const normalizeApiBaseUrl = (url) => {
+const normalizeApiBaseUrl = (url) => {
   const value = (url || '').toString().trim();
   if (!value) {
-    return 'http://localhost:4000/api';
+    return '/api';
   }
 
   let normalized = value;
+
+  // Allow relative base URLs (recommended for local dev via Vite proxy).
+  if (normalized.startsWith('/')) {
+    return normalized.replace(/\/+$/, '') || '/api';
+  }
 
   if (normalized.startsWith('//')) {
     if (typeof window !== 'undefined' && window.location?.protocol) {
@@ -24,8 +29,7 @@
   if (forceHttp && normalized.toLowerCase().startsWith('https://')) {
     normalized = `http://${normalized.slice(8)}`;
   }
-
-  return normalized;
+  return normalized.replace(/\/+$/, '');
 };
 
 const API_BASE_URL = normalizeApiBaseUrl(import.meta.env.VITE_API_BASE_URL);
