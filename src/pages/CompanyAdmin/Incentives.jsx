@@ -849,7 +849,7 @@ export default function IncentivesManagement() {
               <Typography><b>Client Email:</b> {selected.client_email || 'N/A'}</Typography>
               <Typography><b>Client User Name:</b> {selected.client_username || 'N/A'}</Typography>
               <Typography><b>Client Panel Username:</b> {selected.client_panel_username || 'N/A'}</Typography>
-              <Typography><b>Client Panel Password:</b> {selected.client_panel_password ? '********' : 'N/A'}</Typography>
+              <Typography><b>Client Panel Password:</b> {selected.client_panel_password || 'N/A'}</Typography>
               <Divider />
               <Typography><b>Quantity:</b> {selected.sms_quantity ?? 'N/A'}</Typography>
               <Typography><b>Rate:</b> {selected.rate ?? 'N/A'}</Typography>

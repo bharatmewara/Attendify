@@ -132,7 +132,7 @@ export default function ClientsManagement() {
                     <TableCell>{row.client_mobile_1 || 'N/A'}</TableCell>
                     <TableCell>{row.client_email || 'N/A'}</TableCell>
                     <TableCell>{row.client_panel_username || 'N/A'}</TableCell>
-                    <TableCell>{row.client_panel_password ? '********' : 'N/A'}</TableCell>
+                    <TableCell>{row.client_panel_password || 'N/A'}</TableCell>
                     <TableCell>
                       {row.first_name ? `${row.first_name} ${row.last_name} (${row.employee_code || 'N/A'})` : 'N/A'}
                     </TableCell>
@@ -186,7 +186,7 @@ export default function ClientsManagement() {
                   <Typography><strong>Mobile:</strong> {selectedClient.client_mobile_1 || 'N/A'}</Typography>
                   <Typography><strong>Email:</strong> {selectedClient.client_email || 'N/A'}</Typography>
                   <Typography><strong>Panel Username:</strong> {selectedClient.client_panel_username || 'N/A'}</Typography>
-                  <Typography><strong>Panel Password:</strong> {selectedClient.client_panel_password ? '********' : 'N/A'}</Typography>
+                  <Typography><strong>Panel Password:</strong> {selectedClient.client_panel_password || 'N/A'}</Typography>
                 </Stack>
               </Box>
 
