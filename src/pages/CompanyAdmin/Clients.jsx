@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+﻿import { useEffect, useState } from 'react';
 import {
   Alert,
   Box,
@@ -38,6 +38,7 @@ const toScreenshotUrl = (screenshotPath) => {
   return `${uploadsBaseUrl}/${relative}`;
 };
 
+const RUPEE = '\u20B9';
 const formatMoney = (value) => {
   if (value === null || value === undefined || value === '') return 'N/A';
   const num = Number(value);
@@ -142,7 +143,8 @@ export default function ClientsManagement() {
               <Typography color="text.secondary">Clients secured through incentive submissions.</Typography>
             </Box>
 
-            <Stack spacing={1.25} sx={{ minWidth: { md: 600 } }}>
+            <Stack spacing={1.25} sx={{ minWidth: { md: 620 } }}>
+
               <Stack direction="row" spacing={1} flexWrap="wrap">
                 {[
                   { label: 'Today', value: 'today' },
@@ -222,7 +224,7 @@ export default function ClientsManagement() {
                   <TableCell>Panel User</TableCell>
                   <TableCell>Password</TableCell>
                   <TableCell>Employee</TableCell>
-                  <TableCell>Total Sales</TableCell>
+                  <TableCell align="right">Total Received (incl GST)</TableCell>
                   <TableCell>Approved</TableCell>
                   <TableCell align="right">Actions</TableCell>
                 </TableRow>
@@ -234,11 +236,9 @@ export default function ClientsManagement() {
                     <TableCell sx={{ whiteSpace: 'nowrap' }}>{row.last_product || row.product_name || 'N/A'}</TableCell>
                     <TableCell align="right">{row.last_sms_quantity ?? row.sms_quantity ?? 'N/A'}</TableCell>
                     <TableCell align="right">
-                      {row.last_amount_received !== undefined && row.last_amount_received !== null
-                        ? `₹${formatMoney(row.last_amount_received)}`
-                        : (row.last_price_inc_gst
-                          ? `₹${formatMoney(row.last_price_inc_gst)}`
-                          : (row.last_price_ex_gst ? `₹${formatMoney(row.last_price_ex_gst)}` : 'N/A'))}
+                      {row.last_amount_received !== null && row.last_amount_received !== undefined
+                        ? `${RUPEE}${formatMoney(row.last_amount_received)}`
+                        : 'N/A'}
                     </TableCell>
                     <TableCell>{row.client_mobile_1 || 'N/A'}</TableCell>
                     <TableCell>{row.client_email || 'N/A'}</TableCell>
@@ -247,7 +247,7 @@ export default function ClientsManagement() {
                     <TableCell>
                       {row.first_name ? `${row.first_name} ${row.last_name} (${row.employee_code || 'N/A'})` : 'N/A'}
                     </TableCell>
-                    <TableCell>₹{Number(row.total_sales || 0).toLocaleString()}</TableCell>
+                    <TableCell align="right">{`${RUPEE}${formatMoney(row.total_received ?? row.total_sales ?? 0)}`}</TableCell>
                     <TableCell>
                       <Chip
                         label={`${Number(row.approved_count || 0)}/${Number(row.submissions_count || 0)}`}
@@ -294,11 +294,11 @@ export default function ClientsManagement() {
                 <Typography variant="h6" gutterBottom>Client Information</Typography>
                 <Stack spacing={1}>
                   <Typography><strong>Name:</strong> {selectedClient.client_name || 'N/A'}</Typography>
-                  <Typography><strong>Last Product:</strong> {selectedClient.last_product || 'N/A'}</Typography>
-                  <Typography><strong>Last SMS Qty:</strong> {selectedClient.last_sms_quantity ?? 'N/A'}</Typography>
-                  <Typography><strong>Last Price (excl GST):</strong> {selectedClient.last_price_ex_gst !== null && selectedClient.last_price_ex_gst !== undefined ? `₹${formatMoney(selectedClient.last_price_ex_gst)}` : 'N/A'}</Typography>
-                  <Typography><strong>GST (18%):</strong> {selectedClient.last_gst_amount !== null && selectedClient.last_gst_amount !== undefined ? `₹${formatMoney(selectedClient.last_gst_amount)}` : 'N/A'}</Typography>
-                  <Typography><strong>Amount Received (incl GST):</strong> {selectedClient.last_amount_received !== null && selectedClient.last_amount_received !== undefined ? `₹${formatMoney(selectedClient.last_amount_received)}` : (selectedClient.last_price_inc_gst ? `₹${formatMoney(selectedClient.last_price_inc_gst)}` : 'N/A')}</Typography>
+                  <Typography><strong>Product:</strong> {selectedClient.last_product || 'N/A'}</Typography>
+                  <Typography><strong>SMS Qty:</strong> {selectedClient.last_sms_quantity ?? 'N/A'}</Typography>
+                  <Typography><strong>Last Price (excl GST):</strong> {selectedClient.last_price_ex_gst !== null && selectedClient.last_price_ex_gst !== undefined ? `${RUPEE}${formatMoney(selectedClient.last_price_ex_gst)}` : 'N/A'}</Typography>
+                  <Typography><strong>Last GST (18%):</strong> {selectedClient.last_gst_amount !== null && selectedClient.last_gst_amount !== undefined ? `${RUPEE}${formatMoney(selectedClient.last_gst_amount)}` : 'N/A'}</Typography>
+                  <Typography><strong>Last Amount Received (incl GST):</strong> {selectedClient.last_amount_received !== null && selectedClient.last_amount_received !== undefined ? `${RUPEE}${formatMoney(selectedClient.last_amount_received)}` : 'N/A'}</Typography>
                   <Typography><strong>Mobile:</strong> {selectedClient.client_mobile_1 || 'N/A'}</Typography>
                   <Typography><strong>Email:</strong> {selectedClient.client_email || 'N/A'}</Typography>
                   <Typography><strong>Panel Username:</strong> {selectedClient.client_panel_username || 'N/A'}</Typography>
@@ -319,7 +319,8 @@ export default function ClientsManagement() {
               <Box>
                 <Typography variant="h6" gutterBottom>Sales Summary</Typography>
                 <Stack spacing={1}>
-                  <Typography><strong>Total Sales:</strong> ₹{Number(selectedClient.total_sales || 0).toLocaleString()}</Typography>
+                  <Typography><strong>Total Received (incl GST):</strong> {`${RUPEE}${formatMoney(selectedClient.total_received ?? selectedClient.total_sales ?? 0)}`}</Typography>
+                  <Typography><strong>Total GST:</strong> {`${RUPEE}${formatMoney(selectedClient.total_gst_amount ?? 0)}`}</Typography>
                   <Typography><strong>Approved Submissions:</strong> {Number(selectedClient.approved_count || 0)}</Typography>
                   <Typography><strong>Total Submissions:</strong> {Number(selectedClient.submissions_count || 0)}</Typography>
                 </Stack>
@@ -343,8 +344,8 @@ export default function ClientsManagement() {
                         {selectedClient.submissions.slice(0, 5).map((sub) => (
                           <TableRow key={sub.id}>
                             <TableCell>{sub.product_name}</TableCell>
-                            <TableCell>₹{Number(sub.price || 0).toLocaleString()}</TableCell>
-                            <TableCell>₹{Number(sub.incentive_amount || 0).toLocaleString()}</TableCell>
+                            <TableCell>{`${RUPEE}${Number(sub.price || 0).toLocaleString()}`}</TableCell>
+                            <TableCell>{`${RUPEE}${Number(sub.incentive_amount || 0).toLocaleString()}`}</TableCell>
                             <TableCell>
                               <Chip
                                 label={sub.status}

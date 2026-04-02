@@ -76,33 +76,38 @@ const fmtMoney = (value) => {
   return num.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
 
-const fmtText = (value) => {
-  if (value === null || value === undefined || value === '') return 'N/A';
-  return escapeHtml(value);
-};
+const buildEmailHtml = ({ title, subtitle, sections = [], note }) => {
+  const sectionHtml = sections
+    .map((section) => {
+      const rows = (section.rows || [])
+        .map(
+          (r) => `
+            <tr>
+              <td style="padding:10px 12px;border:1px solid #e5e7eb;background:#f9fafb;font-weight:700;width:220px;">${escapeHtml(r.label)}</td>
+              <td style="padding:10px 12px;border:1px solid #e5e7eb;">${r.htmlValue ?? escapeHtml(r.value ?? '')}</td>
+            </tr>`,
+        )
+        .join('');
 
-const buildEmailHtml = ({ title, subtitle, rows, note }) => {
-  const tableRows = (rows || [])
-    .map(
-      (r) => `
-        <tr>
-          <td style="padding:10px 12px;border:1px solid #e5e7eb;background:#f9fafb;font-weight:600;width:220px;">${escapeHtml(r.label)}</td>
-          <td style="padding:10px 12px;border:1px solid #e5e7eb;">${r.htmlValue ?? escapeHtml(r.value ?? '')}</td>
-        </tr>`,
-    )
+      return `
+        <div style="margin-top:14px;">
+          <div style="font-weight:900;color:#111827;margin:0 0 8px 0;font-size:14px;">${escapeHtml(section.title || '')}</div>
+          <table cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;font-size:14px;">
+            ${rows}
+          </table>
+        </div>`;
+    })
     .join('');
 
   return `
     <div style="font-family:Arial,Helvetica,sans-serif;background:#f3f4f6;padding:24px;">
-      <div style="max-width:780px;margin:0 auto;background:#ffffff;border:1px solid #e5e7eb;border-radius:14px;overflow:hidden;">
+      <div style="max-width:820px;margin:0 auto;background:#ffffff;border:1px solid #e5e7eb;border-radius:14px;overflow:hidden;">
         <div style="padding:18px 20px;background:#111827;color:#fff;">
-          <div style="font-size:18px;font-weight:800;line-height:1.2;">${escapeHtml(title)}</div>
+          <div style="font-size:18px;font-weight:900;line-height:1.2;">${escapeHtml(title || '')}</div>
           ${subtitle ? `<div style="opacity:.9;margin-top:6px;font-size:13px;">${escapeHtml(subtitle)}</div>` : ''}
         </div>
         <div style="padding:18px 20px;">
-          <table cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;font-size:14px;">
-            ${tableRows}
-          </table>
+          ${sectionHtml}
           ${note ? `<div style="margin-top:14px;padding:12px 14px;border-radius:10px;background:#fef3c7;border:1px solid #f59e0b;color:#92400e;font-size:13px;">${escapeHtml(note)}</div>` : ''}
           <div style="margin-top:16px;color:#6b7280;font-size:12px;">Attendify</div>
         </div>
@@ -547,39 +552,67 @@ router.post(
 
         if (adminEmails && employee) {
           const submission = result.rows[0];
+          const employeeName = `${employee.first_name} ${employee.last_name}`.trim();
+          const net = submission.price ?? null;
+          const gross = submission.gst_applied && submission.price_gross ? submission.price_gross : null;
+          const amountReceived = gross ?? net;
+          const gstAmount =
+            gross !== null && net !== null
+              ? roundMoney(Number(gross) - Number(net))
+              : null;
           await sendEmail({
             to: adminEmails,
-            subject: `Incentive pending approval: ${employee.first_name} ${employee.last_name}`,
-            text: `An incentive submission is pending approval.\n\nEmployee: ${employee.first_name} ${employee.last_name} (${employee.employee_email})\nClient: ${submission.client_name}\nProduct: ${submission.product_name}\nType: ${submission.package_type}\nPrice (excl GST): ${submission.price ?? 'N/A'}\n${submission.gst_applied && submission.price_gross ? `Price (incl GST): ${submission.price_gross}\n` : ''}Incentive: ${submission.incentive_amount}\n\nAttendify`,
-            html: (() => {
-              const net = submission.price ?? null;
-              const gross = submission.gst_applied && submission.price_gross ? submission.price_gross : null;
-              const gstAmount =
-                submission.gst_applied && submission.price_gross && submission.price
-                  ? roundMoney(Number(submission.price_gross) - Number(submission.price))
-                  : null;
-
-              return buildEmailHtml({
-                title: 'Incentive Pending Approval',
-                subtitle: `${employee.first_name} ${employee.last_name} (${employee.employee_email})`,
-                rows: [
-                  { label: 'Client', value: submission.client_name },
-                  { label: 'Product', value: submission.product_name },
-                  { label: 'Type', value: submission.package_type },
-                  { label: 'SMS Quantity', value: submission.sms_quantity ?? 'N/A' },
-                  { label: 'Rate', value: submission.rate ?? 'N/A' },
-                  { label: 'Price (excl GST)', htmlValue: `₹ ${fmtMoney(net)}` },
-                  ...(gross ? [{ label: 'GST (18%)', htmlValue: gstAmount !== null ? `₹ ${fmtMoney(gstAmount)}` : 'N/A' }] : []),
-                  ...(gross ? [{ label: 'Amount Received (incl GST)', htmlValue: `₹ ${fmtMoney(gross)}` }] : []),
-                  { label: 'Payment Mode', value: submission.payment_mode ?? 'N/A' },
-                  { label: 'Client Mobile', value: [submission.client_mobile_1, submission.client_mobile_2].filter(Boolean).join(', ') || 'N/A' },
-                  { label: 'Client Email', value: submission.client_email ?? 'N/A' },
-                  { label: 'Client Username', value: submission.client_username ?? 'N/A' },
-                  { label: 'Client Location', value: submission.client_location ?? 'N/A' },
-                  { label: 'Calculated Incentive', htmlValue: `₹ ${fmtMoney(submission.incentive_amount)}` },
-                ],
-              });
-            })(),
+            subject: `Today Status - ${employeeName}`,
+            text:
+              `An incentive submission is pending approval.\n\n` +
+              `Employee: ${employee.first_name} ${employee.last_name} (${employee.employee_email})\n` +
+              `Client: ${submission.client_name}\n` +
+              `Product: ${submission.product_name}\n` +
+              `Type: ${submission.package_type}\n` +
+              `Quantity: ${submission.sms_quantity ?? 'N/A'}\n` +
+              `Rate: ${submission.rate ?? 'N/A'}\n` +
+              `Price (excl GST): ${submission.price ?? 'N/A'}\n` +
+              (submission.gst_applied && submission.price_gross ? `Price (incl GST): ${submission.price_gross}\n` : '') +
+              `Payment Mode: ${submission.payment_mode ?? 'N/A'}\n` +
+              `Client Mobile 1: ${submission.client_mobile_1 ?? 'N/A'}\n` +
+              `Client Mobile 2: ${submission.client_mobile_2 ?? 'N/A'}\n` +
+              `Client Email: ${submission.client_email ?? 'N/A'}\n` +
+              `Client Username: ${submission.client_username ?? 'N/A'}\n` +
+              `Client Location: ${submission.client_location ?? 'N/A'}\n` +
+              `Calculated Incentive: ${submission.incentive_amount}\n\n` +
+              `Attendify`,
+            html: buildEmailHtml({
+              title: 'Incentive Submission',
+              subtitle: employeeName,
+              sections: [
+                {
+                  title: 'Incentive Details',
+                  rows: [
+                    { label: 'Product', value: submission.product_name },
+                    { label: 'Type', value: submission.package_type },
+                    { label: 'SMS Quantity', value: submission.sms_quantity ?? 'N/A' },
+                    { label: 'Rate', value: submission.rate ?? 'N/A' },
+                    { label: 'Price (excl GST)', htmlValue: `₹ ${fmtMoney(net)}` },
+                    { label: 'GST (18%)', htmlValue: gstAmount !== null ? `₹ ${fmtMoney(gstAmount)}` : 'N/A' },
+                    { label: 'Amount Received (incl GST)', htmlValue: amountReceived !== null ? `₹ ${fmtMoney(amountReceived)}` : 'N/A' },
+                    { label: 'Payment Mode', value: submission.payment_mode ?? 'N/A' },
+                    { label: 'Incentive', htmlValue: `₹ ${fmtMoney(submission.incentive_amount)}` },
+                  ],
+                },
+                {
+                  title: 'Client Details',
+                  rows: [
+                    { label: 'Client', value: submission.client_name },
+                    { label: 'Mobile', value: [submission.client_mobile_1, submission.client_mobile_2].filter(Boolean).join(', ') || 'N/A' },
+                    { label: 'Email', value: submission.client_email ?? 'N/A' },
+                    { label: 'Panel User', value: submission.client_panel_username ?? 'N/A' },
+                    { label: 'Panel Pass', value: submission.client_panel_password ?? 'N/A' },
+                    { label: 'Username', value: submission.client_username ?? 'N/A' },
+                    { label: 'Location', value: submission.client_location ?? 'N/A' },
+                  ],
+                },
+              ],
+            }),
           });
         }
       } catch (emailError) {
@@ -1237,6 +1270,24 @@ router.get(
             COUNT(*)::int AS submissions_count,
             COUNT(*) FILTER (WHERE status = 'approved')::int AS approved_count,
             COALESCE(SUM(price) FILTER (WHERE status = 'approved'), 0)::decimal(12,2) AS total_sales,
+            COALESCE(
+              SUM(
+                CASE
+                  WHEN gst_applied = TRUE AND price_gross IS NOT NULL THEN price_gross
+                  ELSE price
+                END
+              ) FILTER (WHERE status = 'approved'),
+              0
+            )::decimal(12,2) AS total_received,
+            COALESCE(
+              SUM(
+                CASE
+                  WHEN gst_applied = TRUE AND price_gross IS NOT NULL AND price IS NOT NULL THEN (price_gross - price)
+                  ELSE 0
+                END
+              ) FILTER (WHERE status = 'approved'),
+              0
+            )::decimal(12,2) AS total_gst_amount,
             COALESCE(SUM(incentive_amount) FILTER (WHERE status = 'approved'), 0)::decimal(12,2) AS total_incentive
           FROM ranked
           GROUP BY client_key
@@ -1274,6 +1325,8 @@ router.get(
           a.submissions_count,
           a.approved_count,
           a.total_sales,
+          a.total_received,
+          a.total_gst_amount,
           a.total_incentive
         FROM ranked r
         JOIN agg a ON a.client_key = r.client_key
@@ -1810,7 +1863,8 @@ router.put(
         const companyRecipients = configuredRecipients || String(companyRow.email || '').trim();
 
         const statusLabel = String(updated.status || '').toUpperCase();
-        const subject = `Incentive ${statusLabel}: ${updated.client_name || 'Client'}`;
+        const employeeName = employee ? `${employee.first_name} ${employee.last_name}`.trim() : 'Employee';
+        const subject = `Today Status - ${employeeName}`;
         const body =
           `Incentive submission status changed.\n\n` +
           `Status: ${updated.status}\n` +
@@ -1825,34 +1879,48 @@ router.put(
             : '') +
           `\n\nAttendify`;
 
-        const statusNote = String(updated.status).toLowerCase() === 'refunded'
+        const net = updated.price ?? null;
+        const gross = updated.gst_applied && updated.price_gross ? updated.price_gross : null;
+        const amountReceived = gross ?? net;
+        const gstAmount =
+          gross !== null && net !== null
+            ? roundMoney(Number(gross) - Number(net))
+            : null;
+        const note = String(updated.status).toLowerCase() === 'refunded'
           ? 'Refunded incentives are removed from totals and payroll calculations.'
           : '';
 
-        const html = (() => {
-          const net = updated.price ?? null;
-          const gross = updated.gst_applied && updated.price_gross ? updated.price_gross : null;
-          const gstAmount =
-            updated.gst_applied && updated.price_gross && updated.price
-              ? roundMoney(Number(updated.price_gross) - Number(updated.price))
-              : null;
-
-          return buildEmailHtml({
-            title: `Incentive Status Updated: ${statusLabel}`,
-            subtitle: updated.client_name || 'Client',
-            rows: [
-              { label: 'Status', value: updated.status },
-              { label: 'Client', value: updated.client_name ?? 'N/A' },
-              { label: 'Product', value: updated.product_name ?? 'N/A' },
-              { label: 'Type', value: updated.package_type ?? 'N/A' },
-              { label: 'Price (excl GST)', htmlValue: `₹ ${fmtMoney(net)}` },
-              ...(gross ? [{ label: 'GST (18%)', htmlValue: gstAmount !== null ? `₹ ${fmtMoney(gstAmount)}` : 'N/A' }] : []),
-              ...(gross ? [{ label: 'Amount Received (incl GST)', htmlValue: `₹ ${fmtMoney(gross)}` }] : []),
-              { label: 'Incentive', htmlValue: `₹ ${fmtMoney(updated.incentive_amount ?? 'N/A')}` },
-            ],
-            note: statusNote || null,
-          });
-        })();
+        const html = buildEmailHtml({
+          title: `Incentive Status: ${statusLabel}`,
+          subtitle: employeeName,
+          sections: [
+            {
+              title: 'Incentive Details',
+              rows: [
+                { label: 'Status', value: updated.status },
+                { label: 'Client', value: updated.client_name ?? 'N/A' },
+                { label: 'Product', value: updated.product_name ?? 'N/A' },
+                { label: 'Type', value: updated.package_type ?? 'N/A' },
+                { label: 'SMS Quantity', value: updated.sms_quantity ?? 'N/A' },
+                { label: 'Price (excl GST)', htmlValue: `₹ ${fmtMoney(net)}` },
+                { label: 'GST (18%)', htmlValue: gstAmount !== null ? `₹ ${fmtMoney(gstAmount)}` : 'N/A' },
+                { label: 'Amount Received (incl GST)', htmlValue: amountReceived !== null ? `₹ ${fmtMoney(amountReceived)}` : 'N/A' },
+                { label: 'Incentive', htmlValue: `₹ ${fmtMoney(updated.incentive_amount ?? 'N/A')}` },
+              ],
+            },
+            {
+              title: 'Client Details',
+              rows: [
+                { label: 'Mobile', value: [updated.client_mobile_1, updated.client_mobile_2].filter(Boolean).join(', ') || 'N/A' },
+                { label: 'Email', value: updated.client_email ?? 'N/A' },
+                { label: 'Panel User', value: updated.client_panel_username ?? 'N/A' },
+                { label: 'Panel Pass', value: updated.client_panel_password ?? 'N/A' },
+                { label: 'Location', value: updated.client_location ?? 'N/A' },
+              ],
+            },
+          ],
+          note: note || null,
+        });
 
         if (employee?.employee_email) {
           await sendEmail({ to: employee.employee_email, subject, text: body, html });
