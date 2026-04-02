@@ -25,6 +25,7 @@ import {
 import { Close, Visibility } from '@mui/icons-material';
 import { API_BASE_URL, apiRequest } from '../../lib/api';
 
+
 const uploadsBaseUrl = API_BASE_URL.replace(/\/api\/?$/, '');
 
 const toScreenshotUrl = (screenshotPath) => {
