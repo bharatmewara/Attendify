@@ -1138,6 +1138,18 @@ router.get(
   async (req, res) => {
     try {
       const q = req.query.q ? String(req.query.q).trim() : '';
+      const date_from_raw = req.query.date_from ?? req.query.dateFrom ?? '';
+      const date_to_raw = req.query.date_to ?? req.query.dateTo ?? '';
+      const date_from = date_from_raw ? String(date_from_raw).trim() : '';
+      const date_to = date_to_raw ? String(date_to_raw).trim() : '';
+
+      const isIsoDate = (value) => /^\d{4}-\d{2}-\d{2}$/.test(String(value || ''));
+      if (date_from && !isIsoDate(date_from)) {
+        return res.status(400).json({ message: 'date_from must be in YYYY-MM-DD format.' });
+      }
+      if (date_to && !isIsoDate(date_to)) {
+        return res.status(400).json({ message: 'date_to must be in YYYY-MM-DD format.' });
+      }
 
       const result = await query(
         `WITH base AS (
@@ -1146,6 +1158,8 @@ router.get(
             *
           FROM incentive_submissions
           WHERE company_id = $1::int
+            AND ($3::date IS NULL OR COALESCE(approved_at::date, submitted_at::date) >= $3::date)
+            AND ($4::date IS NULL OR COALESCE(approved_at::date, submitted_at::date) <= $4::date)
         ),
         ranked AS (
           SELECT
@@ -1203,7 +1217,7 @@ router.get(
           )
         ORDER BY COALESCE(r.approved_at, r.submitted_at) DESC
         LIMIT 500`,
-        [req.companyId, q],
+        [req.companyId, q, date_from || null, date_to || null],
       );
 
       return res.json(result.rows);
