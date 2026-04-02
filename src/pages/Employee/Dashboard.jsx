@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react';
+﻿import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Alert,
@@ -7,6 +7,7 @@ import {
   Card,
   CardContent,
   Chip,
+  CircularProgress,
   Divider,
   LinearProgress,
   Grid,
@@ -49,6 +50,8 @@ export default function EmployeeDashboard() {
   const [message, setMessage] = useState({ type: '', text: '' });
   const [perfInfo, setPerfInfo] = useState(null);
   const [perfOfficeBlocked, setPerfOfficeBlocked] = useState(false);
+  const [perfHistory, setPerfHistory] = useState(null);
+  const [mySubmissions, setMySubmissions] = useState([]);
   
   const fetchTodayAttendance = async () => {
     try {
@@ -60,6 +63,44 @@ export default function EmployeeDashboard() {
       throw error;
     }
   };
+
+  const loadPerformanceSection = useCallback(async () => {
+    const nowDate = new Date();
+    const month = nowDate.getMonth() + 1;
+    const yearNum = nowDate.getFullYear();
+
+    try {
+      const [perf, history] = await Promise.all([
+        apiRequest(`/incentives/performance?month=${month}&year=${yearNum}`),
+        apiRequest('/incentives/performance/history?months_back=6'),
+      ]);
+      setPerfInfo(perf || null);
+      setPerfHistory(history || null);
+      setPerfOfficeBlocked(false);
+    } catch (perfError) {
+      const msg = String(perfError?.message || '');
+      if (msg.toLowerCase().includes('office') || msg.includes('403')) {
+        setPerfOfficeBlocked(true);
+        setPerfInfo(null);
+        setPerfHistory(null);
+        setMySubmissions([]);
+        return;
+      }
+      throw perfError;
+    }
+
+    try {
+      const submissions = await apiRequest('/incentives/submissions');
+      setMySubmissions(Array.isArray(submissions) ? submissions : []);
+    } catch (subError) {
+      const msg = String(subError?.message || '');
+      if (msg.toLowerCase().includes('office') || msg.includes('403')) {
+        setMySubmissions([]);
+        return;
+      }
+      setMySubmissions([]);
+    }
+  }, []);
 
   useEffect(() => {
     if (user?.role !== 'employee') {
@@ -94,26 +135,24 @@ export default function EmployeeDashboard() {
           .sort((a, b) => a.days_left - b.days_left)[0] || null;
         setNearHoliday(nearest);
 
-        try {
-          const nowDate = new Date();
-          const month = nowDate.getMonth() + 1;
-          const yearNum = nowDate.getFullYear();
-          const perf = await apiRequest(`/incentives/performance?month=${month}&year=${yearNum}`);
-          setPerfInfo(perf || null);
-          setPerfOfficeBlocked(false);
-        } catch (perfError) {
-          const msg = String(perfError?.message || '');
-          if (msg.toLowerCase().includes('office') || msg.includes('403')) {
-            setPerfOfficeBlocked(true);
-            setPerfInfo(null);
-          }
-        }
+        await loadPerformanceSection();
       } catch (error) {
         setMessage({ type: 'error', text: error.message });
       }
     };
     loadData();
-  }, [user]);
+  }, [loadPerformanceSection, user]);
+
+  useEffect(() => {
+    if (user?.role !== 'employee') return;
+    const handler = () => {
+      loadPerformanceSection().catch((error) => {
+        setMessage({ type: 'error', text: error?.message || 'Failed to refresh performance analytics.' });
+      });
+    };
+    window.addEventListener('incentives:updated', handler);
+    return () => window.removeEventListener('incentives:updated', handler);
+  }, [loadPerformanceSection, user?.role]);
 
   const perfSummary = perfInfo?.summary || null;
   const perfTarget = perfInfo?.target_sales_amount ? Number(perfInfo.target_sales_amount) : null;
@@ -124,6 +163,37 @@ export default function EmployeeDashboard() {
   const perfDetails = Array.isArray(perfInfo?.details) ? perfInfo.details : [];
   const perfPct = perfTarget ? (perfSales / perfTarget) * 100 : null;
   const perfLeft = perfTarget ? Math.max(0, perfTarget - perfSales) : null;
+  const perfAvgSale = perfClients > 0 ? perfSales / perfClients : null;
+  const perfEstClientsLeft =
+    perfLeft !== null && perfAvgSale && perfAvgSale > 0 ? Math.max(0, Math.ceil(perfLeft / perfAvgSale)) : null;
+
+  const nowMonth = useMemo(() => {
+    const d = new Date();
+    return { month: d.getMonth() + 1, year: d.getFullYear() };
+  }, []);
+  const pendingThisMonth = useMemo(() => {
+    const rows = Array.isArray(mySubmissions) ? mySubmissions : [];
+    return rows.filter((r) => {
+      if (String(r.status || '').toLowerCase() !== 'pending') return false;
+      const dt = r.submitted_at ? new Date(r.submitted_at) : null;
+      if (!dt || Number.isNaN(dt.getTime())) return false;
+      return (dt.getMonth() + 1) === nowMonth.month && dt.getFullYear() === nowMonth.year;
+    });
+  }, [mySubmissions, nowMonth.month, nowMonth.year]);
+  const pendingIncentiveThisMonth = useMemo(
+    () => pendingThisMonth.reduce((sum, r) => sum + Number(r.incentive_amount || 0), 0),
+    [pendingThisMonth],
+  );
+
+  const salaryNow = perfInfo?.tier_applied?.target_total_salary !== null && perfInfo?.tier_applied?.target_total_salary !== undefined
+    ? Number(perfInfo.tier_applied.target_total_salary)
+    : null;
+  const salaryAtTarget = perfInfo?.tier_at_target?.target_total_salary !== null && perfInfo?.tier_at_target?.target_total_salary !== undefined
+    ? Number(perfInfo.tier_at_target.target_total_salary)
+    : null;
+
+  const historyGroups = Array.isArray(perfHistory?.groups) ? perfHistory.groups : [];
+  const maxHistorySales = historyGroups.reduce((max, g) => Math.max(max, Number(g.summary?.sales_total || 0)), 0) || 0;
   const perfNudge =
     perfPct === null ? '' :
       perfPct >= 100 ? 'Target completed. Great work!' :
@@ -259,14 +329,14 @@ export default function EmployeeDashboard() {
               )}
 
               <Grid container spacing={2} alignItems="stretch">
-                <Grid item xs={12} sm={6} md={3}>
+                <Grid item xs={12} sm={6} md={2}>
                   <Paper variant="outlined" sx={summaryCardSx}>
                     <Typography variant="caption" color="text.secondary">Sales</Typography>
                     <Typography variant="h6" fontWeight={800} sx={{ lineHeight: 1.15 }}>{perfSales.toLocaleString()}</Typography>
                     <Typography variant="caption" sx={{ visibility: 'hidden' }}>.</Typography>
                   </Paper>
                 </Grid>
-                <Grid item xs={12} sm={6} md={3}>
+                <Grid item xs={12} sm={6} md={2}>
                   <Paper variant="outlined" sx={summaryCardSx}>
                     <Typography variant="caption" color="text.secondary">Target</Typography>
                     <Typography variant="h6" fontWeight={800} sx={{ lineHeight: 1.15 }}>{perfTarget ? perfTarget.toLocaleString() : 'Not set'}</Typography>
@@ -275,18 +345,123 @@ export default function EmployeeDashboard() {
                     </Typography>
                   </Paper>
                 </Grid>
-                <Grid item xs={12} sm={6} md={3}>
+                <Grid item xs={12} sm={6} md={2}>
+                  <Paper variant="outlined" sx={summaryCardSx}>
+                    <Typography variant="caption" color="text.secondary">Approved Incentives</Typography>
+                    <Typography variant="h6" fontWeight={800} sx={{ lineHeight: 1.15 }}>{perfIncentives.toFixed(2)}</Typography>
+                    <Typography variant="caption" sx={{ visibility: 'hidden' }}>.</Typography>
+                  </Paper>
+                </Grid>
+                <Grid item xs={12} sm={6} md={2}>
+                  <Paper variant="outlined" sx={summaryCardSx}>
+                    <Typography variant="caption" color="text.secondary">Pending Incentives</Typography>
+                    <Typography variant="h6" fontWeight={800} sx={{ lineHeight: 1.15 }}>{pendingIncentiveThisMonth.toFixed(2)}</Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {pendingThisMonth.length ? `Requests: ${pendingThisMonth.length}` : ' '}
+                    </Typography>
+                  </Paper>
+                </Grid>
+                <Grid item xs={12} sm={6} md={2}>
                   <Paper variant="outlined" sx={summaryCardSx}>
                     <Typography variant="caption" color="text.secondary">Clients</Typography>
                     <Typography variant="h6" fontWeight={800} sx={{ lineHeight: 1.15 }}>{perfClients}</Typography>
                     <Typography variant="caption" sx={{ visibility: 'hidden' }}>.</Typography>
                   </Paper>
                 </Grid>
-                <Grid item xs={12} sm={6} md={3}>
+                <Grid item xs={12} sm={6} md={2}>
                   <Paper variant="outlined" sx={summaryCardSx}>
                     <Typography variant="caption" color="text.secondary">SMS Qty</Typography>
                     <Typography variant="h6" fontWeight={800} sx={{ lineHeight: 1.15 }}>{perfSms.toLocaleString()}</Typography>
                     <Typography variant="caption" sx={{ visibility: 'hidden' }}>.</Typography>
+                  </Paper>
+                </Grid>
+              </Grid>
+
+              <Grid container spacing={2}>
+                <Grid item xs={12} md={4}>
+                  <Paper variant="outlined" sx={{ borderRadius: 3, p: 2.25, height: '100%' }}>
+                    <Stack direction="row" spacing={2} alignItems="center">
+                      <Box sx={{ position: 'relative', display: 'inline-flex' }}>
+                        <CircularProgress
+                          variant="determinate"
+                          value={perfTarget ? Math.min(100, Math.max(0, perfPct || 0)) : 0}
+                          size={84}
+                          thickness={4.5}
+                          color={perfPct >= 100 ? 'success' : perfPct >= 75 ? 'info' : 'warning'}
+                        />
+                        <Box
+                          sx={{
+                            top: 0,
+                            left: 0,
+                            bottom: 0,
+                            right: 0,
+                            position: 'absolute',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          <Typography variant="subtitle1" fontWeight={900}>
+                            {perfTarget ? `${Math.min(100, Math.round(perfPct || 0))}%` : '—'}
+                          </Typography>
+                        </Box>
+                      </Box>
+                      <Box sx={{ flex: 1 }}>
+                        <Typography fontWeight={900}>This Month Goal</Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          {perfTarget ? `Sales left: ${perfLeft !== null ? perfLeft.toLocaleString() : '—'}` : 'Target not set'}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          {perfEstClientsLeft !== null ? `Est. clients left: ${perfEstClientsLeft}` : ' '}
+                        </Typography>
+                      </Box>
+                    </Stack>
+                    <Divider sx={{ my: 1.5 }} />
+                    <Stack spacing={0.75}>
+                      <Stack direction="row" justifyContent="space-between">
+                        <Typography variant="body2" color="text.secondary">Current tier salary</Typography>
+                        <Typography variant="body2" fontWeight={800}>{salaryNow !== null ? salaryNow.toLocaleString() : '—'}</Typography>
+                      </Stack>
+                      <Stack direction="row" justifyContent="space-between">
+                        <Typography variant="body2" color="text.secondary">Salary on target</Typography>
+                        <Typography variant="body2" fontWeight={800}>{salaryAtTarget !== null ? salaryAtTarget.toLocaleString() : '—'}</Typography>
+                      </Stack>
+                    </Stack>
+                  </Paper>
+                </Grid>
+                <Grid item xs={12} md={8}>
+                  <Paper variant="outlined" sx={{ borderRadius: 3, p: 2.25, height: '100%' }}>
+                    <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" spacing={1} alignItems={{ xs: 'stretch', sm: 'center' }}>
+                      <Box>
+                        <Typography fontWeight={900}>Sales Trend</Typography>
+                        <Typography variant="body2" color="text.secondary">Last 6 months (approved only)</Typography>
+                      </Box>
+                    </Stack>
+
+                    {historyGroups.length ? (
+                      <Stack spacing={1.25} sx={{ mt: 2 }}>
+                        {historyGroups.slice(0, 6).map((g) => {
+                          const label = `${String(g.month).padStart(2, '0')}/${g.year}`;
+                          const value = Number(g.summary?.sales_total || 0);
+                          const pct = maxHistorySales ? Math.round((value / maxHistorySales) * 100) : 0;
+                          return (
+                            <Box key={`${g.year}-${g.month}`}>
+                              <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.25 }}>
+                                <Typography variant="body2" fontWeight={700}>{label}</Typography>
+                                <Typography variant="body2" color="text.secondary">
+                                  {value.toLocaleString()} (Inc: {Number(g.summary?.incentives_total || 0).toFixed(2)})
+                                </Typography>
+                              </Stack>
+                              <LinearProgress variant="determinate" value={pct} sx={{ height: 10, borderRadius: 999 }} />
+                            </Box>
+                          );
+                        })}
+                      </Stack>
+                    ) : (
+                      <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+                        No history available yet.
+                      </Typography>
+                    )}
                   </Paper>
                 </Grid>
               </Grid>
@@ -300,8 +475,8 @@ export default function EmployeeDashboard() {
                 </Box>
                 <Divider />
                 <TableContainer sx={{ maxHeight: 320 }}>
-                  <Table size="small" stickyHeader>
-                  <TableHead>
+                  <Table size="small" stickyHeader sx={{ minWidth: 1600 }}>
+                    <TableHead>
                       <TableRow>
                         <TableCell>Client</TableCell>
                         <TableCell>Product</TableCell>
@@ -318,15 +493,19 @@ export default function EmployeeDashboard() {
                     <TableBody>
                       {perfDetails.slice(0, 8).map((row) => (
                         <TableRow key={row.id}>
-                          <TableCell>{row.client_name || '—'}</TableCell>
-                          <TableCell>{row.product_name || '—'}</TableCell>
+                          <TableCell sx={{ maxWidth: 240, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{row.client_name || '—'}</TableCell>
+                          <TableCell sx={{ whiteSpace: 'nowrap' }}>{row.product_name || '—'}</TableCell>
                           <TableCell align="right">{row.sms_quantity ?? '—'}</TableCell>
                           <TableCell align="right">{Number(row.price || 0).toLocaleString()}</TableCell>
                           <TableCell align="right">{Number(row.incentive_amount || 0).toFixed(2)}</TableCell>
-                          <TableCell>{row.client_mobile_1 || row.client_mobile_2 ? `${row.client_mobile_1 || ''}${row.client_mobile_2 ? `, ${row.client_mobile_2}` : ''}` : '—'}</TableCell>
-                          <TableCell>{row.client_email || '—'}</TableCell>
-                          <TableCell>{row.client_panel_username || '—'}</TableCell>
-                          <TableCell>{row.client_panel_password || '—'}</TableCell>
+                          <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                            {row.client_mobile_1 || row.clientMobile1 || row.client_mobile1 || row.client_mobile_2 || row.clientMobile2 || row.client_mobile2
+                              ? `${row.client_mobile_1 || row.clientMobile1 || row.client_mobile1 || ''}${(row.client_mobile_2 || row.clientMobile2 || row.client_mobile2) ? `, ${row.client_mobile_2 || row.clientMobile2 || row.client_mobile2}` : ''}`
+                              : '—'}
+                          </TableCell>
+                          <TableCell sx={{ whiteSpace: 'nowrap' }}>{row.client_email || row.clientEmail || '—'}</TableCell>
+                          <TableCell sx={{ whiteSpace: 'nowrap' }}>{row.client_panel_username || row.clientPanelUsername || '—'}</TableCell>
+                          <TableCell sx={{ whiteSpace: 'nowrap' }}>{row.client_panel_password || row.clientPanelPassword || '—'}</TableCell>
                           <TableCell>{row.approved_at ? new Date(row.approved_at).toLocaleDateString() : '—'}</TableCell>
                         </TableRow>
                       ))}

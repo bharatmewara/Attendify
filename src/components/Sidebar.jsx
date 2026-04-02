@@ -54,6 +54,7 @@ const Sidebar = ({ mobileOpen, onClose, companyProfile }) => {
         { label: 'My Attendance', to: '/app/attendance', icon: CheckCircle },
         { label: 'My ER Requests', to: '/app/attendance-er', icon: Edit },
         { label: 'My Leave', to: '/app/leave', icon: EventNote },
+        { label: 'My Performance', to: '/app/performance', icon: BarChart },
         { label: 'My Incentives', to: '/app/incentives', icon: MonetizationOn },
         { label: 'My Documents', to: '/app/documents', icon: Description },
       ];

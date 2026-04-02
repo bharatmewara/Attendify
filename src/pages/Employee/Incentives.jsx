@@ -215,6 +215,7 @@ export default function EmployeeIncentives() {
       setMessage({ type: 'success', text: 'Submission updated.' });
       closeEdit();
       await loadData();
+      window.dispatchEvent(new Event('incentives:updated'));
     } catch (error) {
       const msg = String(error?.message || 'Request failed');
       if (msg.toLowerCase().includes('office') || msg.includes('403')) {
@@ -257,7 +258,8 @@ export default function EmployeeIncentives() {
       setOpenRequestDialog(false);
       setRequestForm(requestInitial);
       setMessage({ type: 'success', text: 'Incentive request submitted for approval.' });
-      loadData();
+      await loadData();
+      window.dispatchEvent(new Event('incentives:updated'));
     } catch (error) {
       setMessage({ type: 'error', text: error.message });
     }

@@ -982,6 +982,9 @@ router.get(
         [req.companyId, employeeId, month, year],
       );
       const target_sales_amount = targetResult.rows[0]?.target_sales_amount ?? null;
+      const targetSalesValue = target_sales_amount !== null && target_sales_amount !== undefined && target_sales_amount !== ''
+        ? Number(target_sales_amount)
+        : null;
 
       const tierResult = await query(
         `SELECT min_sales_amount, target_total_salary
@@ -993,6 +996,20 @@ router.get(
          LIMIT 1`,
         [req.companyId, summary.sales_total || 0],
       );
+
+      const tierAtTargetResult =
+        targetSalesValue !== null && Number.isFinite(targetSalesValue)
+          ? await query(
+              `SELECT min_sales_amount, target_total_salary
+               FROM company_sales_target_tiers
+               WHERE company_id = $1::int
+                 AND is_active = TRUE
+                 AND min_sales_amount <= $2::decimal(12,2)
+               ORDER BY min_sales_amount DESC
+               LIMIT 1`,
+              [req.companyId, targetSalesValue],
+            )
+          : { rows: [] };
 
       const employeeResult = await query(
         `SELECT id, first_name, last_name, employee_code
@@ -1007,12 +1024,107 @@ router.get(
         employee: employeeResult.rows[0] || { id: employeeId },
         target_sales_amount,
         tier_applied: tierResult.rows[0] || null,
+        tier_at_target: tierAtTargetResult.rows[0] || null,
         summary,
         payment_breakdown: paymentsResult.rows,
         details: detailsResult.rows,
       });
     } catch (error) {
       console.error('Performance fetch failed', error);
+      return res.status(500).json({ message: error.message });
+    }
+  },
+);
+
+router.get(
+  '/performance/history',
+  authenticate,
+  authorize('employee', 'company_admin', 'super_admin'),
+  tenantIsolation,
+  requireCompanyContext,
+  enforceOfficePunchIpForEmployee,
+  async (req, res) => {
+    try {
+      const monthsBackRaw = req.query.months_back ?? req.query.monthsBack ?? 6;
+      const monthsBack = Math.max(1, Math.min(24, Number(monthsBackRaw) || 6));
+
+      let employeeId = null;
+      if (req.user.role === 'employee') {
+        employeeId = await resolveEmployeeIdForUser(req.user.id);
+        if (!employeeId) {
+          return res.json({ months_back: monthsBack, groups: [] });
+        }
+      } else {
+        employeeId = req.query.employee_id ? Number(req.query.employee_id) : null;
+      }
+
+      if (!employeeId) {
+        return res.status(400).json({ message: 'employee_id is required' });
+      }
+
+      const rowsResult = await query(
+        `SELECT
+           EXTRACT(YEAR FROM approved_at)::int AS year,
+           EXTRACT(MONTH FROM approved_at)::int AS month,
+           id,
+           client_name,
+           product_name,
+           package_type,
+           payment_mode,
+           sms_quantity,
+           rate,
+           price,
+           incentive_amount,
+           client_location,
+           client_mobile_1,
+           client_mobile_2,
+           client_email,
+           client_panel_username,
+           client_panel_password,
+           approved_at
+         FROM incentive_submissions
+         WHERE company_id = $1::int
+           AND employee_id = $2::int
+           AND status = 'approved'
+           AND approved_at >= (date_trunc('month', NOW()) - (($3::int - 1) * INTERVAL '1 month'))
+           AND approved_at IS NOT NULL
+         ORDER BY approved_at DESC
+         LIMIT 5000`,
+        [req.companyId, employeeId, monthsBack],
+      );
+
+      const groupsMap = new Map();
+      for (const row of rowsResult.rows) {
+        const key = `${row.year}-${row.month}`;
+        if (!groupsMap.has(key)) {
+          groupsMap.set(key, {
+            year: row.year,
+            month: row.month,
+            summary: {
+              clients_total: 0,
+              sales_total: 0,
+              incentives_total: 0,
+              sms_total: 0,
+            },
+            details: [],
+          });
+        }
+        const group = groupsMap.get(key);
+        group.details.push(row);
+        group.summary.clients_total += 1;
+        group.summary.sales_total += Number(row.price || 0);
+        group.summary.incentives_total += Number(row.incentive_amount || 0);
+        group.summary.sms_total += Number(row.sms_quantity || 0);
+      }
+
+      const groups = Array.from(groupsMap.values()).sort((a, b) => {
+        if (a.year !== b.year) return b.year - a.year;
+        return b.month - a.month;
+      });
+
+      return res.json({ months_back: monthsBack, groups });
+    } catch (error) {
+      console.error('Performance history fetch failed', error);
       return res.status(500).json({ message: error.message });
     }
   },
@@ -1064,6 +1176,7 @@ router.get(
           r.client_panel_username,
           r.client_panel_password,
           r.product_name AS last_product,
+          r.sms_quantity AS last_sms_quantity,
           r.payment_mode AS last_payment_mode,
           r.client_location AS last_location,
           r.status AS last_status,

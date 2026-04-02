@@ -115,6 +115,8 @@ export default function ClientsManagement() {
               <TableHead>
                 <TableRow>
                   <TableCell>Client</TableCell>
+                  <TableCell>Last Product</TableCell>
+                  <TableCell align="right">Last SMS Qty</TableCell>
                   <TableCell>Mobile</TableCell>
                   <TableCell>Email</TableCell>
                   <TableCell>Panel User</TableCell>
@@ -129,6 +131,8 @@ export default function ClientsManagement() {
                 {clients.map((row) => (
                   <TableRow key={row.client_key}>
                     <TableCell>{row.client_name || 'N/A'}</TableCell>
+                    <TableCell sx={{ whiteSpace: 'nowrap' }}>{row.last_product || row.product_name || 'N/A'}</TableCell>
+                    <TableCell align="right">{row.last_sms_quantity ?? row.sms_quantity ?? 'N/A'}</TableCell>
                     <TableCell>{row.client_mobile_1 || 'N/A'}</TableCell>
                     <TableCell>{row.client_email || 'N/A'}</TableCell>
                     <TableCell>{row.client_panel_username || 'N/A'}</TableCell>
@@ -153,7 +157,7 @@ export default function ClientsManagement() {
                 ))}
                 {clients.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9}>
+                    <TableCell colSpan={11}>
                       <Typography variant="body2" color="text.secondary">
                         {clientsLoading ? 'Loading clients...' : 'No clients found.'}
                       </Typography>
@@ -183,6 +187,8 @@ export default function ClientsManagement() {
                 <Typography variant="h6" gutterBottom>Client Information</Typography>
                 <Stack spacing={1}>
                   <Typography><strong>Name:</strong> {selectedClient.client_name || 'N/A'}</Typography>
+                  <Typography><strong>Last Product:</strong> {selectedClient.last_product || 'N/A'}</Typography>
+                  <Typography><strong>Last SMS Qty:</strong> {selectedClient.last_sms_quantity ?? 'N/A'}</Typography>
                   <Typography><strong>Mobile:</strong> {selectedClient.client_mobile_1 || 'N/A'}</Typography>
                   <Typography><strong>Email:</strong> {selectedClient.client_email || 'N/A'}</Typography>
                   <Typography><strong>Panel Username:</strong> {selectedClient.client_panel_username || 'N/A'}</Typography>
