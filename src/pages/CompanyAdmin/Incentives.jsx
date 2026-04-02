@@ -6,11 +6,13 @@ import {
   Card,
   CardContent,
   Chip,
+  Checkbox,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
   Divider,
+  FormControlLabel,
   IconButton,
   Menu,
   MenuItem,
@@ -61,6 +63,10 @@ const normalizeNumberOrNull = (value) => {
   const num = Number(value);
   return Number.isFinite(num) ? num : null;
 };
+
+const GST_RATE = 0.18;
+const roundMoney = (value) => Math.round(Number(value) * 100) / 100;
+const calcNetFromGross = (gross) => roundMoney(Number(gross) / (1 + GST_RATE));
 
 export default function IncentivesManagement() {
   const [requests, setRequests] = useState([]);
@@ -289,6 +295,8 @@ export default function IncentivesManagement() {
       client_panel_password: '',
       sms_quantity: row.sms_quantity ?? '',
       rate: row.rate ?? '',
+      gst_applied: String(row.package_type || '').toLowerCase() === 'new' ? Boolean(row.gst_applied ?? true) : false,
+      price_gross: row.price_gross ?? '',
       price: row.price ?? '',
       incentive_amount: row.incentive_amount ?? '',
     });
@@ -331,6 +339,8 @@ export default function IncentivesManagement() {
         ...(editForm.client_panel_password ? { client_panel_password: editForm.client_panel_password } : {}),
         sms_quantity: normalizeNumberOrNull(editForm.sms_quantity),
         rate: normalizeNumberOrNull(editForm.rate),
+        gst_applied: Boolean(editForm.gst_applied),
+        price_gross: normalizeNumberOrNull(editForm.price_gross),
         price: normalizeNumberOrNull(editForm.price),
         incentive_amount: normalizeNumberOrNull(editForm.incentive_amount),
       };
@@ -350,8 +360,10 @@ export default function IncentivesManagement() {
   };
 
   const openRowMenu = (event, row) => {
+    const submissionId = row?.submission_id ?? row?.id;
+    const resolved = requests.find((r) => Number(r.id) === Number(submissionId));
     setMenuAnchorEl(event.currentTarget);
-    setMenuRow(row);
+    setMenuRow(resolved || (row?.submission_id ? { ...row, id: submissionId, status: 'approved' } : row));
   };
 
   const closeRowMenu = () => {
@@ -382,6 +394,11 @@ export default function IncentivesManagement() {
 
     if (action === 'reject') {
       await handleUpdateStatus(row.id, 'rejected');
+      return;
+    }
+
+    if (action === 'refund') {
+      await handleUpdateStatus(row.id, 'refunded');
     }
   };
 
@@ -415,6 +432,7 @@ export default function IncentivesManagement() {
                     <TableCell>Employee</TableCell>
                     <TableCell>Client</TableCell>
                     <TableCell>Product</TableCell>
+                    <TableCell>SMS Qty</TableCell>
                     <TableCell>Price</TableCell>
                     <TableCell>Type</TableCell>
                     <TableCell>Location</TableCell>
@@ -433,6 +451,7 @@ export default function IncentivesManagement() {
                         <TableCell>{row.first_name} {row.last_name}</TableCell>
                         <TableCell>{row.client_name}</TableCell>
                         <TableCell>{row.product_name}</TableCell>
+                        <TableCell>{row.sms_quantity ?? '—'}</TableCell>
                         <TableCell>{Number(row.price || 0).toLocaleString()}</TableCell>
                         <TableCell>{String(row.package_type || '').toLowerCase() === 'renew' ? 'Renew' : 'New'}</TableCell>
                         <TableCell>{row.client_location || 'N/A'}</TableCell>
@@ -459,7 +478,7 @@ export default function IncentivesManagement() {
                   })}
                   {queueRows.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={10}>
+                      <TableCell colSpan={11}>
                         <Typography variant="body2" color="text.secondary">No Pending requests.</Typography>
                       </TableCell>
                     </TableRow>
@@ -513,6 +532,7 @@ export default function IncentivesManagement() {
                     <TableCell>Incentive Earned</TableCell>
                     <TableCell>Type</TableCell>
                     <TableCell>Payment Mode</TableCell>
+                    <TableCell>SMS Qty</TableCell>
                     <TableCell>Date</TableCell>
                     <TableCell align="right">Actions</TableCell>
                   </TableRow>
@@ -525,6 +545,7 @@ export default function IncentivesManagement() {
                       <TableCell>{Number(row.incentive_amount || 0).toFixed(2)}</TableCell>
                       <TableCell>{String(row.package_type || '').toLowerCase() === 'renew' ? 'Renew' : 'New'}</TableCell>
                       <TableCell>{row.payment_mode || 'N/A'}</TableCell>
+                      <TableCell>{row.sms_quantity ?? '—'}</TableCell>
                       <TableCell>{row.earned_at ? new Date(row.earned_at).toLocaleString() : 'N/A'}</TableCell>
                       <TableCell align="right">
                         <IconButton
@@ -541,7 +562,7 @@ export default function IncentivesManagement() {
                   ))}
                   {earnings.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={7}>
+                      <TableCell colSpan={8}>
                         <Typography variant="body2" color="text.secondary">No earnings for selected month.</Typography>
                       </TableCell>
                     </TableRow>
@@ -803,6 +824,12 @@ export default function IncentivesManagement() {
             Reject
           </MenuItem>
         ) : null}
+        {String(menuRow?.status || '').toLowerCase() === 'approved' ? (
+          <MenuItem onClick={() => handleMenuAction('refund')}>
+            <Close fontSize="small" style={{ marginRight: 10 }} />
+            Refund
+          </MenuItem>
+        ) : null}
       </Menu>
 
       <Dialog open={detailsOpen} onClose={closeDetails} maxWidth="sm" fullWidth>
@@ -861,7 +888,23 @@ export default function IncentivesManagement() {
               </Stack>
 
               <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}>
-                <TextField fullWidth select label="Type" value={editForm.package_type} onChange={(e) => setEditForm({ ...editForm, package_type: e.target.value })}>
+                <TextField
+                  fullWidth
+                  select
+                  label="Type"
+                  value={editForm.package_type}
+                  onChange={(e) => {
+                    const nextType = e.target.value;
+                    setEditForm((current) => {
+                      if (!current) return current;
+                      const next = { ...current, package_type: nextType };
+                      if (String(nextType || '').toLowerCase() !== 'new') {
+                        return { ...next, gst_applied: false, price_gross: '' };
+                      }
+                      return { ...next, gst_applied: current.gst_applied ?? true };
+                    });
+                  }}
+                >
                   <MenuItem value="new">New</MenuItem>
                   <MenuItem value="renew">Renew</MenuItem>
                 </TextField>
@@ -894,8 +937,62 @@ export default function IncentivesManagement() {
                 </Stack>
               ) : null}
 
+              {String(editForm.package_type || '').toLowerCase() === 'new' ? (
+                <FormControlLabel
+                  sx={{ mt: 1 }}
+                  control={
+                    <Checkbox
+                      checked={Boolean(editForm.gst_applied)}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setEditForm((current) => {
+                          if (!current) return current;
+                          if (!checked) {
+                            const nextPrice = current.price_gross !== '' ? current.price_gross : current.price;
+                            return { ...current, gst_applied: false, price_gross: '', price: nextPrice };
+                          }
+
+                          const gross = current.price_gross !== '' ? current.price_gross : current.price;
+                          if (gross === '' || gross === null || gross === undefined) {
+                            return { ...current, gst_applied: true, price_gross: '', price: current.price };
+                          }
+                          return { ...current, gst_applied: true, price_gross: gross, price: String(calcNetFromGross(gross)) };
+                        });
+                      }}
+                    />
+                  }
+                  label="Apply GST (18%)"
+                />
+              ) : null}
+
               <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}>
-                <TextField fullWidth label="Price" type="number" value={editForm.price} onChange={(e) => setEditForm({ ...editForm, price: e.target.value })} />
+                {String(editForm.package_type || '').toLowerCase() === 'new' && editForm.gst_applied ? (
+                  <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} sx={{ width: '100%' }}>
+                    <TextField
+                      fullWidth
+                      label="Price (incl GST)"
+                      type="number"
+                      value={editForm.price_gross}
+                      onChange={(e) => {
+                        const gross = e.target.value;
+                        setEditForm((current) => {
+                          if (!current) return current;
+                          return { ...current, price_gross: gross, price: gross === '' ? '' : String(calcNetFromGross(gross)) };
+                        });
+                      }}
+                    />
+                    <TextField
+                      fullWidth
+                      label="Price (excl GST)"
+                      type="number"
+                      value={editForm.price}
+                      InputProps={{ readOnly: true }}
+                      helperText="Used for incentive."
+                    />
+                  </Stack>
+                ) : (
+                  <TextField fullWidth label="Price" type="number" value={editForm.price} onChange={(e) => setEditForm({ ...editForm, price: e.target.value })} />
+                )}
                 <TextField fullWidth label="Incentive Amount" type="number" value={editForm.incentive_amount} onChange={(e) => setEditForm({ ...editForm, incentive_amount: e.target.value })} helperText="Leave blank to auto-calculate on save." />
               </Stack>
             </Stack>
@@ -939,6 +1036,7 @@ export default function IncentivesManagement() {
                     <TableRow>
                       <TableCell>Client</TableCell>
                       <TableCell>Product</TableCell>
+                      <TableCell>SMS Qty</TableCell>
                       <TableCell>Type</TableCell>
                       <TableCell>Payment</TableCell>
                       <TableCell>Price</TableCell>
@@ -951,16 +1049,17 @@ export default function IncentivesManagement() {
                       <TableRow key={row.id}>
                         <TableCell>{row.client_name}</TableCell>
                         <TableCell>{row.product_name}</TableCell>
+                        <TableCell>{row.sms_quantity ?? '—'}</TableCell>
                         <TableCell>{String(row.package_type || '').toLowerCase() === 'renew' ? 'Renew' : 'New'}</TableCell>
                         <TableCell>{row.payment_mode || 'N/A'}</TableCell>
                         <TableCell>{Number(row.price || 0).toLocaleString()}</TableCell>
                         <TableCell>{Number(row.incentive_amount || 0).toFixed(2)}</TableCell>
-                        <TableCell>{row.Approved_at ? new Date(row.Approved_at).toLocaleDateString('en-IN') : 'N/A'}</TableCell>
+                        <TableCell>{row.approved_at ? new Date(row.approved_at).toLocaleDateString('en-IN') : 'N/A'}</TableCell>
                       </TableRow>
                     ))}
                     {(performanceDetails.details || []).length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={7}>
+                        <TableCell colSpan={8}>
                           <Typography variant="body2" color="text.secondary">No Approved sales found.</Typography>
                         </TableCell>
                       </TableRow>

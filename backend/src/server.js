@@ -13,6 +13,7 @@ import attendanceRoutes from './routes/attendance.routes.js';
 import networkRoutes from './routes/network.routes.js';
 import holidaysRoutes from './routes/holidays.routes.js';
 import incentivesRoutes from './routes/incentives.routes.js';
+import notificationsRoutes from './routes/notifications.routes.js';
 import multer from 'multer';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -116,6 +117,7 @@ app.use('/api/attendance', attendanceRoutes);
 app.use('/api/network-policies', networkRoutes);
 app.use('/api/holidays', holidaysRoutes);
 app.use('/api/incentives', incentivesRoutes);
+app.use('/api/notifications', notificationsRoutes);
 
 // SuperAdmin Dashboard APIs (added for 404 fix)
 app.use('/api/superadmin/analytics', (req, res) => {

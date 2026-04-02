@@ -27,7 +27,7 @@ import {
 } from '@mui/icons-material';
 import { apiRequest } from '../lib/api';
 
-export default function NotificationBell() {
+export default function NotificationBell({ endpoint = '/notifications' }) {
   const [anchorEl, setAnchorEl] = useState(null);
   const [notifications, setNotifications] = useState([]);
   const [selectedNotification, setSelectedNotification] = useState(null);
@@ -44,11 +44,14 @@ export default function NotificationBell() {
 
   const loadNotifications = async () => {
     try {
-      const data = await apiRequest('/superadmin/notifications');
-      setNotifications(data);
-      setUnreadCount(data.filter(n => !n.is_read).length);
+      const data = await apiRequest(endpoint);
+      const rows = Array.isArray(data) ? data : [];
+      setNotifications(rows);
+      setUnreadCount(rows.filter((n) => !n.is_read).length);
     } catch (error) {
-      console.error('Error loading notifications:', error);
+      // Most panels do not require notifications; fail quietly on auth/tenant issues.
+      setNotifications([]);
+      setUnreadCount(0);
     }
   };
 
@@ -69,7 +72,7 @@ export default function NotificationBell() {
   const handleMarkAllRead = async () => {
     try {
       // API call to mark all as read
-      setNotifications(notifications.map(n => ({ ...n, is_read: true })));
+      setNotifications((current) => current.map((n) => ({ ...n, is_read: true })));
       setUnreadCount(0);
     } catch (error) {
       console.error('Error marking notifications as read:', error);

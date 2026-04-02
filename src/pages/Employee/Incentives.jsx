@@ -6,10 +6,12 @@ import {
   Card,
   CardContent,
   Chip,
+  Checkbox,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
+  FormControlLabel,
   IconButton,
   MenuItem,
   Paper,
@@ -38,11 +40,12 @@ const requestInitial = {
   client_mobile_1: '',
   client_mobile_2: '',
   client_email: '',
-  client_username: '',
   client_panel_username: '',
   client_panel_password: '',
   sms_quantity: '',
   rate: '',
+  gst_applied: true,
+  price_gross: '',
   price: '',
   payment_mode: '',
   package_type: 'new',
@@ -66,7 +69,13 @@ const buildPreviewPayload = (form) => ({
   sms_quantity: form?.sms_quantity === '' ? null : form?.sms_quantity,
   rate: form?.rate === '' ? null : form?.rate,
   price: form?.price === '' ? null : form?.price,
+  gst_applied: Boolean(form?.gst_applied),
+  price_gross: form?.price_gross === '' ? null : form?.price_gross,
 });
+
+const GST_RATE = 0.18;
+const roundMoney = (value) => Math.round(Number(value) * 100) / 100;
+const calcNetFromGross = (gross) => roundMoney(Number(gross) / (1 + GST_RATE));
 
 export default function EmployeeIncentives() {
   const [requests, setRequests] = useState([]);
@@ -147,11 +156,12 @@ export default function EmployeeIncentives() {
       client_mobile_1: row.client_mobile_1 || '',
       client_mobile_2: row.client_mobile_2 || '',
       client_email: row.client_email || '',
-      client_username: row.client_username || '',
       client_panel_username: row.client_panel_username || '',
       client_panel_password: '',
       sms_quantity: row.sms_quantity ?? '',
       rate: row.rate ?? '',
+      gst_applied: String(row.package_type || '').toLowerCase() === 'new' ? Boolean(row.gst_applied ?? true) : false,
+      price_gross: row.price_gross ?? '',
       price: row.price ?? '',
       payment_mode: row.payment_mode || '',
       package_type: row.package_type || 'new',
@@ -228,12 +238,14 @@ export default function EmployeeIncentives() {
     }
 
     const formData = new FormData();
-    Object.keys(requestForm).forEach(key => {
-      if (key === 'screenshot' && requestForm.screenshot) {
-        formData.append('screenshot', requestForm.screenshot);
-      } else if (requestForm[key]) {
-        formData.append(key, requestForm[key]);
+    Object.keys(requestForm).forEach((key) => {
+      const value = requestForm[key];
+      if (key === 'screenshot') {
+        if (requestForm.screenshot) formData.append('screenshot', requestForm.screenshot);
+        return;
       }
+      if (value === '' || value === null || value === undefined) return;
+      formData.append(key, value);
     });
 
     try {
@@ -297,7 +309,7 @@ export default function EmployeeIncentives() {
                         <Chip
                           size="small"
                           label={capitalizeStatus(row.status)}
-                          color={row.status === 'approved' ? 'success' : row.status === 'rejected' ? 'error' : 'warning'}
+                          color={row.status === 'approved' ? 'success' : ['rejected', 'refunded'].includes(String(row.status)) ? 'error' : 'warning'}
                         />
                       </TableCell>
                       <TableCell>{new Date(row.submitted_at).toLocaleString()}</TableCell>
@@ -335,7 +347,6 @@ export default function EmployeeIncentives() {
           <TextField fullWidth required label="Client Mobile No 1" margin="normal" value={requestForm.client_mobile_1} onChange={(e) => setRequestForm({ ...requestForm, client_mobile_1: e.target.value })} />
           <TextField fullWidth label="Client Mobile No 2" margin="normal" value={requestForm.client_mobile_2} onChange={(e) => setRequestForm({ ...requestForm, client_mobile_2: e.target.value })} />
           <TextField fullWidth required label="Client Email" margin="normal" value={requestForm.client_email} onChange={(e) => setRequestForm({ ...requestForm, client_email: e.target.value })} />
-          <TextField fullWidth label="Client User Name" margin="normal" value={requestForm.client_username} onChange={(e) => setRequestForm({ ...requestForm, client_username: e.target.value })} />
           <TextField fullWidth label="Client Panel Username" margin="normal" value={requestForm.client_panel_username} onChange={(e) => setRequestForm({ ...requestForm, client_panel_username: e.target.value })} />
           <TextField fullWidth label="Client Panel Password" type="password" margin="normal" value={requestForm.client_panel_password} onChange={(e) => setRequestForm({ ...requestForm, client_panel_password: e.target.value })} />
            <TextField fullWidth select label="Product Name" margin="normal" value={requestForm.product_name} onChange={(e) => setRequestForm({ ...requestForm, product_name: e.target.value })}>
@@ -353,7 +364,63 @@ export default function EmployeeIncentives() {
             </>
           )}
 
-          <TextField fullWidth label="Price" type="number" margin="normal" value={requestForm.price} onChange={(e) => setRequestForm({ ...requestForm, price: e.target.value })} />
+          {String(requestForm.package_type || '').toLowerCase() === 'new' ? (
+            <FormControlLabel
+              sx={{ mt: 1 }}
+              control={
+                <Checkbox
+                  checked={Boolean(requestForm.gst_applied)}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setRequestForm((current) => {
+                      if (!checked) {
+                        const nextPrice = current.price_gross !== '' ? current.price_gross : current.price;
+                        return { ...current, gst_applied: false, price_gross: '', price: nextPrice };
+                      }
+
+                      const gross = current.price_gross !== '' ? current.price_gross : current.price;
+                      if (gross === '' || gross === null || gross === undefined) {
+                        return { ...current, gst_applied: true, price_gross: '', price: current.price };
+                      }
+                      return { ...current, gst_applied: true, price_gross: gross, price: String(calcNetFromGross(gross)) };
+                    });
+                  }}
+                />
+              }
+              label="Apply GST (18%)"
+            />
+          ) : null}
+
+          {String(requestForm.package_type || '').toLowerCase() === 'new' && requestForm.gst_applied ? (
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} sx={{ mt: 0.5 }}>
+              <TextField
+                fullWidth
+                label="Price (incl GST)"
+                type="number"
+                margin="normal"
+                value={requestForm.price_gross}
+                onChange={(e) => {
+                  const gross = e.target.value;
+                  setRequestForm((current) => ({
+                    ...current,
+                    price_gross: gross,
+                    price: gross === '' ? '' : String(calcNetFromGross(gross)),
+                  }));
+                }}
+              />
+              <TextField
+                fullWidth
+                label="Price (excl GST)"
+                type="number"
+                margin="normal"
+                value={requestForm.price}
+                InputProps={{ readOnly: true }}
+                helperText="Auto-calculated (used for incentive)."
+              />
+            </Stack>
+          ) : (
+            <TextField fullWidth label="Price" type="number" margin="normal" value={requestForm.price} onChange={(e) => setRequestForm({ ...requestForm, price: e.target.value })} />
+          )}
           
           {calculatedIncentive > 0 && (
             <Box sx={{ mt: 2, p: 2, bgcolor: 'success.light', borderRadius: 1 }}>
@@ -363,7 +430,23 @@ export default function EmployeeIncentives() {
             </Box>
           )}
           <TextField fullWidth label="Payment Mode" margin="normal" value={requestForm.payment_mode} onChange={(e) => setRequestForm({ ...requestForm, payment_mode: e.target.value })} />
-          <TextField fullWidth select label="Client Package Type" margin="normal" value={requestForm.package_type} onChange={(e) => setRequestForm({ ...requestForm, package_type: e.target.value })}>
+          <TextField
+            fullWidth
+            select
+            label="Client Package Type"
+            margin="normal"
+            value={requestForm.package_type}
+            onChange={(e) => {
+              const nextType = e.target.value;
+              setRequestForm((current) => {
+                const next = { ...current, package_type: nextType };
+                if (String(nextType || '').toLowerCase() !== 'new') {
+                  return { ...next, gst_applied: false, price_gross: '' };
+                }
+                return { ...next, gst_applied: current.gst_applied ?? true };
+              });
+            }}
+          >
             <MenuItem value="new">New</MenuItem>
             <MenuItem value="renew">Renew</MenuItem>
           </TextField>
@@ -396,7 +479,6 @@ export default function EmployeeIncentives() {
               <TextField fullWidth required label="Client Mobile No 1" margin="normal" value={editForm.client_mobile_1} onChange={(e) => setEditForm({ ...editForm, client_mobile_1: e.target.value })} />
               <TextField fullWidth label="Client Mobile No 2" margin="normal" value={editForm.client_mobile_2} onChange={(e) => setEditForm({ ...editForm, client_mobile_2: e.target.value })} />
               <TextField fullWidth required label="Client Email" margin="normal" value={editForm.client_email} onChange={(e) => setEditForm({ ...editForm, client_email: e.target.value })} />
-              <TextField fullWidth label="Client User Name" margin="normal" value={editForm.client_username} onChange={(e) => setEditForm({ ...editForm, client_username: e.target.value })} />
               <TextField fullWidth label="Client Panel Username" margin="normal" value={editForm.client_panel_username} onChange={(e) => setEditForm({ ...editForm, client_panel_username: e.target.value })} />
               <TextField fullWidth label="Client Panel Password" type="password" margin="normal" value={editForm.client_panel_password} onChange={(e) => setEditForm({ ...editForm, client_panel_password: e.target.value })} helperText="Leave blank to keep existing password." />
               <TextField fullWidth select label="Product Name" margin="normal" value={editForm.product_name} onChange={(e) => setEditForm({ ...editForm, product_name: e.target.value })}>
@@ -410,9 +492,82 @@ export default function EmployeeIncentives() {
                 </>
               )}
 
-              <TextField fullWidth label="Price" type="number" margin="normal" value={editForm.price} onChange={(e) => setEditForm({ ...editForm, price: e.target.value })} />
+              {String(editForm.package_type || '').toLowerCase() === 'new' ? (
+                <FormControlLabel
+                  sx={{ mt: 1 }}
+                  control={
+                    <Checkbox
+                      checked={Boolean(editForm.gst_applied)}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setEditForm((current) => {
+                          if (!current) return current;
+                          if (!checked) {
+                            const nextPrice = current.price_gross !== '' ? current.price_gross : current.price;
+                            return { ...current, gst_applied: false, price_gross: '', price: nextPrice };
+                          }
+
+                          const gross = current.price_gross !== '' ? current.price_gross : current.price;
+                          if (gross === '' || gross === null || gross === undefined) {
+                            return { ...current, gst_applied: true, price_gross: '', price: current.price };
+                          }
+                          return { ...current, gst_applied: true, price_gross: gross, price: String(calcNetFromGross(gross)) };
+                        });
+                      }}
+                    />
+                  }
+                  label="Apply GST (18%)"
+                />
+              ) : null}
+
+              {String(editForm.package_type || '').toLowerCase() === 'new' && editForm.gst_applied ? (
+                <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} sx={{ mt: 0.5 }}>
+                  <TextField
+                    fullWidth
+                    label="Price (incl GST)"
+                    type="number"
+                    margin="normal"
+                    value={editForm.price_gross}
+                    onChange={(e) => {
+                      const gross = e.target.value;
+                      setEditForm((current) => {
+                        if (!current) return current;
+                        return { ...current, price_gross: gross, price: gross === '' ? '' : String(calcNetFromGross(gross)) };
+                      });
+                    }}
+                  />
+                  <TextField
+                    fullWidth
+                    label="Price (excl GST)"
+                    type="number"
+                    margin="normal"
+                    value={editForm.price}
+                    InputProps={{ readOnly: true }}
+                    helperText="Auto-calculated (used for incentive)."
+                  />
+                </Stack>
+              ) : (
+                <TextField fullWidth label="Price" type="number" margin="normal" value={editForm.price} onChange={(e) => setEditForm({ ...editForm, price: e.target.value })} />
+              )}
               <TextField fullWidth label="Payment Mode" margin="normal" value={editForm.payment_mode} onChange={(e) => setEditForm({ ...editForm, payment_mode: e.target.value })} />
-              <TextField fullWidth select label="Client Package Type" margin="normal" value={editForm.package_type} onChange={(e) => setEditForm({ ...editForm, package_type: e.target.value })}>
+              <TextField
+                fullWidth
+                select
+                label="Client Package Type"
+                margin="normal"
+                value={editForm.package_type}
+                onChange={(e) => {
+                  const nextType = e.target.value;
+                  setEditForm((current) => {
+                    if (!current) return current;
+                    const next = { ...current, package_type: nextType };
+                    if (String(nextType || '').toLowerCase() !== 'new') {
+                      return { ...next, gst_applied: false, price_gross: '' };
+                    }
+                    return { ...next, gst_applied: current.gst_applied ?? true };
+                  });
+                }}
+              >
                 <MenuItem value="new">New</MenuItem>
                 <MenuItem value="renew">Renew</MenuItem>
               </TextField>

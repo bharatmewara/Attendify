@@ -13,6 +13,8 @@ CREATE TABLE IF NOT EXISTS incentive_submissions (
   client_username VARCHAR(255),
   sms_quantity INTEGER,
   rate NUMERIC(10, 4),
+  gst_applied BOOLEAN DEFAULT FALSE,
+  price_gross NUMERIC(10, 2),
   price NUMERIC(10, 2),
   payment_mode VARCHAR(50),
   screenshot_path VARCHAR(255),
@@ -38,6 +40,12 @@ ALTER TABLE IF EXISTS incentive_submissions
 
 ALTER TABLE IF EXISTS incentive_submissions
   ADD COLUMN IF NOT EXISTS client_username VARCHAR(255);
+
+ALTER TABLE IF EXISTS incentive_submissions
+  ADD COLUMN IF NOT EXISTS gst_applied BOOLEAN DEFAULT FALSE;
+
+ALTER TABLE IF EXISTS incentive_submissions
+  ADD COLUMN IF NOT EXISTS price_gross NUMERIC(10, 2);
 -- Monthly incentive earnings (materialized view-like table)
 CREATE TABLE IF NOT EXISTS incentive_earnings (
   id SERIAL PRIMARY KEY,
@@ -51,6 +59,7 @@ CREATE TABLE IF NOT EXISTS incentive_earnings (
   product_name VARCHAR(100) NOT NULL,
   package_type VARCHAR(20),
   payment_mode VARCHAR(50),
+  sms_quantity INTEGER,
   price NUMERIC(10,2),
   incentive_amount NUMERIC(10,2) NOT NULL,
   client_location VARCHAR(255),
@@ -61,6 +70,9 @@ CREATE TABLE IF NOT EXISTS incentive_earnings (
 
 CREATE INDEX IF NOT EXISTS idx_incentive_earnings_company_month ON incentive_earnings(company_id, earned_year, earned_month);
 CREATE INDEX IF NOT EXISTS idx_incentive_earnings_employee_month ON incentive_earnings(employee_id, earned_year, earned_month);
+
+ALTER TABLE IF EXISTS incentive_earnings
+  ADD COLUMN IF NOT EXISTS sms_quantity INTEGER;
 
 -- Client panel credentials (optional)
 ALTER TABLE IF EXISTS incentive_submissions

@@ -9,6 +9,7 @@ import {
   Grid,
   IconButton,
   Paper,
+  Stack,
   Table,
   TableBody,
   TableCell,
@@ -169,9 +170,8 @@ export default function EmployeeAttendance() {
         </Alert>
       )}
 
-      <Grid container spacing={4} sx={{ width: '100%', m: 0 }}>
+      <Stack spacing={4} sx={{ width: '100%' }}>
         {/* Full Width Calendar */}
-        <Grid item xs={12}>
           <Card sx={{ ...shellCardSx, overflow: 'visible', width: '100%', minWidth: 0 }}>
             <CardContent>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
@@ -301,10 +301,8 @@ export default function EmployeeAttendance() {
               </Box>
             </CardContent>
           </Card>
-        </Grid>
 
         {/* Selected Date Details */}
-        <Grid item xs={12}>
           <Card sx={{ ...shellCardSx, bgcolor: '#f8fafc', width: '100%' }}>
             <CardContent>
               <Typography variant="h6" sx={{ fontWeight: 800, mb: 2 }}>{new Date(selectedDate).toLocaleDateString('default', { weekday: 'long', month: 'long', day: 'numeric' })}</Typography>
@@ -315,35 +313,37 @@ export default function EmployeeAttendance() {
                 </Alert>
               )}
               {!selectedRecord ? (
-                <Typography color="text.secondary">{selectedHoliday ? 'No attendance logged — it\'s a holiday!' : 'No attendance record found for this date.'}</Typography>
+                <Alert severity="info" sx={{ mb: 0, bgcolor: 'rgba(79,70,229,0.06)', border: '1px solid rgba(79,70,229,0.15)' }}>
+                  {selectedHoliday ? 'No attendance logged - it\'s a holiday!' : 'No attendance record found for this date.'}
+                </Alert>
               ) : (
-                <Grid container spacing={2}>
-                  <Grid item xs={12} sm={6} md={2.4}>
-                    <Box sx={{ p: 1.5, bgcolor: '#fff', borderRadius: 2 }}>
+                <Grid container spacing={2} columns={{ xs: 1, sm: 2, md: 10 }} alignItems="stretch">
+                  <Grid item xs={1} sm={1} md={2}>
+                    <Box sx={{ p: 1.5, bgcolor: '#fff', borderRadius: 2, height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
                       <Typography color="text.secondary" variant="body2" sx={{ mb: 0.5 }}>Status</Typography>
                       <Chip label={selectedRecord.status} size="small" color={selectedRecord.status === 'present' ? 'success' : selectedRecord.status === 'absent' ? 'error' : 'warning'} sx={{ textTransform: 'capitalize', fontWeight: 600 }} />
                     </Box>
                   </Grid>
-                  <Grid item xs={12} sm={6} md={2.4}>
-                    <Box sx={{ p: 1.5, bgcolor: '#fff', borderRadius: 2 }}>
+                  <Grid item xs={1} sm={1} md={2}>
+                    <Box sx={{ p: 1.5, bgcolor: '#fff', borderRadius: 2, height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
                       <Typography color="text.secondary" variant="body2" sx={{ mb: 0.5 }}>Punch In</Typography>
                       <Typography sx={{ fontWeight: 600 }}>{selectedRecord.punch_in_time ? new Date(selectedRecord.punch_in_time).toLocaleTimeString() : '-'}</Typography>
                     </Box>
                   </Grid>
-                  <Grid item xs={12} sm={6} md={2.4}>
-                    <Box sx={{ p: 1.5, bgcolor: '#fff', borderRadius: 2 }}>
+                  <Grid item xs={1} sm={1} md={2}>
+                    <Box sx={{ p: 1.5, bgcolor: '#fff', borderRadius: 2, height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
                       <Typography color="text.secondary" variant="body2" sx={{ mb: 0.5 }}>Punch Out</Typography>
                       <Typography sx={{ fontWeight: 600 }}>{selectedRecord.punch_out_time ? new Date(selectedRecord.punch_out_time).toLocaleTimeString() : '-'}</Typography>
                     </Box>
                   </Grid>
-                  <Grid item xs={12} sm={6} md={2.4}>
-                    <Box sx={{ p: 1.5, bgcolor: '#fff', borderRadius: 2 }}>
+                  <Grid item xs={1} sm={1} md={2}>
+                    <Box sx={{ p: 1.5, bgcolor: '#fff', borderRadius: 2, height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
                       <Typography color="text.secondary" variant="body2" sx={{ mb: 0.5 }}>Total Hours</Typography>
                       <Typography sx={{ fontWeight: 600 }}>{selectedRecord.total_hours ? Number(selectedRecord.total_hours).toFixed(2) : '-'} hrs</Typography>
                     </Box>
                   </Grid>
-                  <Grid item xs={12} sm={6} md={2.4}>
-                    <Box sx={{ p: 1.5, bgcolor: '#fff', borderRadius: 2 }}>
+                  <Grid item xs={1} sm={1} md={2}>
+                    <Box sx={{ p: 1.5, bgcolor: '#fff', borderRadius: 2, height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
                       <Typography color="text.secondary" variant="body2" sx={{ mb: 0.5 }}>Plus/Minus</Typography>
                       <Typography sx={{ fontWeight: 800, color: selectedRecord.total_hours && (Number(selectedRecord.total_hours) - EXPECTED_HOURS) < 0 ? 'error.main' : 'success.main' }}>
                         {selectedRecord.total_hours ? (Number(selectedRecord.total_hours) - EXPECTED_HOURS > 0 ? '+' : '') + (Number(selectedRecord.total_hours) - EXPECTED_HOURS).toFixed(2) : '-'} hrs
@@ -354,10 +354,8 @@ export default function EmployeeAttendance() {
               )}
             </CardContent>
           </Card>
-        </Grid>
 
         {/* Attendance Sheet List */}
-        <Grid item xs={12}>
           <Card sx={{ ...shellCardSx, height: '100%', width: '100%' }}>
             <CardContent sx={{ p: 0 }}>
               <Box sx={{ px: 3, pt: 3, pb: 2, borderBottom: '1px solid rgba(0,0,0,0.06)' }}>
@@ -405,8 +403,7 @@ export default function EmployeeAttendance() {
               </TableContainer>
             </CardContent>
           </Card>
-        </Grid>
-      </Grid>
+      </Stack>
     </Box>
   );
 }

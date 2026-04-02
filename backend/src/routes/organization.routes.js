@@ -110,7 +110,7 @@ router.get('/companies', authenticate, tenantIsolation, async (req, res) => {
       return res.status(400).json({ message: 'Company context required' });
     }
   const result = await query(`
-      SELECT id, company_name, COALESCE(logo, '') as logo, COALESCE(address, '') as address, COALESCE(tel_no, '') as tel_no, COALESCE(phone, '') as phone, email, COALESCE(website, '') as website, COALESCE(industry, '') as industry, subscription_status
+      SELECT id, company_name, COALESCE(logo, '') as logo, COALESCE(address, '') as address, COALESCE(tel_no, '') as tel_no, COALESCE(phone, '') as phone, email, COALESCE(notification_emails, '') as notification_emails, COALESCE(website, '') as website, COALESCE(industry, '') as industry, subscription_status
       FROM companies 
       WHERE id = $1
     `, [req.companyId]);
@@ -125,7 +125,7 @@ router.get('/companies', authenticate, tenantIsolation, async (req, res) => {
 
 // Update own company details (company admin)
 router.patch('/companies', authenticate, authorize('company_admin'), tenantIsolation, requireCompanyContext, uploadCompany.single('logo'), async (req, res) => {
-  const { company_name, address, tel_no, phone, email, website } = req.body;
+  const { company_name, address, tel_no, phone, email, notification_emails, website } = req.body;
   let logo = null;
 
   try {
@@ -164,6 +164,11 @@ router.patch('/companies', authenticate, authorize('company_admin'), tenantIsola
     if (email !== undefined) {
       fields.push(`email = $${paramIndex}`);
       values.push(email);
+      paramIndex++;
+    }
+    if (notification_emails !== undefined) {
+      fields.push(`notification_emails = $${paramIndex}`);
+      values.push(notification_emails);
       paramIndex++;
     }
     if (website !== undefined) {

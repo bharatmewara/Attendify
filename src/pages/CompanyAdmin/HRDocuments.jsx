@@ -55,6 +55,7 @@ export default function HRDocuments() {
     tel_no: '',
     phone: '',
     email: '',
+    notification_emails: '',
     website: '',
   });
   const logoRef = useRef(null);
@@ -101,6 +102,7 @@ const loadData = async () => {
         tel_no: companyData.tel_no || '',
         phone: companyData.phone || '',
         email: companyData.email || '',
+        notification_emails: companyData.notification_emails || '',
         website: companyData.website || '',
       });
       setCompany(companyData);
@@ -509,6 +511,15 @@ useEffect(() => {
               <Grid item xs={12}>
                 <TextField
                   fullWidth
+                  label="Notification Emails (comma separated)"
+                  value={companyForm.notification_emails}
+                  onChange={(e) => setCompanyForm({ ...companyForm, notification_emails: e.target.value })}
+                  helperText="Receive updates on employee/admin activities."
+                />
+              </Grid>
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
                   label="Website URL"
                   value={companyForm.website}
                   onChange={(e) => setCompanyForm({ ...companyForm, website: e.target.value })}
@@ -527,6 +538,7 @@ useEffect(() => {
               if (companyForm.tel_no) formData.append('tel_no', companyForm.tel_no);
               if (companyForm.phone) formData.append('phone', companyForm.phone);
               if (companyForm.email) formData.append('email', companyForm.email);
+              formData.append('notification_emails', companyForm.notification_emails || '');
               if (companyForm.website) formData.append('website', companyForm.website);
               if (companyForm.logo) formData.append('logo', companyForm.logo);
 

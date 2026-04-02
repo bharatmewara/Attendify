@@ -26,6 +26,41 @@ const toUploadsRelativePath = (file) => {
   return path.posix.join('uploads', 'incentives', file.filename);
 };
 
+const GST_RATE = 0.18;
+
+const normalizeBoolean = (value) => {
+  if (value === true || value === false) return value;
+  if (value === 1 || value === 0) return Boolean(value);
+  const str = String(value ?? '').trim().toLowerCase();
+  if (!str) return false;
+  if (['true', '1', 'yes', 'y', 'on'].includes(str)) return true;
+  if (['false', '0', 'no', 'n', 'off'].includes(str)) return false;
+  return false;
+};
+
+const roundMoney = (value) => Math.round(Number(value) * 100) / 100;
+
+const resolvePricingWithGst = ({ packageType, gstApplied, price, priceGross }) => {
+  const isCurrent = String(packageType || '').toLowerCase() === 'new';
+  const applyGst = isCurrent && normalizeBoolean(gstApplied);
+
+  const grossCandidate = priceGross !== undefined && priceGross !== null && priceGross !== ''
+    ? Number(priceGross)
+    : (price !== undefined && price !== null && price !== '' ? Number(price) : null);
+
+  if (applyGst && grossCandidate !== null && Number.isFinite(grossCandidate) && grossCandidate >= 0) {
+    const net = roundMoney(grossCandidate / (1 + GST_RATE));
+    return { gst_applied: true, price_gross: roundMoney(grossCandidate), price: net };
+  }
+
+  const netCandidate = price !== undefined && price !== null && price !== '' ? Number(price) : null;
+  return {
+    gst_applied: false,
+    price_gross: null,
+    price: netCandidate !== null && Number.isFinite(netCandidate) ? roundMoney(netCandidate) : null,
+  };
+};
+
 // Function to calculate incentive based on the provided logic
 const calculateIncentive = (productName, smsQuantity, rate, price, packageType) => {
   let incentive = 0;
@@ -209,21 +244,35 @@ router.post(
       const sms_quantity = req.body?.sms_quantity;
       const rate = req.body?.rate;
       const price = req.body?.price;
+      const gst_applied = req.body?.gst_applied;
+      const price_gross = req.body?.price_gross;
 
       if (!product_name || !package_type) {
         return res.status(400).json({ message: 'product_name and package_type are required.' });
       }
+
+      const resolvedPricing = resolvePricingWithGst({
+        packageType: package_type,
+        gstApplied: gst_applied,
+        price,
+        priceGross: price_gross,
+      });
 
       const { incentive } = await calculateCompanyIncentiveAmount({
         companyId: req.companyId,
         productName: product_name,
         smsQuantity: sms_quantity ? Number(sms_quantity) : null,
         rate: rate === '' || rate === null || rate === undefined ? null : Number(rate),
-        price: price === '' || price === null || price === undefined ? null : Number(price),
+        price: resolvedPricing.price,
         packageType: package_type,
       });
 
-      return res.json({ incentive_amount: Number(incentive || 0) });
+      return res.json({
+        incentive_amount: Number(incentive || 0),
+        price: resolvedPricing.price,
+        price_gross: resolvedPricing.price_gross,
+        gst_applied: resolvedPricing.gst_applied,
+      });
     } catch (error) {
       console.error('Incentive preview failed', error);
       return res.status(500).json({ message: error.message });
@@ -314,6 +363,8 @@ router.post(
       client_panel_password,
       sms_quantity,
       rate,
+      gst_applied,
+      price_gross,
       price,
       payment_mode,
       package_type,
@@ -344,12 +395,19 @@ router.post(
         return res.status(400).json({ message: 'This product is disabled by admin.' });
       }
 
+      const resolvedPricing = resolvePricingWithGst({
+        packageType: package_type,
+        gstApplied: gst_applied,
+        price,
+        priceGross: price_gross,
+      });
+
       const { incentive: incentive_amount } = await calculateCompanyIncentiveAmount({
         companyId: req.companyId,
         productName: product_name,
         smsQuantity: sms_quantity ? Number(sms_quantity) : null,
         rate: rate === '' || rate === null || rate === undefined ? null : Number(rate),
-        price: price === '' || price === null || price === undefined ? null : Number(price),
+        price: resolvedPricing.price,
         packageType: package_type,
       });
       const screenshot_path = toUploadsRelativePath(req.file);
@@ -369,6 +427,8 @@ router.post(
       client_panel_password,
       sms_quantity,
             rate,
+            gst_applied,
+            price_gross,
             price,
             payment_mode,
             package_type,
@@ -376,7 +436,7 @@ router.post(
             incentive_amount,
             screenshot_path
           )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
          RETURNING *`,
         [
           req.companyId,
@@ -391,7 +451,9 @@ router.post(
           client_panel_password ? String(client_panel_password) : null,
           sms_quantity ? Number(sms_quantity) : null,
           rate ? Number(rate) : null,
-          price ? Number(price) : null,
+          resolvedPricing.gst_applied,
+          resolvedPricing.price_gross,
+          resolvedPricing.price,
           payment_mode || null,
           package_type,
           client_location || null,
@@ -411,15 +473,28 @@ router.post(
         );
         const employee = employeeResult.rows[0];
 
-        const adminResult = await query(
-          `SELECT u.email
-           FROM users u
-           WHERE u.company_id = $1
-             AND u.role IN ('company_admin', 'super_admin')
-             AND u.is_active = true`,
+        const companyResult = await query(
+          `SELECT email, notification_emails
+           FROM companies
+           WHERE id = $1::int
+           LIMIT 1`,
           [req.companyId],
         );
-        const adminEmails = adminResult.rows.map((r) => r.email).filter(Boolean).join(',');
+        const companyRow = companyResult.rows[0] || {};
+        const configuredRecipients = String(companyRow.notification_emails || '').trim();
+        let adminEmails = configuredRecipients || String(companyRow.email || '').trim();
+
+        if (!adminEmails) {
+          const adminResult = await query(
+            `SELECT u.email
+             FROM users u
+             WHERE u.company_id = $1
+               AND u.role IN ('company_admin', 'super_admin')
+               AND u.is_active = true`,
+            [req.companyId],
+          );
+          adminEmails = adminResult.rows.map((r) => r.email).filter(Boolean).join(',');
+        }
 
         if (adminEmails && employee) {
           const submission = result.rows[0];
@@ -434,7 +509,8 @@ router.post(
               `Type: ${submission.package_type}\n` +
               `Quantity: ${submission.sms_quantity ?? 'N/A'}\n` +
               `Rate: ${submission.rate ?? 'N/A'}\n` +
-              `Price: ${submission.price ?? 'N/A'}\n` +
+              `Price (excl GST): ${submission.price ?? 'N/A'}\n` +
+              (submission.gst_applied && submission.price_gross ? `Price (incl GST): ${submission.price_gross}\n` : '') +
               `Payment Mode: ${submission.payment_mode ?? 'N/A'}\n` +
               `Client Mobile 1: ${submission.client_mobile_1 ?? 'N/A'}\n` +
               `Client Mobile 2: ${submission.client_mobile_2 ?? 'N/A'}\n` +
@@ -499,6 +575,8 @@ router.put(
         'client_panel_password',
         'sms_quantity',
         'rate',
+        'gst_applied',
+        'price_gross',
         'price',
         'payment_mode',
         'package_type',
@@ -532,12 +610,19 @@ router.put(
         return res.status(400).json({ message: 'This product is disabled by admin.' });
       }
 
+      const resolvedPricing = resolvePricingWithGst({
+        packageType: next.package_type,
+        gstApplied: next.gst_applied,
+        price: next.price,
+        priceGross: next.price_gross,
+      });
+
       const { incentive: incentive_amount } = await calculateCompanyIncentiveAmount({
         companyId: req.companyId,
         productName: String(next.product_name),
         smsQuantity: next.sms_quantity !== '' && next.sms_quantity !== null && next.sms_quantity !== undefined ? Number(next.sms_quantity) : null,
         rate: next.rate !== '' && next.rate !== null && next.rate !== undefined ? Number(next.rate) : null,
-        price: next.price !== '' && next.price !== null && next.price !== undefined ? Number(next.price) : null,
+        price: resolvedPricing.price,
         packageType: String(next.package_type),
       });
 
@@ -555,15 +640,17 @@ router.put(
              client_panel_password = $8,
              sms_quantity = $9,
              rate = $10,
-             price = $11,
-             payment_mode = $12,
-             package_type = $13,
-             client_location = $14,
-             incentive_amount = $15,
-             screenshot_path = $16
-         WHERE id = $17::int
-           AND company_id = $18::int
-           AND employee_id = $19::int
+             gst_applied = $11,
+             price_gross = $12,
+             price = $13,
+             payment_mode = $14,
+             package_type = $15,
+             client_location = $16,
+             incentive_amount = $17,
+             screenshot_path = $18
+         WHERE id = $19::int
+           AND company_id = $20::int
+           AND employee_id = $21::int
          RETURNING *`,
         [
           next.client_name,
@@ -576,7 +663,9 @@ router.put(
           next.client_panel_password || null,
           next.sms_quantity !== '' && next.sms_quantity !== null && next.sms_quantity !== undefined ? Number(next.sms_quantity) : null,
           next.rate !== '' && next.rate !== null && next.rate !== undefined ? Number(next.rate) : null,
-          next.price !== '' && next.price !== null && next.price !== undefined ? Number(next.price) : null,
+          resolvedPricing.gst_applied,
+          resolvedPricing.price_gross,
+          resolvedPricing.price,
           next.payment_mode || null,
           next.package_type,
           next.client_location || null,
@@ -1015,6 +1104,8 @@ router.put(
         'client_panel_password',
         'sms_quantity',
         'rate',
+        'gst_applied',
+        'price_gross',
         'price',
         'payment_mode',
         'package_type',
@@ -1060,6 +1151,13 @@ router.put(
         return res.status(400).json({ message: 'This product is disabled by admin.' });
       }
 
+      const resolvedPricing = resolvePricingWithGst({
+        packageType: next.package_type,
+        gstApplied: next.gst_applied,
+        price: next.price,
+        priceGross: next.price_gross,
+      });
+
       let computedIncentive = 0;
       if (shouldRecalc) {
         const { incentive } = await calculateCompanyIncentiveAmount({
@@ -1067,7 +1165,7 @@ router.put(
           productName: String(next.product_name),
           smsQuantity: next.sms_quantity !== '' && next.sms_quantity !== null && next.sms_quantity !== undefined ? Number(next.sms_quantity) : null,
           rate: next.rate !== '' && next.rate !== null && next.rate !== undefined ? Number(next.rate) : null,
-          price: next.price !== '' && next.price !== null && next.price !== undefined ? Number(next.price) : null,
+          price: resolvedPricing.price,
           packageType: String(next.package_type),
         });
         computedIncentive = Number(incentive || 0);
@@ -1090,13 +1188,15 @@ router.put(
              client_panel_password = $8,
              sms_quantity = $9,
              rate = $10,
-             price = $11,
-             payment_mode = $12,
-             package_type = $13,
-             client_location = $14,
-             incentive_amount = $15
-         WHERE id = $16::int
-           AND company_id = $17::int
+             gst_applied = $11,
+             price_gross = $12,
+             price = $13,
+             payment_mode = $14,
+             package_type = $15,
+             client_location = $16,
+             incentive_amount = $17
+         WHERE id = $18::int
+           AND company_id = $19::int
          RETURNING *`,
         [
           next.client_name,
@@ -1109,7 +1209,9 @@ router.put(
           next.client_panel_password,
           next.sms_quantity !== '' && next.sms_quantity !== null && next.sms_quantity !== undefined ? Number(next.sms_quantity) : null,
           next.rate !== '' && next.rate !== null && next.rate !== undefined ? Number(next.rate) : null,
-          next.price !== '' && next.price !== null && next.price !== undefined ? Number(next.price) : null,
+          resolvedPricing.gst_applied,
+          resolvedPricing.price_gross,
+          resolvedPricing.price,
           next.payment_mode,
           next.package_type,
           next.client_location,
@@ -1127,7 +1229,7 @@ router.put(
             `INSERT INTO incentive_earnings (
               company_id, employee_id, submission_id,
               earned_month, earned_year, earned_at,
-              client_name, product_name, package_type, payment_mode, price, incentive_amount, client_location,
+              client_name, product_name, package_type, payment_mode, sms_quantity, price, incentive_amount, client_location,
               submitted_at, approved_by, approved_at
             )
             VALUES (
@@ -1135,8 +1237,8 @@ router.put(
               EXTRACT(MONTH FROM $4::timestamptz)::int,
               EXTRACT(YEAR FROM $4::timestamptz)::int,
               $4::timestamptz,
-              $5, $6, $7, $8, $9::decimal(10,2), $10::decimal(10,2), $11,
-              $12::timestamptz, $13::int, $14::timestamptz
+              $5, $6, $7, $8, $9::int, $10::decimal(10,2), $11::decimal(10,2), $12,
+              $13::timestamptz, $14::int, $15::timestamptz
             )
             ON CONFLICT (submission_id)
             DO UPDATE SET
@@ -1147,6 +1249,7 @@ router.put(
               product_name = EXCLUDED.product_name,
               package_type = EXCLUDED.package_type,
               payment_mode = EXCLUDED.payment_mode,
+              sms_quantity = EXCLUDED.sms_quantity,
               price = EXCLUDED.price,
               incentive_amount = EXCLUDED.incentive_amount,
               client_location = EXCLUDED.client_location,
@@ -1161,6 +1264,7 @@ router.put(
               updated.product_name,
               updated.package_type,
               updated.payment_mode,
+              updated.sms_quantity || null,
               updated.price || 0,
               updated.incentive_amount,
               updated.client_location,
@@ -1275,8 +1379,8 @@ router.put(
     const { status } = req.body;
     const nextStatus = String(status);
 
-    if (!['approved', 'rejected', 'pending'].includes(nextStatus)) {
-      return res.status(400).json({ message: 'Status must be pending, approved, or rejected' });
+    if (!['approved', 'rejected', 'pending', 'refunded'].includes(nextStatus)) {
+      return res.status(400).json({ message: 'Status must be pending, approved, rejected, or refunded' });
     }
 
     try {
@@ -1313,7 +1417,7 @@ router.put(
             `INSERT INTO incentive_earnings (
               company_id, employee_id, submission_id,
               earned_month, earned_year, earned_at,
-              client_name, product_name, package_type, payment_mode, price, incentive_amount, client_location,
+              client_name, product_name, package_type, payment_mode, sms_quantity, price, incentive_amount, client_location,
               submitted_at, approved_by, approved_at
             )
             SELECT
@@ -1327,6 +1431,7 @@ router.put(
               s.product_name,
               s.package_type,
               s.payment_mode,
+              s.sms_quantity,
               s.price,
               s.incentive_amount,
               s.client_location,
@@ -1345,6 +1450,7 @@ router.put(
               earned_at = EXCLUDED.earned_at,
               package_type = EXCLUDED.package_type,
               payment_mode = EXCLUDED.payment_mode,
+              sms_quantity = EXCLUDED.sms_quantity,
               price = EXCLUDED.price,
               incentive_amount = EXCLUDED.incentive_amount,
               client_location = EXCLUDED.client_location,
@@ -1463,6 +1569,54 @@ router.put(
         }
       } catch (syncError) {
         console.error('Payroll incentive sync failed', syncError);
+      }
+
+      // Email employee + company recipients about status change.
+      try {
+        const employeeResult = await query(
+          `SELECT u.email AS employee_email, e.first_name, e.last_name
+           FROM employees e
+           JOIN users u ON e.user_id = u.id
+           WHERE e.id = $1::int AND e.company_id = $2::int`,
+          [updated.employee_id, req.companyId],
+        );
+        const employee = employeeResult.rows[0];
+
+        const companyResult = await query(
+          `SELECT email, notification_emails
+           FROM companies
+           WHERE id = $1::int
+           LIMIT 1`,
+          [req.companyId],
+        );
+        const companyRow = companyResult.rows[0] || {};
+        const configuredRecipients = String(companyRow.notification_emails || '').trim();
+        const companyRecipients = configuredRecipients || String(companyRow.email || '').trim();
+
+        const statusLabel = String(updated.status || '').toUpperCase();
+        const subject = `Incentive ${statusLabel}: ${updated.client_name || 'Client'}`;
+        const body =
+          `Incentive submission status changed.\n\n` +
+          `Status: ${updated.status}\n` +
+          `Client: ${updated.client_name ?? 'N/A'}\n` +
+          `Product: ${updated.product_name ?? 'N/A'}\n` +
+          `Type: ${updated.package_type ?? 'N/A'}\n` +
+          `Price (excl GST): ${updated.price ?? 'N/A'}\n` +
+          (updated.gst_applied && updated.price_gross ? `Price (incl GST): ${updated.price_gross}\n` : '') +
+          `Incentive: ${updated.incentive_amount ?? 'N/A'}\n\n` +
+          (String(updated.status).toLowerCase() === 'refunded'
+            ? 'Note: Refunded incentives are removed from totals and payroll calculations.'
+            : '') +
+          `\n\nAttendify`;
+
+        if (employee?.employee_email) {
+          await sendEmail({ to: employee.employee_email, subject, text: body });
+        }
+        if (companyRecipients) {
+          await sendEmail({ to: companyRecipients, subject, text: body });
+        }
+      } catch (emailError) {
+        console.error('Incentive status email send failed', emailError);
       }
 
       return res.json(updated);

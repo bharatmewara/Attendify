@@ -1,8 +1,8 @@
-import { AppBar, Avatar, Badge, Box, Button, IconButton, Stack, Toolbar, Typography } from '@mui/material';
-import NotificationsNoneRoundedIcon from '@mui/icons-material/NotificationsNoneRounded';
+import { AppBar, Avatar, Box, Button, Stack, Toolbar, Typography } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { apiRequest } from '../lib/api';
+import NotificationBell from './NotificationBell';
 
 const Topbar = ({ title, subtitle, companyProfile }) => {
   const { user, logout, setSessionToken } = useAuth();
@@ -61,11 +61,9 @@ const Topbar = ({ title, subtitle, companyProfile }) => {
               )}
             </Typography>
           ) : null}
-          <IconButton color="inherit">
-            <Badge color="error" variant="dot">
-              <NotificationsNoneRoundedIcon />
-            </Badge>
-          </IconButton>
+          {user ? (
+            <NotificationBell endpoint={user.role === 'super_admin' ? '/superadmin/notifications' : '/notifications'} />
+          ) : null}
           <Avatar sx={{ bgcolor: 'primary.main' }}>{displayName.charAt(0).toUpperCase()}</Avatar>
           
           <Button size="small" variant="outlined" onClick={onLogout}>
@@ -78,4 +76,3 @@ const Topbar = ({ title, subtitle, companyProfile }) => {
 };
 
 export default Topbar;
-

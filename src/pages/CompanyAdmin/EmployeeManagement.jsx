@@ -50,6 +50,7 @@ import {
   Assignment,
   Download,
   LockOpen,
+  MailOutline,
 } from '@mui/icons-material';
 import { apiRequest } from '../../lib/api';
 
@@ -239,6 +240,27 @@ const [openEditDialog, setOpenEditDialog] = useState(false);
         body: { month, year, employee_id: emp.id, note: 'Salary credited via admin panel' },
       });
       setMessage(`Salary credit email sent to ${emp.first_name} ${emp.last_name}`);
+    } catch (error) {
+      setMessage(`error:${error.message}`);
+    }
+  };
+
+  const handleSendUpdateEmail = async (emp) => {
+    try {
+      const subject = window.prompt('Enter email subject:');
+      if (!subject) return;
+      const messageText = window.prompt('Enter email message:');
+      if (!messageText) return;
+
+      await apiRequest(`/employees/${emp.id}/send-onboarding`, {
+        method: 'POST',
+        body: {
+          subject: String(subject),
+          message: String(messageText),
+          include_credentials: false,
+        },
+      });
+      setMessage(`Email sent to ${emp.first_name} ${emp.last_name}`);
     } catch (error) {
       setMessage(`error:${error.message}`);
     }
@@ -537,6 +559,11 @@ const [openEditDialog, setOpenEditDialog] = useState(false);
                       <Tooltip title="Onboarding Email">
                         <IconButton size="small" color="info" onClick={() => handleSendOnboardingEmail(emp)}>
                           <Description fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Send Update Email">
+                        <IconButton size="small" color="info" onClick={() => handleSendUpdateEmail(emp)}>
+                          <MailOutline fontSize="small" />
                         </IconButton>
                       </Tooltip>
                       <Tooltip title="Credit Salary & Email">

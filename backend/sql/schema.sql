@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS companies (
   company_name VARCHAR(255) NOT NULL,
   company_code VARCHAR(50) UNIQUE NOT NULL,
   email VARCHAR(255) NOT NULL,
+  notification_emails TEXT,
   phone VARCHAR(20),
   address TEXT,
   logo_url TEXT,
@@ -64,6 +65,9 @@ CREATE TABLE IF NOT EXISTS companies (
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+ALTER TABLE IF EXISTS companies
+  ADD COLUMN IF NOT EXISTS notification_emails TEXT;
 
 -- ============================================
 -- 3. COMPANY SUBSCRIPTIONS
