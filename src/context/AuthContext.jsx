@@ -80,6 +80,10 @@ export const AuthProvider = ({ children }) => {
       method: 'POST',
       body: { email, password },
     });
+
+    if (!data || typeof data !== 'object' || !data.token || !data.user) {
+      throw new Error('Unexpected login response from API');
+    }
     persistLoginToken(data.token);
     setToken(data.token);
     setUser(data.user);

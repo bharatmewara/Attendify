@@ -21,9 +21,13 @@ const getProxyTarget = (env) => {
   return 'http://localhost:4000';
 };
 
-export default defineConfig(({ mode }) => {
+export default defineConfig(({ command, mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   const target = getProxyTarget(env) || 'http://localhost:4000';
+  if (command === 'serve') {
+    // Helps confirm where /api and /uploads are being proxied during local dev.
+    console.log(`[vite] proxy target: ${target}`);
+  }
 
   return {
     plugins: [react()],

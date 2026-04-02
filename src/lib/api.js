@@ -51,7 +51,11 @@ const getStoredToken = () => {
     return '';
   }
 
-  return sessionStorage.getItem(TOKEN_KEY) || localStorage.getItem(TOKEN_KEY) || '';
+  const stored = sessionStorage.getItem(TOKEN_KEY) || localStorage.getItem(TOKEN_KEY) || '';
+  if (stored === 'undefined' || stored === 'null') {
+    return '';
+  }
+  return stored;
 };
 
 const parseResponse = async (res) => {

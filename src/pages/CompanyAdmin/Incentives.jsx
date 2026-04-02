@@ -241,7 +241,7 @@ export default function IncentivesManagement() {
     loadIncentiveRules();
   }, []);
 
-  const queueRows = useMemo(() => requests.filter((r) => r.status === 'Pending'), [requests]);
+  const queueRows = useMemo(() => requests.filter((r) => String(r.status || '').toLowerCase() === 'pending'), [requests]);
   const PendingCount = queueRows.length;
 
   const earningsTotal = useMemo(
@@ -376,12 +376,12 @@ export default function IncentivesManagement() {
     }
 
     if (action === 'approve') {
-      await handleUpdateStatus(row.id, 'Approved');
+      await handleUpdateStatus(row.id, 'approved');
       return;
     }
 
     if (action === 'reject') {
-      await handleUpdateStatus(row.id, 'Rejected');
+      await handleUpdateStatus(row.id, 'rejected');
     }
   };
 
@@ -791,13 +791,13 @@ export default function IncentivesManagement() {
           <Edit fontSize="small" style={{ marginRight: 10 }} />
           Edit
         </MenuItem>
-        {menuRow?.status === 'Pending' ? (
+        {String(menuRow?.status || '').toLowerCase() === 'pending' ? (
           <MenuItem onClick={() => handleMenuAction('approve')}>
             <Check fontSize="small" style={{ marginRight: 10 }} />
             Approve
           </MenuItem>
         ) : null}
-        {menuRow?.status === 'Pending' ? (
+        {String(menuRow?.status || '').toLowerCase() === 'pending' ? (
           <MenuItem onClick={() => handleMenuAction('reject')}>
             <Close fontSize="small" style={{ marginRight: 10 }} />
             Reject
@@ -839,10 +839,10 @@ export default function IncentivesManagement() {
         </DialogContent>
         <DialogActions>
           <Button onClick={closeDetails}>Close</Button>
-          {selected?.status === 'Pending' ? (
+          {String(selected?.status || '').toLowerCase() === 'pending' ? (
             <>
-              <Button variant="contained" color="success" onClick={() => { handleUpdateStatus(selected.id, 'Approved'); closeDetails(); }}>Approve</Button>
-              <Button variant="outlined" color="error" onClick={() => { handleUpdateStatus(selected.id, 'Rejected'); closeDetails(); }}>Reject</Button>
+              <Button variant="contained" color="success" onClick={() => { handleUpdateStatus(selected.id, 'approved'); closeDetails(); }}>Approve</Button>
+              <Button variant="outlined" color="error" onClick={() => { handleUpdateStatus(selected.id, 'rejected'); closeDetails(); }}>Reject</Button>
             </>
           ) : null}
         </DialogActions>
