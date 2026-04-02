@@ -38,6 +38,13 @@ const toScreenshotUrl = (screenshotPath) => {
   return `${uploadsBaseUrl}/${relative}`;
 };
 
+const formatMoney = (value) => {
+  if (value === null || value === undefined || value === '') return 'N/A';
+  const num = Number(value);
+  if (!Number.isFinite(num)) return 'N/A';
+  return num.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
+
 export default function ClientsManagement() {
   const [clients, setClients] = useState([]);
   const [clientsLoading, setClientsLoading] = useState(false);
@@ -135,8 +142,7 @@ export default function ClientsManagement() {
               <Typography color="text.secondary">Clients secured through incentive submissions.</Typography>
             </Box>
 
-            <Stack spacing={1.5} sx={{ minWidth: { md: 600 } }}>
-              {/* Quick Range Buttons */}
+            <Stack spacing={1.25} sx={{ minWidth: { md: 600 } }}>
               <Stack direction="row" spacing={1} flexWrap="wrap">
                 {[
                   { label: 'Today', value: 'today' },
@@ -180,30 +186,20 @@ export default function ClientsManagement() {
                 />
                 <TextField
                   size="small"
-                  label="Search name/mobile/email"
+                  label="Search (name/mobile/email)"
                   value={clientQuery}
                   onChange={(e) => setClientQuery(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && loadClients()}
-                  sx={{ flexGrow: 1, minWidth: 200 }}
+                  sx={{ flexGrow: 1, minWidth: 220 }}
                 />
-                <Button
-                  variant="contained"
-                  onClick={() => loadClients()}
-                  disabled={clientsLoading}
-                  sx={{ whiteSpace: 'nowrap' }}
-                >
+                <Button variant="contained" onClick={() => loadClients()} disabled={clientsLoading} sx={{ whiteSpace: 'nowrap' }}>
                   Search
                 </Button>
-                <Button
-                  variant="outlined"
-                  onClick={handleReset}
-                  disabled={clientsLoading}
-                >
+                <Button variant="outlined" onClick={handleReset} disabled={clientsLoading}>
                   Reset
                 </Button>
               </Stack>
 
-              {/* Active filter summary */}
               {(dateFrom || dateTo) && (
                 <Typography variant="caption" color="text.secondary">
                   Showing: {dateFrom || '...'} {'→'} {dateTo || '...'}
@@ -218,8 +214,9 @@ export default function ClientsManagement() {
               <TableHead>
                 <TableRow>
                   <TableCell>Client</TableCell>
-                  <TableCell>Last Product</TableCell>
-                  <TableCell align="right">Last SMS Qty</TableCell>
+                  <TableCell>Product</TableCell>
+                  <TableCell align="right">SMS Qty</TableCell>
+                  <TableCell align="right">Received (incl GST)</TableCell>
                   <TableCell>Mobile</TableCell>
                   <TableCell>Email</TableCell>
                   <TableCell>Panel User</TableCell>
@@ -236,6 +233,13 @@ export default function ClientsManagement() {
                     <TableCell>{row.client_name || 'N/A'}</TableCell>
                     <TableCell sx={{ whiteSpace: 'nowrap' }}>{row.last_product || row.product_name || 'N/A'}</TableCell>
                     <TableCell align="right">{row.last_sms_quantity ?? row.sms_quantity ?? 'N/A'}</TableCell>
+                    <TableCell align="right">
+                      {row.last_amount_received !== undefined && row.last_amount_received !== null
+                        ? `₹${formatMoney(row.last_amount_received)}`
+                        : (row.last_price_inc_gst
+                          ? `₹${formatMoney(row.last_price_inc_gst)}`
+                          : (row.last_price_ex_gst ? `₹${formatMoney(row.last_price_ex_gst)}` : 'N/A'))}
+                    </TableCell>
                     <TableCell>{row.client_mobile_1 || 'N/A'}</TableCell>
                     <TableCell>{row.client_email || 'N/A'}</TableCell>
                     <TableCell>{row.client_panel_username || 'N/A'}</TableCell>
@@ -260,7 +264,7 @@ export default function ClientsManagement() {
                 ))}
                 {clients.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={11}>
+                    <TableCell colSpan={12}>
                       <Typography variant="body2" color="text.secondary">
                         {clientsLoading ? 'Loading clients...' : 'No clients found.'}
                       </Typography>
@@ -292,6 +296,9 @@ export default function ClientsManagement() {
                   <Typography><strong>Name:</strong> {selectedClient.client_name || 'N/A'}</Typography>
                   <Typography><strong>Last Product:</strong> {selectedClient.last_product || 'N/A'}</Typography>
                   <Typography><strong>Last SMS Qty:</strong> {selectedClient.last_sms_quantity ?? 'N/A'}</Typography>
+                  <Typography><strong>Last Price (excl GST):</strong> {selectedClient.last_price_ex_gst !== null && selectedClient.last_price_ex_gst !== undefined ? `₹${formatMoney(selectedClient.last_price_ex_gst)}` : 'N/A'}</Typography>
+                  <Typography><strong>GST (18%):</strong> {selectedClient.last_gst_amount !== null && selectedClient.last_gst_amount !== undefined ? `₹${formatMoney(selectedClient.last_gst_amount)}` : 'N/A'}</Typography>
+                  <Typography><strong>Amount Received (incl GST):</strong> {selectedClient.last_amount_received !== null && selectedClient.last_amount_received !== undefined ? `₹${formatMoney(selectedClient.last_amount_received)}` : (selectedClient.last_price_inc_gst ? `₹${formatMoney(selectedClient.last_price_inc_gst)}` : 'N/A')}</Typography>
                   <Typography><strong>Mobile:</strong> {selectedClient.client_mobile_1 || 'N/A'}</Typography>
                   <Typography><strong>Email:</strong> {selectedClient.client_email || 'N/A'}</Typography>
                   <Typography><strong>Panel Username:</strong> {selectedClient.client_panel_username || 'N/A'}</Typography>
