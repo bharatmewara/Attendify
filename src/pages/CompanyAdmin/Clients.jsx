@@ -41,16 +41,20 @@ export default function ClientsManagement() {
   const [clients, setClients] = useState([]);
   const [clientsLoading, setClientsLoading] = useState(false);
   const [clientQuery, setClientQuery] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [message, setMessage] = useState({ type: '', text: '' });
 
   const [clientDialogOpen, setClientDialogOpen] = useState(false);
   const [selectedClient, setSelectedClient] = useState(null);
 
-  const loadClients = async (q = clientQuery) => {
+  const loadClients = async (q = clientQuery, from = dateFrom, to = dateTo) => {
     try {
       setClientsLoading(true);
       const qs = new URLSearchParams();
       if (q) qs.set('q', q);
+      if (from) qs.set('date_from', from);
+      if (to) qs.set('date_to', to);
       const rows = await apiRequest(`/incentives/clients?${qs.toString()}`);
       setClients(rows || []);
     } catch (error) {
@@ -60,8 +64,44 @@ export default function ClientsManagement() {
     }
   };
 
+  const applyQuickRange = (range) => {
+    const today = new Date();
+    const fmt = (d) => d.toISOString().split('T')[0];
+    let from = '';
+    let to = fmt(today);
+
+    if (range === 'today') {
+      from = fmt(today);
+    } else if (range === 'week') {
+      const d = new Date(today);
+      d.setDate(d.getDate() - 6);
+      from = fmt(d);
+    } else if (range === 'month') {
+      from = fmt(new Date(today.getFullYear(), today.getMonth(), 1));
+    } else if (range === 'last_month') {
+      from = fmt(new Date(today.getFullYear(), today.getMonth() - 1, 1));
+      to = fmt(new Date(today.getFullYear(), today.getMonth(), 0));
+    } else if (range === 'quarter') {
+      const q = Math.floor(today.getMonth() / 3);
+      from = fmt(new Date(today.getFullYear(), q * 3, 1));
+    } else if (range === 'year') {
+      from = fmt(new Date(today.getFullYear(), 0, 1));
+    }
+
+    setDateFrom(from);
+    setDateTo(to);
+    loadClients(clientQuery, from, to);
+  };
+
+  const handleReset = () => {
+    setClientQuery('');
+    setDateFrom('');
+    setDateTo('');
+    loadClients('', '', '');
+  };
+
   useEffect(() => {
-    loadClients('');
+    loadClients('', '', '');
   }, []);
 
   const openClient = (client) => {
@@ -88,25 +128,87 @@ export default function ClientsManagement() {
 
       <Card>
         <CardContent>
-          <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between" alignItems={{ xs: 'stretch', md: 'center' }}>
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between" alignItems={{ xs: 'stretch', md: 'flex-start' }}>
             <Box>
               <Typography variant="h6" fontWeight={800}>All Clients</Typography>
-              <Typography color="text.secondary">Clients secured through incentive submissions with search functionality.</Typography>
+              <Typography color="text.secondary">Clients secured through incentive submissions.</Typography>
             </Box>
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25} alignItems={{ xs: 'stretch', sm: 'center' }}>
-              <TextField
-                size="small"
-                label="Search (name/mobile/email)"
-                value={clientQuery}
-                onChange={(e) => setClientQuery(e.target.value)}
-                sx={{ minWidth: { xs: '100%', sm: 320 } }}
-              />
-              <Button variant="contained" onClick={() => loadClients(clientQuery)} disabled={clientsLoading}>
-                Search
-              </Button>
-              <Button variant="outlined" onClick={() => { setClientQuery(''); loadClients(''); }} disabled={clientsLoading}>
-                Reset
-              </Button>
+
+            <Stack spacing={1.5} sx={{ minWidth: { md: 600 } }}>
+              {/* Quick Range Buttons */}
+              <Stack direction="row" spacing={1} flexWrap="wrap">
+                {[
+                  { label: 'Today', value: 'today' },
+                  { label: 'This Week', value: 'week' },
+                  { label: 'This Month', value: 'month' },
+                  { label: 'Last Month', value: 'last_month' },
+                  { label: 'This Quarter', value: 'quarter' },
+                  { label: 'This Year', value: 'year' },
+                ].map((r) => (
+                  <Chip
+                    key={r.value}
+                    label={r.label}
+                    onClick={() => applyQuickRange(r.value)}
+                    color="primary"
+                    variant="outlined"
+                    size="small"
+                    sx={{ cursor: 'pointer' }}
+                  />
+                ))}
+              </Stack>
+
+              {/* Date Range + Search */}
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25} alignItems={{ xs: 'stretch', sm: 'center' }}>
+                <TextField
+                  size="small"
+                  label="From Date"
+                  type="date"
+                  InputLabelProps={{ shrink: true }}
+                  value={dateFrom}
+                  onChange={(e) => setDateFrom(e.target.value)}
+                  sx={{ minWidth: 150 }}
+                />
+                <TextField
+                  size="small"
+                  label="To Date"
+                  type="date"
+                  InputLabelProps={{ shrink: true }}
+                  value={dateTo}
+                  onChange={(e) => setDateTo(e.target.value)}
+                  sx={{ minWidth: 150 }}
+                />
+                <TextField
+                  size="small"
+                  label="Search name/mobile/email"
+                  value={clientQuery}
+                  onChange={(e) => setClientQuery(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && loadClients()}
+                  sx={{ flexGrow: 1, minWidth: 200 }}
+                />
+                <Button
+                  variant="contained"
+                  onClick={() => loadClients()}
+                  disabled={clientsLoading}
+                  sx={{ whiteSpace: 'nowrap' }}
+                >
+                  Search
+                </Button>
+                <Button
+                  variant="outlined"
+                  onClick={handleReset}
+                  disabled={clientsLoading}
+                >
+                  Reset
+                </Button>
+              </Stack>
+
+              {/* Active filter summary */}
+              {(dateFrom || dateTo) && (
+                <Typography variant="caption" color="text.secondary">
+                  Showing: {dateFrom || '...'} {'→'} {dateTo || '...'}
+                  &nbsp;({clients.length} result{clients.length !== 1 ? 's' : ''})
+                </Typography>
+              )}
             </Stack>
           </Stack>
 

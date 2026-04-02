@@ -1138,6 +1138,19 @@ router.get(
   async (req, res) => {
     try {
       const q = req.query.q ? String(req.query.q).trim() : '';
+      const dateFromRaw = req.query.date_from ?? req.query.dateFrom ?? '';
+      const dateToRaw = req.query.date_to ?? req.query.dateTo ?? '';
+      const date_from = dateFromRaw ? String(dateFromRaw).trim() : '';
+      const date_to = dateToRaw ? String(dateToRaw).trim() : '';
+      const dateFrom = date_from ? new Date(date_from) : null;
+      const dateTo = date_to ? new Date(date_to) : null;
+
+      if (date_from && (!dateFrom || Number.isNaN(dateFrom.getTime()))) {
+        return res.status(400).json({ message: 'date_from must be a valid YYYY-MM-DD date.' });
+      }
+      if (date_to && (!dateTo || Number.isNaN(dateTo.getTime()))) {
+        return res.status(400).json({ message: 'date_to must be a valid YYYY-MM-DD date.' });
+      }
 
       const result = await query(
         `WITH base AS (
@@ -1146,6 +1159,8 @@ router.get(
             *
           FROM incentive_submissions
           WHERE company_id = $1::int
+            AND ($3::date IS NULL OR COALESCE(approved_at::date, submitted_at::date) >= $3::date)
+            AND ($4::date IS NULL OR COALESCE(approved_at::date, submitted_at::date) <= $4::date)
         ),
         ranked AS (
           SELECT
@@ -1203,7 +1218,7 @@ router.get(
           )
         ORDER BY COALESCE(r.approved_at, r.submitted_at) DESC
         LIMIT 500`,
-        [req.companyId, q],
+        [req.companyId, q, date_from || null, date_to || null],
       );
 
       return res.json(result.rows);
@@ -1803,3 +1818,5 @@ export default router;
 
 
 
+T E S T _ W R I T E      
+ 
