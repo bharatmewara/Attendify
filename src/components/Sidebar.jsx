@@ -85,7 +85,7 @@ const Sidebar = ({ mobileOpen, onClose, companyProfile }) => {
       </Stack>
       <List sx={{ width: '100%', bgcolor: 'transparent', overflow: 'visible', flex: 1, p: 2, pt: 1 }}>
         {navItems.map((item) => {
-          const isActive = location.pathname.startsWith(item.to);
+          const isActive = location.pathname === item.to || (item.to !== '/app/attendance' && location.pathname.startsWith(item.to));
           const IconComponent = item.icon;
           const itemColor = isActive ? '#F8FAFC' : '#CBD5E1';
           return (
