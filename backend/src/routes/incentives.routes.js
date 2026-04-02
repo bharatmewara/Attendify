@@ -943,7 +943,24 @@ router.get(
       );
 
       const detailsResult = await query(
-        `SELECT id, client_name, product_name, package_type, payment_mode, price, incentive_amount, sms_quantity, rate, client_location, approved_at, submitted_at
+        `SELECT
+           id,
+           client_name,
+           product_name,
+           package_type,
+           payment_mode,
+           sms_quantity,
+           rate,
+           price,
+           incentive_amount,
+           client_location,
+           client_mobile_1,
+           client_mobile_2,
+           client_email,
+           client_panel_username,
+           client_panel_password,
+           approved_at,
+           submitted_at
          FROM incentive_submissions
          WHERE company_id = $1::int
            AND employee_id = $2::int

@@ -301,12 +301,17 @@ export default function EmployeeDashboard() {
                 <Divider />
                 <TableContainer sx={{ maxHeight: 320 }}>
                   <Table size="small" stickyHeader>
-                    <TableHead>
+                  <TableHead>
                       <TableRow>
                         <TableCell>Client</TableCell>
                         <TableCell>Product</TableCell>
+                        <TableCell align="right">SMS Qty</TableCell>
                         <TableCell align="right">Price</TableCell>
                         <TableCell align="right">Incentive</TableCell>
+                        <TableCell>Mobile</TableCell>
+                        <TableCell>Email</TableCell>
+                        <TableCell>Panel User</TableCell>
+                        <TableCell>Panel Pass</TableCell>
                         <TableCell>Date</TableCell>
                       </TableRow>
                     </TableHead>
@@ -315,14 +320,19 @@ export default function EmployeeDashboard() {
                         <TableRow key={row.id}>
                           <TableCell>{row.client_name || '—'}</TableCell>
                           <TableCell>{row.product_name || '—'}</TableCell>
+                          <TableCell align="right">{row.sms_quantity ?? '—'}</TableCell>
                           <TableCell align="right">{Number(row.price || 0).toLocaleString()}</TableCell>
                           <TableCell align="right">{Number(row.incentive_amount || 0).toFixed(2)}</TableCell>
+                          <TableCell>{row.client_mobile_1 || row.client_mobile_2 ? `${row.client_mobile_1 || ''}${row.client_mobile_2 ? `, ${row.client_mobile_2}` : ''}` : '—'}</TableCell>
+                          <TableCell>{row.client_email || '—'}</TableCell>
+                          <TableCell>{row.client_panel_username || '—'}</TableCell>
+                          <TableCell>{row.client_panel_password || '—'}</TableCell>
                           <TableCell>{row.approved_at ? new Date(row.approved_at).toLocaleDateString() : '—'}</TableCell>
                         </TableRow>
                       ))}
                       {perfDetails.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={5}>
+                          <TableCell colSpan={10}>
                             <Typography variant="body2" color="text.secondary">No approved sales found for this month.</Typography>
                           </TableCell>
                         </TableRow>

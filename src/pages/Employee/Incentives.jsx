@@ -348,7 +348,7 @@ export default function EmployeeIncentives() {
           <TextField fullWidth label="Client Mobile No 2" margin="normal" value={requestForm.client_mobile_2} onChange={(e) => setRequestForm({ ...requestForm, client_mobile_2: e.target.value })} />
           <TextField fullWidth required label="Client Email" margin="normal" value={requestForm.client_email} onChange={(e) => setRequestForm({ ...requestForm, client_email: e.target.value })} />
           <TextField fullWidth label="Client Panel Username" margin="normal" value={requestForm.client_panel_username} onChange={(e) => setRequestForm({ ...requestForm, client_panel_username: e.target.value })} />
-          <TextField fullWidth label="Client Panel Password" type="password" margin="normal" value={requestForm.client_panel_password} onChange={(e) => setRequestForm({ ...requestForm, client_panel_password: e.target.value })} />
+          <TextField fullWidth label="Client Panel Password" margin="normal" value={requestForm.client_panel_password} onChange={(e) => setRequestForm({ ...requestForm, client_panel_password: e.target.value })} />
            <TextField fullWidth select label="Product Name" margin="normal" value={requestForm.product_name} onChange={(e) => setRequestForm({ ...requestForm, product_name: e.target.value })}>
              {productOptions.map(option => <MenuItem key={option} value={option}>{option}</MenuItem>)}
            </TextField>
@@ -480,7 +480,7 @@ export default function EmployeeIncentives() {
               <TextField fullWidth label="Client Mobile No 2" margin="normal" value={editForm.client_mobile_2} onChange={(e) => setEditForm({ ...editForm, client_mobile_2: e.target.value })} />
               <TextField fullWidth required label="Client Email" margin="normal" value={editForm.client_email} onChange={(e) => setEditForm({ ...editForm, client_email: e.target.value })} />
               <TextField fullWidth label="Client Panel Username" margin="normal" value={editForm.client_panel_username} onChange={(e) => setEditForm({ ...editForm, client_panel_username: e.target.value })} />
-              <TextField fullWidth label="Client Panel Password" type="password" margin="normal" value={editForm.client_panel_password} onChange={(e) => setEditForm({ ...editForm, client_panel_password: e.target.value })} helperText="Leave blank to keep existing password." />
+              <TextField fullWidth label="Client Panel Password" margin="normal" value={editForm.client_panel_password} onChange={(e) => setEditForm({ ...editForm, client_panel_password: e.target.value })} helperText="Leave blank to keep existing password." />
               <TextField fullWidth select label="Product Name" margin="normal" value={editForm.product_name} onChange={(e) => setEditForm({ ...editForm, product_name: e.target.value })}>
                 {productOptions.map(option => <MenuItem key={option} value={option}>{option}</MenuItem>)}
               </TextField>

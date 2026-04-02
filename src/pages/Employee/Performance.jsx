@@ -177,8 +177,14 @@ export default function EmployeePerformance() {
                     <TableCell>Product</TableCell>
                     <TableCell>Type</TableCell>
                     <TableCell>Payment</TableCell>
+                    <TableCell>SMS Qty</TableCell>
                     <TableCell>Price</TableCell>
                     <TableCell>Incentive</TableCell>
+                    <TableCell>Mobile</TableCell>
+                    <TableCell>Email</TableCell>
+                    <TableCell>Location</TableCell>
+                    <TableCell>Panel User</TableCell>
+                    <TableCell>Panel Pass</TableCell>
                     <TableCell>Date</TableCell>
                   </TableRow>
                 </TableHead>
@@ -189,14 +195,20 @@ export default function EmployeePerformance() {
                       <TableCell>{row.product_name}</TableCell>
                       <TableCell>{String(row.package_type || '').toLowerCase() === 'renew' ? 'Renew' : 'New'}</TableCell>
                       <TableCell>{row.payment_mode || 'N/A'}</TableCell>
+                      <TableCell>{row.sms_quantity ?? '—'}</TableCell>
                       <TableCell>{Number(row.price || 0).toLocaleString()}</TableCell>
                       <TableCell>{Number(row.incentive_amount || 0).toFixed(2)}</TableCell>
+                      <TableCell>{row.client_mobile_1 || row.client_mobile_2 ? `${row.client_mobile_1 || ''}${row.client_mobile_2 ? `, ${row.client_mobile_2}` : ''}` : '—'}</TableCell>
+                      <TableCell>{row.client_email || '—'}</TableCell>
+                      <TableCell>{row.client_location || '—'}</TableCell>
+                      <TableCell>{row.client_panel_username || '—'}</TableCell>
+                      <TableCell>{row.client_panel_password || '—'}</TableCell>
                       <TableCell>{row.approved_at ? new Date(row.approved_at).toLocaleDateString('en-IN') : 'N/A'}</TableCell>
                     </TableRow>
                   ))}
                   {(data?.details || []).length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={7}>
+                      <TableCell colSpan={13}>
                         <Typography variant="body2" color="text.secondary">No approved sales found for this month.</Typography>
                       </TableCell>
                     </TableRow>
