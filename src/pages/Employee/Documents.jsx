@@ -38,7 +38,7 @@ export default function EmployeeDocuments() {
         title: doc.title || 'Document',
         employeeName: '',
         companyName: company?.company_name || 'Attendify',
-        companyLogo: company?.logo ? `${apiOrigin}${company.logo}` : null,
+companyLogo: company?.logo ? (company.logo.startsWith('http') ? company.logo : `${apiOrigin}${company.logo}`) : null,
         companyAddress: company?.address || '',
         companyPhone: company?.phone || '',
         companyTel: company?.tel_no || '',
