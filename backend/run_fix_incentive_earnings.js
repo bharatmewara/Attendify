@@ -1,4 +1,4 @@
-const { query } = require('./src/db.js');
+import { query } from './src/db.js';
 
 (async () => {
   try {
