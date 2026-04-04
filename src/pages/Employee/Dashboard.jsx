@@ -52,6 +52,8 @@ export default function EmployeeDashboard() {
   const [perfOfficeBlocked, setPerfOfficeBlocked] = useState(false);
   const [perfHistory, setPerfHistory] = useState(null);
   const [mySubmissions, setMySubmissions] = useState([]);
+  const [incentiveRules, setIncentiveRules] = useState(null);
+  const [salaryTiers, setSalaryTiers] = useState([]);
   
   const fetchTodayAttendance = async () => {
     try {
@@ -136,6 +138,16 @@ export default function EmployeeDashboard() {
         setNearHoliday(nearest);
 
         await loadPerformanceSection();
+        try {
+          const [rulesRes, tiersRes] = await Promise.all([
+            apiRequest('/incentives/rules'),
+            apiRequest('/incentives/targets/tiers'),
+          ]);
+          setIncentiveRules(rulesRes?.config || null);
+          setSalaryTiers(Array.isArray(tiersRes) ? tiersRes : []);
+        } catch {
+          // not critical
+        }
       } catch (error) {
         setMessage({ type: 'error', text: error.message });
       }
@@ -530,6 +542,110 @@ export default function EmployeeDashboard() {
           )}
         </CardContent>
       </Card>
+
+      {/* Incentive Rules */}
+      {(incentiveRules || salaryTiers.length > 0) && !perfOfficeBlocked ? (
+        <Card sx={{ ...shellCardSx, mb: 4 }}>
+          <CardContent sx={{ p: 3 }}>
+            <Typography variant="h6" sx={{ fontWeight: 800, mb: 0.5 }}>Incentive Rules</Typography>
+            <Typography color="text.secondary" sx={{ mb: 2 }}>
+              Per-sale incentive by product &amp; quantity. Reach a Min Sales Total to unlock the corresponding salary tier.
+            </Typography>
+
+            {/* Product incentive rules */}
+            {incentiveRules && Array.isArray(incentiveRules.products) ? (
+              <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2, mb: salaryTiers.length > 0 ? 3 : 0 }}>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow sx={{ bgcolor: 'grey.50' }}>
+                      <TableCell sx={{ fontWeight: 700 }}>Product Name</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Quantity</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }} align="right">Incentive / Sale</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {incentiveRules.products.filter((p) => p.active !== false).flatMap((product) =>
+                      (product.rules || []).map((rule, idx) => (
+                        <TableRow key={`${product.name}-${idx}`} hover>
+                          {idx === 0 ? (
+                            <TableCell
+                              rowSpan={product.rules.length}
+                              sx={{ fontWeight: 700, verticalAlign: 'top', borderRight: '1px solid', borderColor: 'divider', whiteSpace: 'nowrap' }}
+                            >
+                              {product.name}
+                            </TableCell>
+                          ) : null}
+                          <TableCell sx={{ color: 'text.secondary' }}>
+                            {rule.min_qty != null || rule.max_qty != null
+                              ? `${rule.min_qty != null ? Number(rule.min_qty).toLocaleString('en-IN') : '0'} – ${rule.max_qty != null ? Number(rule.max_qty).toLocaleString('en-IN') : '∞'}`
+                              : rule.max_price != null
+                              ? `Price ≤ ₹${Number(rule.max_price).toLocaleString('en-IN')}`
+                              : 'Any'}
+                          </TableCell>
+                          <TableCell align="right" sx={{ fontWeight: 700, color: 'success.main', whiteSpace: 'nowrap' }}>
+                            {rule.flat != null && rule.percent_of_price != null
+                              ? `₹${rule.flat} + ${(rule.percent_of_price * 100).toFixed(0)}% of price`
+                              : rule.flat != null
+                              ? `₹${rule.flat}`
+                              : rule.percent_of_price != null
+                              ? `${(rule.percent_of_price * 100).toFixed(0)}% of price`
+                              : '—'}
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            ) : null}
+
+            {/* Salary tier table */}
+            {salaryTiers.length > 0 ? (
+              <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2 }}>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow sx={{ bgcolor: 'grey.50' }}>
+                      <TableCell sx={{ fontWeight: 700 }}>#</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Min Sales Total (₹)</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }} align="right">Total Salary (₹)</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }} align="center">Status</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {salaryTiers.map((tier, idx) => {
+                      const minSales = Number(tier.min_sales_amount);
+                      const isCurrent = perfInfo?.tier_applied != null &&
+                        Number(perfInfo.tier_applied.min_sales_amount) === minSales;
+                      const achieved = perfSales >= minSales;
+                      return (
+                        <TableRow
+                          key={idx}
+                          sx={{ bgcolor: isCurrent ? 'success.50' : 'inherit' }}
+                        >
+                          <TableCell>{idx + 1}</TableCell>
+                          <TableCell sx={{ fontWeight: 600 }}>₹{minSales.toLocaleString('en-IN')}</TableCell>
+                          <TableCell align="right" sx={{ fontWeight: 700, color: isCurrent ? 'success.main' : 'text.primary' }}>
+                            ₹{Number(tier.target_total_salary).toLocaleString('en-IN')}
+                          </TableCell>
+                          <TableCell align="center">
+                            {isCurrent ? (
+                              <Chip size="small" label="Current Tier" color="success" />
+                            ) : achieved ? (
+                              <Chip size="small" label="Achieved" color="info" variant="outlined" />
+                            ) : (
+                              <Chip size="small" label={`₹${Math.max(0, minSales - perfSales).toLocaleString('en-IN')} away`} variant="outlined" />
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            ) : null}
+          </CardContent>
+        </Card>
+      ) : null}
 
       {/* Leave Balance */}
       <Grid container spacing={3} sx={{ mb: 4 }}>

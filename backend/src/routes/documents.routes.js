@@ -75,11 +75,13 @@ router.post('/', authenticate, authorize('company_admin', 'super_admin'), tenant
       .join('') || 'COMP';
 
     const joiningDate = employee.joining_date ? new Date(employee.joining_date) : new Date();
-    const joiningDateCode = Number.isNaN(joiningDate.getTime())
-      ? new Date().toISOString().split('T')[0].replace(/-/g, '')
-      : joiningDate.toISOString().split('T')[0].replace(/-/g, '');
+    const joiningYear = Number.isNaN(joiningDate.getTime())
+      ? new Date().getFullYear()
+      : joiningDate.getFullYear();
 
-    const serialNumber = `${companyCode}/${joiningDateCode}${employee.employee_code}`;
+    const employeeNumber = String(employee.employee_code || '').replace(/^[^0-9]*/, '') || employee.employee_code || '';
+
+    const serialNumber = `${companyCode}/${joiningYear}/${employeeNumber}`;
 
     // Replace placeholders in content
     let finalContent = content

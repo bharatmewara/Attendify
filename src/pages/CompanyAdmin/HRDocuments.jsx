@@ -187,7 +187,7 @@ useEffect(() => {
       title: document.title,
       employeeName: employee ? `${employee.first_name} ${employee.last_name}` : '',
       companyName: companyData?.company_name || 'Attendify',
-      companyLogo: companyData?.logo ? `${apiOrigin}${companyData.logo}` : null,
+      companyLogo: companyData?.logo ? (companyData.logo.startsWith('http') ? companyData.logo : `${apiOrigin}${companyData.logo}`) : null,
       companyAddress: companyData?.address || '',
       companyPhone: companyData?.phone || '',
       companyTel: companyData?.tel_no || '',

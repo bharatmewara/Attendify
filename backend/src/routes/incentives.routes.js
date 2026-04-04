@@ -217,15 +217,11 @@ const calculateCompanyIncentiveAmount = async ({
 router.get(
   '/rules',
   authenticate,
-  authorize('company_admin', 'super_admin'),
-  tenantIsolation,
-  requireCompanyContext,
   async (req, res) => {
     try {
-      const config = await getCompanyIncentiveRulesConfig(req.companyId);
-      if (config) {
-        return res.json({ source: 'db', config });
-      }
+      const companyId = req.user.company_id || req.auth?.companyId || null;
+      const config = companyId ? await getCompanyIncentiveRulesConfig(Number(companyId)) : null;
+      if (config) return res.json({ source: 'db', config });
       return res.json({ source: 'default', config: defaultIncentiveRulesConfigV1() });
     } catch (error) {
       return res.status(500).json({ message: error.message });
