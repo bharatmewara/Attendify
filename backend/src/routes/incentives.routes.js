@@ -26,6 +26,8 @@ const toUploadsRelativePath = (file) => {
   return path.posix.join('uploads', 'incentives', file.filename);
 };
 
+const capitalize = (s) => s ? String(s).charAt(0).toUpperCase() + String(s).slice(1) : 'N/A';
+
 const GST_RATE = 0.18;
 
 const normalizeBoolean = (value) => {
@@ -564,7 +566,7 @@ router.post(
               `Employee: ${employee.first_name} ${employee.last_name} (${employee.employee_email})\n` +
               `Client: ${submission.client_name}\n` +
               `Product: ${submission.product_name}\n` +
-              `Type: ${submission.package_type}\n` +
+              `Type: ${capitalize(submission.package_type)}\n` +
               `Quantity: ${submission.sms_quantity ?? 'N/A'}\n` +
               `Rate: ${submission.rate ?? 'N/A'}\n` +
               `Price (excl GST): ${submission.price ?? 'N/A'}\n` +
@@ -585,7 +587,7 @@ router.post(
                   title: 'Incentive Details',
                   rows: [
                     { label: 'Product', value: submission.product_name },
-                    { label: 'Type', value: submission.package_type },
+                    { label: 'Type', value: capitalize(submission.package_type) },
                     { label: 'SMS Quantity', value: submission.sms_quantity ?? 'N/A' },
                     { label: 'Rate', value: submission.rate ?? 'N/A' },
                     { label: 'Price (excl GST)', htmlValue: `₹ ${fmtMoney(net)}` },
@@ -1866,7 +1868,7 @@ router.put(
           `Status: ${updated.status}\n` +
           `Client: ${updated.client_name ?? 'N/A'}\n` +
           `Product: ${updated.product_name ?? 'N/A'}\n` +
-          `Type: ${updated.package_type ?? 'N/A'}\n` +
+          `Type: ${capitalize(updated.package_type)}\n` +
           `Price (excl GST): ${updated.price ?? 'N/A'}\n` +
           (updated.gst_applied && updated.price_gross ? `Price (incl GST): ${updated.price_gross}\n` : '') +
           `Incentive: ${updated.incentive_amount ?? 'N/A'}\n\n` +
@@ -1896,7 +1898,7 @@ router.put(
                 { label: 'Status', value: updated.status },
                 { label: 'Client', value: updated.client_name ?? 'N/A' },
                 { label: 'Product', value: updated.product_name ?? 'N/A' },
-                { label: 'Type', value: updated.package_type ?? 'N/A' },
+                { label: 'Type', value: capitalize(updated.package_type) },
                 { label: 'SMS Quantity', value: updated.sms_quantity ?? 'N/A' },
                 { label: 'Price (excl GST)', htmlValue: `₹ ${fmtMoney(net)}` },
                 { label: 'GST (18%)', htmlValue: gstAmount !== null ? `₹ ${fmtMoney(gstAmount)}` : 'N/A' },

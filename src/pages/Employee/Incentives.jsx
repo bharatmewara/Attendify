@@ -338,7 +338,7 @@ export default function EmployeeIncentives() {
       </Stack>
 
       <Dialog open={openRequestDialog} onClose={() => setOpenRequestDialog(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Submit Incentive Request</DialogTitle>
+        <DialogTitle>Today Status</DialogTitle>
         <DialogContent>
           {officeOnlyBlocked ? (
             <Alert severity="warning" sx={{ mt: 2 }}>

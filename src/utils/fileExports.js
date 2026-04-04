@@ -119,6 +119,21 @@ export const buildPayslipHtml = ({ payroll, employee, companyName, template = {}
 </html>`;
 };
 
+export const fetchImageAsDataUrl = async (url) => {
+  try {
+    const res = await fetch(url);
+    const blob = await res.blob();
+    return await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
+};
+
 export const buildDocumentHtml = ({
   title,
   employeeName,
@@ -129,6 +144,7 @@ export const buildDocumentHtml = ({
   companyTel,
   companyEmail,
   companyWebsite,
+  serialNumber,
   content,
   accentColor = '#1d4ed8',
 }) => `<!doctype html>
@@ -141,8 +157,9 @@ export const buildDocumentHtml = ({
       .frame { max-width: 900px; margin: 0 auto; border: 1px solid #dbeafe; border-radius: 18px; overflow: hidden; }
       .head { background: linear-gradient(135deg, ${accentColor}, #0f172a); color: white; padding: 28px; }
       .head-top { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
-      .logo { height: 60px; width: auto; vertical-align: middle; }
+      .logo { height: 60px; width: auto; vertical-align: middle; display: block; }
       .org { text-align: right; font-size: 12px; line-height: 1.5; opacity: 0.95; }
+      .serial { font-size: 11px; opacity: 0.75; margin-top: 4px; text-align: right; }
       .content { padding: 32px; white-space: pre-wrap; line-height: 1.7; }
       .meta { font-size: 13px; opacity: 0.8; margin-top: 6px; }
       .footer { border-top: 1px solid #e5e7eb; padding: 18px 32px 24px; background: #f8fafc; font-size: 12px; color: #475569; }
@@ -154,7 +171,7 @@ export const buildDocumentHtml = ({
       <div class="head">
         <div class="head-top">
           <div>
-            ${companyLogo ? `<img src="${companyLogo}" class="logo" alt="${companyName}">` : ''}
+            ${companyLogo ? `<img src="${companyLogo}" class="logo" alt="${companyName}">` : `<div style="font-size:20px;font-weight:900;">${companyName || ''}</div>`}
           </div>
           <div class="org">
             ${companyAddress ? `<div>${companyAddress}</div>` : ''}
@@ -162,6 +179,7 @@ export const buildDocumentHtml = ({
             ${companyTel ? `<div>Tel: ${companyTel}</div>` : ''}
             ${companyEmail ? `<div>Email: ${companyEmail}</div>` : ''}
             ${companyWebsite ? `<div>Web: ${companyWebsite}</div>` : ''}
+            ${serialNumber ? `<div class="serial">Serial No: ${serialNumber}</div>` : ''}
           </div>
         </div>
         <h1>${title}</h1>

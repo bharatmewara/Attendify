@@ -17,14 +17,14 @@ import {
   Typography,
 } from '@mui/material';
 import { API_BASE_URL, apiRequest } from '../../lib/api';
-import { buildDocumentHtml } from '../../utils/fileExports';
+import { buildDocumentHtml, fetchImageAsDataUrl } from '../../utils/fileExports';
 
 export default function EmployeeDocuments() {
   const [documents, setDocuments] = useState([]);
   const [company, setCompany] = useState(null);
   const [message, setMessage] = useState({ type: '', text: '' });
 
-  const handleOpenDocument = (doc) => {
+  const handleOpenDocument = async (doc) => {
     if (!doc) return;
     if (doc.document_url && /^https?:\/\//i.test(doc.document_url)) {
       window.open(doc.document_url, '_blank', 'noopener,noreferrer');
@@ -34,11 +34,15 @@ export default function EmployeeDocuments() {
     // Fallback for generated docs: render stored content as branded HTML in a new tab.
     if (doc.content) {
       const apiOrigin = API_BASE_URL.replace(/\/api$/, '');
+      const rawLogo = company?.logo
+        ? (company.logo.startsWith('http') ? company.logo : `${apiOrigin}${company.logo}`)
+        : null;
+      const logoDataUrl = rawLogo ? await fetchImageAsDataUrl(rawLogo) : null;
       const html = buildDocumentHtml({
         title: doc.title || 'Document',
         employeeName: '',
         companyName: company?.company_name || 'Attendify',
-companyLogo: company?.logo ? (company.logo.startsWith('http') ? company.logo : `${apiOrigin}${company.logo}`) : null,
+        companyLogo: logoDataUrl,
         companyAddress: company?.address || '',
         companyPhone: company?.phone || '',
         companyTel: company?.tel_no || '',

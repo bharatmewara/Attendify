@@ -22,8 +22,9 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import { Close, Visibility } from '@mui/icons-material';
+import { Close, Visibility, Download } from '@mui/icons-material';
 import { API_BASE_URL, apiRequest } from '../../lib/api';
+import { exportRowsToCsv } from '../../utils/fileExports';
 
 
 const uploadsBaseUrl = API_BASE_URL.replace(/\/api\/?$/, '');
@@ -113,6 +114,32 @@ export default function ClientsManagement() {
     loadClients('', '', '');
   }, []);
 
+  const handleExportCsv = () => {
+    const filename = `clients${dateFrom ? `_${dateFrom}` : ''}${dateTo ? `_to_${dateTo}` : ''}.csv`;
+    exportRowsToCsv(clients, [
+      { label: 'Client Name', value: 'client_name' },
+      { label: 'Product', value: (r) => r.last_product || r.product_name || '' },
+      { label: 'SMS Qty', value: (r) => r.last_sms_quantity ?? r.sms_quantity ?? '' },
+      { label: 'Price (excl GST)', value: (r) => r.last_price_ex_gst ?? '' },
+      { label: 'GST Amount', value: (r) => r.last_gst_amount ?? '' },
+      { label: 'Amount Received (incl GST)', value: (r) => r.last_amount_received ?? '' },
+      { label: 'Payment Mode', value: (r) => r.last_payment_mode || '' },
+      { label: 'Mobile 1', value: 'client_mobile_1' },
+      { label: 'Mobile 2', value: 'client_mobile_2' },
+      { label: 'Email', value: 'client_email' },
+      { label: 'Panel Username', value: 'client_panel_username' },
+      { label: 'Panel Password', value: 'client_panel_password' },
+      { label: 'Location', value: (r) => r.last_location || '' },
+      { label: 'Employee', value: (r) => r.first_name ? `${r.first_name} ${r.last_name}` : '' },
+      { label: 'Employee Code', value: 'employee_code' },
+      { label: 'Total Received (incl GST)', value: (r) => r.total_received ?? r.total_sales ?? 0 },
+      { label: 'Total GST', value: (r) => r.total_gst_amount ?? 0 },
+      { label: 'Approved', value: (r) => r.approved_count ?? 0 },
+      { label: 'Total Submissions', value: (r) => r.submissions_count ?? 0 },
+      { label: 'Last Approved', value: (r) => r.last_approved_at ? new Date(r.last_approved_at).toLocaleDateString() : '' },
+    ], filename);
+  };
+
   const openClient = (client) => {
     setSelectedClient(client);
     setClientDialogOpen(true);
@@ -143,63 +170,31 @@ export default function ClientsManagement() {
               <Typography color="text.secondary">Clients secured through incentive submissions.</Typography>
             </Box>
 
-            <Stack spacing={1.25} sx={{ minWidth: { md: 620 } }}>
+            <Button variant="outlined" color="success" startIcon={<Download />} onClick={handleExportCsv} disabled={clients.length === 0} sx={{ whiteSpace: 'nowrap', alignSelf: 'center' }}>
+              Export CSV
+            </Button>
+          </Stack>
 
-              <Stack direction="row" spacing={1} flexWrap="wrap">
-                {[
-                  { label: 'Today', value: 'today' },
-                  { label: 'This Week', value: 'week' },
-                  { label: 'This Month', value: 'month' },
-                  { label: 'Last Month', value: 'last_month' },
-                  { label: 'This Quarter', value: 'quarter' },
-                  { label: 'This Year', value: 'year' },
-                ].map((r) => (
-                  <Chip
-                    key={r.value}
-                    label={r.label}
-                    onClick={() => applyQuickRange(r.value)}
-                    color="primary"
-                    variant="outlined"
-                    size="small"
-                    sx={{ cursor: 'pointer' }}
-                  />
-                ))}
-              </Stack>
+          <Stack spacing={1.25} sx={{ mt: 2 }}>
+            <Stack direction="row" spacing={1} flexWrap="wrap">
+              {[
+                { label: 'Today', value: 'today' },
+                { label: 'This Week', value: 'week' },
+                { label: 'This Month', value: 'month' },
+                { label: 'Last Month', value: 'last_month' },
+                { label: 'This Quarter', value: 'quarter' },
+                { label: 'This Year', value: 'year' },
+              ].map((r) => (
+                <Chip key={r.value} label={r.label} onClick={() => applyQuickRange(r.value)} color="primary" variant="outlined" size="small" sx={{ cursor: 'pointer' }} />
+              ))}
+            </Stack>
 
-              {/* Date Range + Search */}
-              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25} alignItems={{ xs: 'stretch', sm: 'center' }}>
-                <TextField
-                  size="small"
-                  label="From Date"
-                  type="date"
-                  InputLabelProps={{ shrink: true }}
-                  value={dateFrom}
-                  onChange={(e) => setDateFrom(e.target.value)}
-                  sx={{ minWidth: 150 }}
-                />
-                <TextField
-                  size="small"
-                  label="To Date"
-                  type="date"
-                  InputLabelProps={{ shrink: true }}
-                  value={dateTo}
-                  onChange={(e) => setDateTo(e.target.value)}
-                  sx={{ minWidth: 150 }}
-                />
-                <TextField
-                  size="small"
-                  label="Search (name/mobile/email)"
-                  value={clientQuery}
-                  onChange={(e) => setClientQuery(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && loadClients()}
-                  sx={{ flexGrow: 1, minWidth: 220 }}
-                />
-                <Button variant="contained" onClick={() => loadClients()} disabled={clientsLoading} sx={{ whiteSpace: 'nowrap' }}>
-                  Search
-                </Button>
-                <Button variant="outlined" onClick={handleReset} disabled={clientsLoading}>
-                  Reset
-                </Button>
+              <Stack direction="row" spacing={1.25} alignItems="center" flexWrap="wrap" useFlexGap>
+                <TextField size="small" label="From Date" type="date" InputLabelProps={{ shrink: true }} value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} sx={{ width: 160 }} />
+                <TextField size="small" label="To Date" type="date" InputLabelProps={{ shrink: true }} value={dateTo} onChange={(e) => setDateTo(e.target.value)} sx={{ width: 160 }} />
+                <TextField size="small" label="Search (name/mobile/email)" value={clientQuery} onChange={(e) => setClientQuery(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && loadClients()} sx={{ width: 240 }} />
+                <Button variant="contained" onClick={() => loadClients()} disabled={clientsLoading} sx={{ whiteSpace: 'nowrap' }}>Search</Button>
+                <Button variant="outlined" onClick={handleReset} disabled={clientsLoading}>Reset</Button>
               </Stack>
 
               {(dateFrom || dateTo) && (
@@ -209,7 +204,6 @@ export default function ClientsManagement() {
                 </Typography>
               )}
             </Stack>
-          </Stack>
 
           <TableContainer component={Paper} variant="outlined" sx={{ mt: 2 }}>
             <Table size="small">

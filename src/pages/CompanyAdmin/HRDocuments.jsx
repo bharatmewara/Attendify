@@ -31,7 +31,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useRef } from 'react';
 import { Add, Download } from '@mui/icons-material';
 import { API_BASE_URL, apiRequest } from '../../lib/api';
-import { buildDocumentHtml, downloadBlob } from '../../utils/fileExports';
+import { buildDocumentHtml, downloadBlob, fetchImageAsDataUrl } from '../../utils/fileExports';
 
 const initialForm = {
   employee_id: '',
@@ -183,16 +183,28 @@ useEffect(() => {
       }
     }
     const apiOrigin = API_BASE_URL.replace(/\/api$/, '');
+    const rawLogo = companyData?.logo
+      ? (companyData.logo.startsWith('http') ? companyData.logo : `${apiOrigin}${companyData.logo}`)
+      : null;
+    const logoDataUrl = rawLogo ? await fetchImageAsDataUrl(rawLogo) : null;
+
+    const companyCode = String(companyData?.company_name || '')
+      .split(/\s+/).filter(Boolean).map((w) => (w[0] || '').toUpperCase()).join('') || 'COMP';
+    const joiningYear = employee?.joining_date ? new Date(employee.joining_date).getFullYear() : new Date().getFullYear();
+    const empNumber = String(employee?.employee_code || '').replace(/^[^0-9]*/, '') || employee?.employee_code || '';
+    const serialNumber = `${companyCode}/${joiningYear}/${empNumber}`;
+
     const html = buildDocumentHtml({
       title: document.title,
       employeeName: employee ? `${employee.first_name} ${employee.last_name}` : '',
       companyName: companyData?.company_name || 'Attendify',
-      companyLogo: companyData?.logo ? (companyData.logo.startsWith('http') ? companyData.logo : `${apiOrigin}${companyData.logo}`) : null,
+      companyLogo: logoDataUrl,
       companyAddress: companyData?.address || '',
       companyPhone: companyData?.phone || '',
       companyTel: companyData?.tel_no || '',
       companyEmail: companyData?.email || '',
       companyWebsite: companyData?.website || '',
+      serialNumber,
       content: document.content,
     });
     downloadBlob(html, `${document.document_type}-${document.id}.html`, 'text/html;charset=utf-8');
