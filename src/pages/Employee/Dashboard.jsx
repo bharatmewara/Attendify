@@ -21,6 +21,8 @@ import {
   TableRow,
   Typography,
   Snackbar,
+  TextField,
+  MenuItem
 } from '@mui/material';
 import { ArrowForward, Bolt, EventAvailable, TrendingUp } from '@mui/icons-material';
 import { apiRequest } from '../../lib/api';
@@ -54,6 +56,8 @@ export default function EmployeeDashboard() {
   const [mySubmissions, setMySubmissions] = useState([]);
   const [incentiveRules, setIncentiveRules] = useState(null);
   const [salaryTiers, setSalaryTiers] = useState([]);
+  const [selectedProductRules, setSelectedProductRules] = useState('');
+  const [selectedProductSales, setSelectedProductSales] = useState('');
   
   const fetchTodayAttendance = async () => {
     try {
@@ -484,6 +488,19 @@ export default function EmployeeDashboard() {
                     <Typography fontWeight={800}>Approved Sales (This Month)</Typography>
                     <Chip size="small" label={`Incentives: ${perfIncentives.toFixed(2)}`} color="success" />
                   </Stack>
+                  <TextField 
+                    select 
+                    label="Filter Product" 
+                    value={selectedProductSales} 
+                    onChange={(e) => setSelectedProductSales(e.target.value)}
+                    size="small" 
+                    sx={{ mt: 1, mb: 2, minWidth: 200 }}
+                  >
+                    <MenuItem value="">All Products</MenuItem>
+                    {[...new Set(perfDetails.map(d => d.product_name).filter(Boolean))].map(p => (
+                      <MenuItem key={p} value={p}>{p}</MenuItem>
+                    ))}
+                  </TextField>
                 </Box>
                 <Divider />
                 <TableContainer sx={{ maxHeight: 320 }}>
@@ -503,7 +520,7 @@ export default function EmployeeDashboard() {
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {perfDetails.slice(0, 8).map((row) => (
+                      {(perfDetails.filter(row => !selectedProductSales || row.product_name === selectedProductSales).slice(0, 8) || []).map((row) => (
                         <TableRow key={row.id}>
                           <TableCell sx={{ maxWidth: 240, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{row.client_name || '—'}</TableCell>
                           <TableCell sx={{ whiteSpace: 'nowrap' }}>{row.product_name || '—'}</TableCell>
@@ -551,6 +568,19 @@ export default function EmployeeDashboard() {
             <Typography color="text.secondary" sx={{ mb: 2 }}>
               Per-sale incentive by product &amp; quantity. Reach a Min Sales Total to unlock the corresponding salary tier.
             </Typography>
+            <TextField 
+              select 
+              label="Filter Product" 
+              value={selectedProductRules} 
+              onChange={(e) => setSelectedProductRules(e.target.value)}
+              size="small" 
+              sx={{ mb: 2, minWidth: 200 }}
+            >
+              <MenuItem value="">All Products</MenuItem>
+              {incentiveRules?.products?.filter(p => p.active !== false).map(p => (
+                <MenuItem key={p.name} value={p.name}>{p.name}</MenuItem>
+              ))}
+            </TextField>
 
             {/* Product incentive rules */}
             {incentiveRules && Array.isArray(incentiveRules.products) ? (
@@ -564,7 +594,7 @@ export default function EmployeeDashboard() {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {incentiveRules.products.filter((p) => p.active !== false).flatMap((product) =>
+                    {(incentiveRules?.products?.filter(p => p.active !== false).filter(p => !selectedProductRules || p.name === selectedProductRules) || []).flatMap((product) =>
                       (product.rules || []).map((rule, idx) => (
                         <TableRow key={`${product.name}-${idx}`} hover>
                           {idx === 0 ? (

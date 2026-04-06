@@ -51,6 +51,7 @@ const requestInitial = {
   package_type: 'new',
   client_location: '',
   screenshot: null,
+  kyc_file: null,
 };
 
 const fallbackProductOptions = [
@@ -144,8 +145,12 @@ export default function EmployeeIncentives() {
     && requestForm.rate !== ''
     && Number(requestForm.rate) >= 1;
 
-  const handleFileChange = (e) => {
+  const handleScreenshotChange = (e) => {
     setRequestForm({ ...requestForm, screenshot: e.target.files[0] });
+  };
+
+  const handleKycChange = (e) => {
+    setRequestForm({ ...requestForm, kyc_file: e.target.files[0] });
   };
 
   const openEdit = (row) => {
@@ -171,6 +176,10 @@ export default function EmployeeIncentives() {
     setEditOpen(true);
   };
 
+  const handleEditKycChange = (e) => {
+    // KYC re-upload in edit not supported for simplicity; use admin update for KYC changes
+  };
+
   const closeEdit = () => {
     setEditOpen(false);
     setEditForm(null);
@@ -179,8 +188,8 @@ export default function EmployeeIncentives() {
 
   const editRateInvalid = editForm
     ? ['Bulk SMS', 'WhatsApp SMS'].includes(editForm.product_name)
-      && editForm.rate !== ''
-      && Number(editForm.rate) >= 1
+    && editForm.rate !== ''
+    && Number(editForm.rate) >= 1
     : false;
 
   const handleEditFileChange = (e) => {
@@ -239,15 +248,15 @@ export default function EmployeeIncentives() {
     }
 
     const formData = new FormData();
-    Object.keys(requestForm).forEach((key) => {
-      const value = requestForm[key];
-      if (key === 'screenshot') {
-        if (requestForm.screenshot) formData.append('screenshot', requestForm.screenshot);
-        return;
-      }
-      if (value === '' || value === null || value === undefined) return;
-      formData.append(key, value);
-    });
+      Object.keys(requestForm).forEach((key) => {
+        const value = requestForm[key];
+        if (['screenshot', 'kyc_file'].includes(key)) {
+          if (requestForm[key]) formData.append(key, requestForm[key]);
+          return;
+        }
+        if (value === '' || value === null || value === undefined) return;
+        formData.append(key, value);
+      });
 
     try {
       await apiRequest('/incentives/submissions', {
@@ -278,7 +287,7 @@ export default function EmployeeIncentives() {
                 <Typography color="text.secondary">Submit incentive sales requests and track approval status.</Typography>
               </Box>
               <Button variant="contained" startIcon={<Add />} onClick={() => setOpenRequestDialog(true)} disabled={officeOnlyBlocked}>
-                Submit Incentive Request
+                Today Status
               </Button>
             </Stack>
           </CardContent>
@@ -351,9 +360,9 @@ export default function EmployeeIncentives() {
           <TextField fullWidth required label="Client Email" margin="normal" value={requestForm.client_email} onChange={(e) => setRequestForm({ ...requestForm, client_email: e.target.value })} />
           <TextField fullWidth label="Client Panel Username" margin="normal" value={requestForm.client_panel_username} onChange={(e) => setRequestForm({ ...requestForm, client_panel_username: e.target.value })} />
           <TextField fullWidth label="Client Panel Password" margin="normal" value={requestForm.client_panel_password} onChange={(e) => setRequestForm({ ...requestForm, client_panel_password: e.target.value })} />
-           <TextField fullWidth select label="Product Name" margin="normal" value={requestForm.product_name} onChange={(e) => setRequestForm({ ...requestForm, product_name: e.target.value })}>
-             {productOptions.map(option => <MenuItem key={option} value={option}>{option}</MenuItem>)}
-           </TextField>
+          <TextField fullWidth select label="Product Name" margin="normal" value={requestForm.product_name} onChange={(e) => setRequestForm({ ...requestForm, product_name: e.target.value })}>
+            {productOptions.map(option => <MenuItem key={option} value={option}>{option}</MenuItem>)}
+          </TextField>
 
           <Alert severity="info" sx={{ mt: 1 }}>
             Incentive is calculated automatically based on admin rules.
@@ -423,7 +432,7 @@ export default function EmployeeIncentives() {
           ) : (
             <TextField fullWidth label="Price" type="number" margin="normal" value={requestForm.price} onChange={(e) => setRequestForm({ ...requestForm, price: e.target.value })} />
           )}
-          
+
           {calculatedIncentive > 0 && (
             <Box sx={{ mt: 2, p: 2, bgcolor: 'success.light', borderRadius: 1 }}>
               <Typography variant="subtitle2" fontWeight={600} color="success.contrastText">
@@ -431,7 +440,19 @@ export default function EmployeeIncentives() {
               </Typography>
             </Box>
           )}
-          <TextField fullWidth label="Payment Mode" margin="normal" value={requestForm.payment_mode} onChange={(e) => setRequestForm({ ...requestForm, payment_mode: e.target.value })} />
+          <TextField
+            fullWidth
+            select
+            label="Payment Mode"
+            margin="normal"
+            value={requestForm.payment_mode}
+            onChange={(e) =>
+              setRequestForm({ ...requestForm, payment_mode: e.target.value })
+            }
+          >
+            <MenuItem value="Current">Current</MenuItem>
+            <MenuItem value="Saving">Saving</MenuItem>
+          </TextField>
           <TextField
             fullWidth
             select
@@ -453,12 +474,18 @@ export default function EmployeeIncentives() {
             <MenuItem value="renew">Renew</MenuItem>
           </TextField>
           <TextField fullWidth label="Client Location" margin="normal" value={requestForm.client_location} onChange={(e) => setRequestForm({ ...requestForm, client_location: e.target.value })} />
-          
+
           <Button component="label" variant="outlined" startIcon={<UploadFile />} sx={{ mt: 1 }}>
-            Upload Screenshot
-            <input type="file" hidden onChange={handleFileChange} />
+            Upload Screenshot *
+            <input type="file" hidden accept="image/*" onChange={handleScreenshotChange} />
           </Button>
           {requestForm.screenshot && <Typography variant="body2" sx={{ mt: 1 }}>{requestForm.screenshot.name}</Typography>}
+
+          <Button component="label" variant="outlined" startIcon={<UploadFile />} sx={{ mt: 1 }}>
+            Upload KYC Document (PDF/Image)
+            <input type="file" hidden accept="image/*,.pdf" onChange={handleKycChange} />
+          </Button>
+          {requestForm.kyc_file && <Typography variant="body2" sx={{ mt: 1 }}>{requestForm.kyc_file.name}</Typography>}
 
         </DialogContent>
         <DialogActions>

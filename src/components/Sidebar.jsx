@@ -78,7 +78,7 @@ const Sidebar = ({ mobileOpen, onClose, companyProfile }) => {
   const content = (
     <Box sx={{ height: '100%', bgcolor: '#0F172A', color: '#E2E8F0', display: 'flex', flexDirection: 'column', overflow: 'auto' }}>
       <Stack spacing={0.5} sx={{ p: 2, pb: 1, flexShrink: 0 }}>
-        {logoSrc ? <Avatar src={logoSrc} variant="rounded" sx={{ width: 56, height: 56, mb: 0.5 }} /> : null}
+{logoSrc ? <Avatar src={logoSrc} variant="rounded" sx={{ width: 56, height: 56, mb: 0.5, bgcolor: 'white', borderRadius: 1 }} /> : null}
         <Typography fontWeight={800}>{brandName}</Typography>
         <Typography variant="caption" sx={{ color: '#94A3B8' }}>
           {subLabel}

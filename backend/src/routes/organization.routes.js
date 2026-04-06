@@ -181,6 +181,11 @@ router.patch('/companies', authenticate, authorize('company_admin'), tenantIsola
       values.push(logo);
       paramIndex++;
     }
+    if (req.body.letter_accent_color !== undefined) {
+      fields.push(`letter_accent_color = $${paramIndex}`);
+      values.push(req.body.letter_accent_color);
+      paramIndex++;
+    }
 
     if (fields.length === 0) {
       return res.status(400).json({ message: 'No fields to update' });

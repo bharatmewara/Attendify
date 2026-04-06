@@ -206,6 +206,7 @@ useEffect(() => {
       companyWebsite: companyData?.website || '',
       serialNumber,
       content: document.content,
+      letterAccentColor: companyData?.letter_accent_color || companyData?.accent_color || '#1d4ed8',
     });
     downloadBlob(html, `${document.document_type}-${document.id}.html`, 'text/html;charset=utf-8');
   };

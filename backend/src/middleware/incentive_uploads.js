@@ -36,4 +36,30 @@ const uploadIncentiveScreenshot = multer({
   }
 });
 
+const kycStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, path.join(uploadsDir, 'kyc'));
+  },
+  filename: (req, file, cb) => {
+    const uniqueName = Date.now() + '-' + Math.round(Math.random() * 1E9) + path.extname(file.originalname);
+    cb(null, uniqueName);
+  }
+});
+
+const uploadKyc = multer({ 
+  storage: kycStorage,
+  limits: { 
+    fileSize: 10 * 1024 * 1024 // 10MB
+  },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype === 'application/pdf' || file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only PDF and images allowed for KYC'));
+    }
+  }
+});
+
+export { uploadIncentiveScreenshot, uploadKyc };
+
 export { uploadIncentiveScreenshot };

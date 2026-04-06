@@ -1,9 +1,9 @@
-﻿import express from 'express';
+import express from 'express';
 import path from 'path';
 import { query } from '../db.js';
 import { authenticate, authorize, requireCompanyContext, tenantIsolation } from '../middleware/auth.middleware.js';
 import { enforceOfficePunchIpForEmployee } from '../middleware/networkPolicy.js';
-import { uploadIncentiveScreenshot } from '../middleware/incentive_uploads.js';
+import { uploadIncentiveScreenshot, uploadKyc } from '../middleware/incentive_uploads.js';
 import { sendEmail } from '../utils/email.js';
 import {
   calculateIncentiveFromRules,
@@ -402,7 +402,9 @@ router.post(
   authorize('employee'),
   tenantIsolation,
   enforceOfficePunchIpForEmployee,
+
   uploadIncentiveScreenshot.single('screenshot'),
+  uploadKyc.single('kyc_file'),
   async (req, res) => {
     const {
       client_name,
@@ -486,9 +488,10 @@ router.post(
             package_type,
             client_location,
             incentive_amount,
-            screenshot_path
+            screenshot_path,
+            kyc_path
           )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
          RETURNING *`,
         [
           req.companyId,
@@ -511,6 +514,7 @@ router.post(
           client_location || null,
           incentive_amount,
           screenshot_path,
+          req.kyc_file ? toUploadsRelativePath(req.kyc_file) : null,
         ],
       );
 
@@ -590,11 +594,11 @@ router.post(
                     { label: 'Type', value: capitalize(submission.package_type) },
                     { label: 'SMS Quantity', value: submission.sms_quantity ?? 'N/A' },
                     { label: 'Rate', value: submission.rate ?? 'N/A' },
-                    { label: 'Price (excl GST)', htmlValue: `₹ ${fmtMoney(net)}` },
-                    { label: 'GST (18%)', htmlValue: gstAmount !== null ? `₹ ${fmtMoney(gstAmount)}` : 'N/A' },
-                    { label: 'Amount Received (incl GST)', htmlValue: amountReceived !== null ? `₹ ${fmtMoney(amountReceived)}` : 'N/A' },
+                    { label: 'Price (excl GST)', htmlValue: `? ${fmtMoney(net)}` },
+                    { label: 'GST (18%)', htmlValue: gstAmount !== null ? `? ${fmtMoney(gstAmount)}` : 'N/A' },
+                    { label: 'Amount Received (incl GST)', htmlValue: amountReceived !== null ? `? ${fmtMoney(amountReceived)}` : 'N/A' },
                     { label: 'Payment Mode', value: submission.payment_mode ?? 'N/A' },
-                    { label: 'Incentive', htmlValue: `₹ ${fmtMoney(submission.incentive_amount)}` },
+                    { label: 'Incentive', htmlValue: `? ${fmtMoney(submission.incentive_amount)}` },
                   ],
                 },
                 {
@@ -1299,6 +1303,7 @@ router.get(
           r.client_username,
           r.client_panel_username,
           r.client_panel_password,
+          r.rate AS last_rate,
           r.product_name AS last_product,
           r.sms_quantity AS last_sms_quantity,
           r.gst_applied AS last_gst_applied,
@@ -1889,21 +1894,22 @@ router.put(
           : '';
 
         const html = buildEmailHtml({
-          title: `Incentive Status: ${statusLabel}`,
+          title: `Today Status: ${statusLabel}`,
           subtitle: employeeName,
           sections: [
             {
               title: 'Incentive Details',
               rows: [
-                { label: 'Status', value: updated.status },
+                { label: 'Status', value: capitalize(updated.status) },
                 { label: 'Client', value: updated.client_name ?? 'N/A' },
                 { label: 'Product', value: updated.product_name ?? 'N/A' },
                 { label: 'Type', value: capitalize(updated.package_type) },
                 { label: 'SMS Quantity', value: updated.sms_quantity ?? 'N/A' },
-                { label: 'Price (excl GST)', htmlValue: `₹ ${fmtMoney(net)}` },
-                { label: 'GST (18%)', htmlValue: gstAmount !== null ? `₹ ${fmtMoney(gstAmount)}` : 'N/A' },
-                { label: 'Amount Received (incl GST)', htmlValue: amountReceived !== null ? `₹ ${fmtMoney(amountReceived)}` : 'N/A' },
-                { label: 'Incentive', htmlValue: `₹ ${fmtMoney(updated.incentive_amount ?? 'N/A')}` },
+                { label: 'Rate', value: updated.rate != null ? String(updated.rate) : 'N/A' },
+                { label: 'Price (excl GST)', htmlValue: `? ${fmtMoney(net)}` },
+                { label: 'GST (18%)', htmlValue: gstAmount !== null ? `? ${fmtMoney(gstAmount)}` : 'N/A' },
+                { label: 'Amount Received (incl GST)', htmlValue: amountReceived !== null ? `? ${fmtMoney(amountReceived)}` : 'N/A' },
+                { label: 'Incentive', htmlValue: `? ${fmtMoney(updated.incentive_amount ?? 'N/A')}` },
               ],
             },
             {

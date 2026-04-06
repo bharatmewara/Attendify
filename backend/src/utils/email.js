@@ -27,9 +27,28 @@ export const getTransporter = () => {
   return createTransporter();
 };
 
-export const sendEmail = async ({ to, subject, text, html, from }) => {
+export const sendEmail = async ({ to, subject, text, html, from, companyId }) => {
   if (!to) {
     throw new Error('Email "to" address is required');
+  }
+
+  let finalText = text;
+  let finalHtml = html;
+  if (companyId) {
+    try {
+      const companyResult = await query('SELECT company_name, phone FROM companies WHERE id = $1', [companyId]);
+      if (companyResult.rows.length > 0) {
+        const company = companyResult.rows[0];
+        finalText = `${text}\n\nRegards\n${company.company_name}\n${company.phone || 'N/A'}`;
+        finalHtml = `${html}<br><br><div style="margin-top:20px; padding-top:20px; border-top:1px solid #e5e7eb; font-size:14px; color:#6b7280;">
+          <strong>Regards</strong><br>
+          ${company.company_name}<br>
+          ${company.phone || 'N/A'}
+        </div>`;
+      }
+    } catch (dbError) {
+      console.error('Company lookup failed for email footer:', dbError);
+    }
   }
 
   const transport = getTransporter();
@@ -42,8 +61,8 @@ export const sendEmail = async ({ to, subject, text, html, from }) => {
     from: from || config.email.from,
     to,
     subject,
-    text,
-    html,
+    text: finalText,
+    html: finalHtml,
   };
 
   try {

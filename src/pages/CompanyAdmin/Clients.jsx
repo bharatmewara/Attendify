@@ -113,30 +113,27 @@ export default function ClientsManagement() {
   useEffect(() => {
     loadClients('', '', '');
   }, []);
-
   const handleExportCsv = () => {
     const filename = `clients${dateFrom ? `_${dateFrom}` : ''}${dateTo ? `_to_${dateTo}` : ''}.csv`;
     exportRowsToCsv(clients, [
-      { label: 'Client Name', value: 'client_name' },
+      { label: 'Name', value: 'client_name' },
+      { label: 'Mobile no', value: 'client_mobile_1' },
+      { label: 'Mobile no 2', value: 'client_mobile_2' },
+      { label: 'Email', value: 'client_email' },
       { label: 'Product', value: (r) => r.last_product || r.product_name || '' },
       { label: 'SMS Qty', value: (r) => r.last_sms_quantity ?? r.sms_quantity ?? '' },
-      { label: 'Price (excl GST)', value: (r) => r.last_price_ex_gst ?? '' },
-      { label: 'GST Amount', value: (r) => r.last_gst_amount ?? '' },
-      { label: 'Amount Received (incl GST)', value: (r) => r.last_amount_received ?? '' },
-      { label: 'Payment Mode', value: (r) => r.last_payment_mode || '' },
-      { label: 'Mobile 1', value: 'client_mobile_1' },
-      { label: 'Mobile 2', value: 'client_mobile_2' },
-      { label: 'Email', value: 'client_email' },
+      { label: 'Price', value: (r) => r.last_price_ex_gst ?? '' },
+      { label: 'Rate', value: (r) => r.last_rate != null ? r.last_rate : '—' },
+      { label: 'Sales Date', value: (r) => r.last_approved_at || r.last_submitted_at || '' },
+      { label: 'Employee By', value: (r) => r.first_name ? `${r.first_name} ${r.last_name}` : '' },
       { label: 'Panel Username', value: 'client_panel_username' },
       { label: 'Panel Password', value: 'client_panel_password' },
-      { label: 'Location', value: (r) => r.last_location || '' },
-      { label: 'Employee', value: (r) => r.first_name ? `${r.first_name} ${r.last_name}` : '' },
-      { label: 'Employee Code', value: 'employee_code' },
-      { label: 'Total Received (incl GST)', value: (r) => r.total_received ?? r.total_sales ?? 0 },
-      { label: 'Total GST', value: (r) => r.total_gst_amount ?? 0 },
-      { label: 'Approved', value: (r) => r.approved_count ?? 0 },
-      { label: 'Total Submissions', value: (r) => r.submissions_count ?? 0 },
-      { label: 'Last Approved', value: (r) => r.last_approved_at ? new Date(r.last_approved_at).toLocaleDateString() : '' },
+      { label: 'Payment Mode', value: (r) => r.last_payment_mode || '' },
+      { label: 'Employee Client Count', value: (r) => r.submissions_count || '' },
+      { label: 'City', value: (r) => r.last_location || '' },
+      { label: 'GST Amount', value: (r) => r.last_amount_received ?? '' },
+      { label: 'Type', value: (r) => r.package_type || r.last_package_type || r.last_payment_mode || 'N/A' },
+
     ], filename);
   };
 
@@ -189,21 +186,21 @@ export default function ClientsManagement() {
               ))}
             </Stack>
 
-              <Stack direction="row" spacing={1.25} alignItems="center" flexWrap="wrap" useFlexGap>
-                <TextField size="small" label="From Date" type="date" InputLabelProps={{ shrink: true }} value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} sx={{ width: 160 }} />
-                <TextField size="small" label="To Date" type="date" InputLabelProps={{ shrink: true }} value={dateTo} onChange={(e) => setDateTo(e.target.value)} sx={{ width: 160 }} />
-                <TextField size="small" label="Search (name/mobile/email)" value={clientQuery} onChange={(e) => setClientQuery(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && loadClients()} sx={{ width: 240 }} />
-                <Button variant="contained" onClick={() => loadClients()} disabled={clientsLoading} sx={{ whiteSpace: 'nowrap' }}>Search</Button>
-                <Button variant="outlined" onClick={handleReset} disabled={clientsLoading}>Reset</Button>
-              </Stack>
-
-              {(dateFrom || dateTo) && (
-                <Typography variant="caption" color="text.secondary">
-                  Showing: {dateFrom || '...'} {'→'} {dateTo || '...'}
-                  &nbsp;({clients.length} result{clients.length !== 1 ? 's' : ''})
-                </Typography>
-              )}
+            <Stack direction="row" spacing={1.25} alignItems="center" flexWrap="wrap" useFlexGap>
+              <TextField size="small" label="From Date" type="date" InputLabelProps={{ shrink: true }} value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} sx={{ width: 160 }} />
+              <TextField size="small" label="To Date" type="date" InputLabelProps={{ shrink: true }} value={dateTo} onChange={(e) => setDateTo(e.target.value)} sx={{ width: 160 }} />
+              <TextField size="small" label="Search (name/mobile/email)" value={clientQuery} onChange={(e) => setClientQuery(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && loadClients()} sx={{ width: 240 }} />
+              <Button variant="contained" onClick={() => loadClients()} disabled={clientsLoading} sx={{ whiteSpace: 'nowrap' }}>Search</Button>
+              <Button variant="outlined" onClick={handleReset} disabled={clientsLoading}>Reset</Button>
             </Stack>
+
+            {(dateFrom || dateTo) && (
+              <Typography variant="caption" color="text.secondary">
+                Showing: {dateFrom || '...'} {'→'} {dateTo || '...'}
+                &nbsp;({clients.length} result{clients.length !== 1 ? 's' : ''})
+              </Typography>
+            )}
+          </Stack>
 
           <TableContainer component={Paper} variant="outlined" sx={{ mt: 2 }}>
             <Table size="small">
@@ -212,6 +209,7 @@ export default function ClientsManagement() {
                   <TableCell>Client</TableCell>
                   <TableCell>Product</TableCell>
                   <TableCell align="right">SMS Qty</TableCell>
+                  <TableCell align="right">Rate</TableCell>
                   <TableCell align="right">Received (incl GST)</TableCell>
                   <TableCell>Mobile</TableCell>
                   <TableCell>Email</TableCell>
@@ -229,6 +227,7 @@ export default function ClientsManagement() {
                     <TableCell>{row.client_name || 'N/A'}</TableCell>
                     <TableCell sx={{ whiteSpace: 'nowrap' }}>{row.last_product || row.product_name || 'N/A'}</TableCell>
                     <TableCell align="right">{row.last_sms_quantity ?? row.sms_quantity ?? 'N/A'}</TableCell>
+                    <TableCell align="right">{row.last_rate != null ? row.last_rate : '—'}</TableCell>
                     <TableCell align="right">
                       {row.last_amount_received !== null && row.last_amount_received !== undefined
                         ? `${RUPEE}${formatMoney(row.last_amount_received)}`
@@ -258,7 +257,7 @@ export default function ClientsManagement() {
                 ))}
                 {clients.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={12}>
+                    <TableCell colSpan={13}>
                       <Typography variant="body2" color="text.secondary">
                         {clientsLoading ? 'Loading clients...' : 'No clients found.'}
                       </Typography>
