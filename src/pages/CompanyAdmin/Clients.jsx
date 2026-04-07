@@ -129,11 +129,10 @@ export default function ClientsManagement() {
       { label: 'Panel Username', value: 'client_panel_username' },
       { label: 'Panel Password', value: 'client_panel_password' },
       { label: 'Payment Mode', value: (r) => r.last_payment_mode || '' },
+      { label: 'Type', value: (r) => r.last_package_type || '' },
       { label: 'Employee Client Count', value: (r) => r.submissions_count || '' },
       { label: 'City', value: (r) => r.last_location || '' },
       { label: 'GST Amount', value: (r) => r.last_amount_received ?? '' },
-      { label: 'Type', value: (r) => r.package_type || r.last_package_type || r.last_payment_mode || 'N/A' },
-
     ], filename);
   };
 
