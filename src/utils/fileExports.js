@@ -146,7 +146,7 @@ export const buildDocumentHtml = ({
   companyWebsite,
   serialNumber,
   content,
-  accentColor = '#1d4ed8',
+  accentColor = '#9cfffa',
 }) => `<!doctype html>
 <html>
   <head>

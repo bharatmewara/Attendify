@@ -61,5 +61,3 @@ const uploadKyc = multer({
 });
 
 export { uploadIncentiveScreenshot, uploadKyc };
-
-export { uploadIncentiveScreenshot };
