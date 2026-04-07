@@ -18,7 +18,7 @@ export const config = {
     secure: process.env.EMAIL_SECURE === 'true',
     authUser: process.env.EMAIL_USER,
     authPass: process.env.EMAIL_PASS,
-    from: process.env.EMAIL_FROM || process.env.EMAIL_USER || 'no-reply@attendify.app',
+    from: process.env.EMAIL_FROM || '"PrimeClick IT <primeclickit@gmail.com>"',
   },
 };
 
