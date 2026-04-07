@@ -22,7 +22,7 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import { Close, Visibility, Download } from '@mui/icons-material';
+import { Close, Visibility, Download, InsertDriveFile } from '@mui/icons-material';
 import { API_BASE_URL, apiRequest } from '../../lib/api';
 import { exportRowsToCsv } from '../../utils/fileExports';
 
@@ -129,7 +129,8 @@ export default function ClientsManagement() {
       { label: 'Panel Username', value: 'client_panel_username' },
       { label: 'Panel Password', value: 'client_panel_password' },
       { label: 'Payment Mode', value: (r) => r.last_payment_mode || '' },
-      { label: 'Type', value: (r) => r.last_package_type || '' },
+      { label: 'Type', value: (r) => r.last_package_type ? r.last_package_type.charAt(0).toUpperCase() + r.last_package_type.slice(1) : '' },
+      { label: 'KYC Document', value: (r) => r.last_kyc_path ? toScreenshotUrl(r.last_kyc_path) : '' },
       { label: 'Employee Client Count', value: (r) => r.submissions_count || '' },
       { label: 'City', value: (r) => r.last_location || '' },
       { label: 'GST Amount', value: (r) => r.last_amount_received ?? '' },
@@ -217,6 +218,8 @@ export default function ClientsManagement() {
                   <TableCell>Employee</TableCell>
                   <TableCell align="right">Total Received (incl GST)</TableCell>
                   <TableCell>Approved</TableCell>
+                  <TableCell>Type</TableCell>
+                  <TableCell>KYC</TableCell>
                   <TableCell align="right">Actions</TableCell>
                 </TableRow>
               </TableHead>
@@ -247,6 +250,18 @@ export default function ClientsManagement() {
                         size="small"
                       />
                     </TableCell>
+                    <TableCell>
+                      {row.last_package_type ? (
+                        <Chip size="small" label={row.last_package_type.charAt(0).toUpperCase() + row.last_package_type.slice(1)} color={row.last_package_type === 'new' ? 'success' : 'default'} variant="outlined" />
+                      ) : '—'}
+                    </TableCell>
+                    <TableCell>
+                      {row.last_kyc_path ? (
+                        <Button size="small" startIcon={<InsertDriveFile />} onClick={() => window.open(toScreenshotUrl(row.last_kyc_path), '_blank')}>
+                          View
+                        </Button>
+                      ) : <Typography variant="caption" color="text.secondary">—</Typography>}
+                    </TableCell>
                     <TableCell align="right">
                       <Button size="small" variant="text" onClick={() => openClient(row)}>
                         View Details
@@ -256,7 +271,7 @@ export default function ClientsManagement() {
                 ))}
                 {clients.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={13}>
+                    <TableCell colSpan={15}>
                       <Typography variant="body2" color="text.secondary">
                         {clientsLoading ? 'Loading clients...' : 'No clients found.'}
                       </Typography>
@@ -295,6 +310,32 @@ export default function ClientsManagement() {
                   <Typography><strong>Email:</strong> {selectedClient.client_email || 'N/A'}</Typography>
                   <Typography><strong>Panel Username:</strong> {selectedClient.client_panel_username || 'N/A'}</Typography>
                   <Typography><strong>Panel Password:</strong> {selectedClient.client_panel_password || 'N/A'}</Typography>
+                </Stack>
+              </Box>
+
+              <Box>
+                <Typography variant="h6" gutterBottom>KYC Documents</Typography>
+                <Stack direction="row" spacing={2} flexWrap="wrap">
+                  {selectedClient.last_kyc_path ? (
+                    <Button
+                      variant="outlined"
+                      startIcon={<InsertDriveFile />}
+                      onClick={() => window.open(toScreenshotUrl(selectedClient.last_kyc_path), '_blank')}
+                    >
+                      View KYC Document
+                    </Button>
+                  ) : (
+                    <Typography color="text.secondary">No KYC document uploaded.</Typography>
+                  )}
+                  {selectedClient.last_screenshot_path ? (
+                    <Button
+                      variant="outlined"
+                      startIcon={<Visibility />}
+                      onClick={() => window.open(toScreenshotUrl(selectedClient.last_screenshot_path), '_blank')}
+                    >
+                      View Screenshot
+                    </Button>
+                  ) : null}
                 </Stack>
               </Box>
 

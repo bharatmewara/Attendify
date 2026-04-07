@@ -1,13 +1,9 @@
-# Task: Add Type column (renew, refund etc) to handleExportCsv in Clients.jsx
-
+# Fix Busboy "Unexpected end of form" Error
 ## Steps:
-- [x] 1. Create this TODO.md with breakdown
-- [ ] 2. Read and analyze src/pages/CompanyAdmin/Clients.jsx (already done)
-- [x] 3. Edit handleExportCsv to add Type column using r.package_type || r.last_package_type || r.last_payment_mode || 'N/A'
-- [x] 4. Verify no conflicts (linter, syntax)
-- [x] 5. Test export in app (manual: npm run dev, CompanyAdmin/Clients, export CSV)
-- [x] 6. Update TODO.md with completion
-- [ ] 7. attempt_completion
-
-Current progress: Plan approved, TODO created.
-
+- [x] ✅ Create TODO.md (current)
+- [ ] ⬇️ Edit backend/src/routes/incentives.routes.js: Replace chained multer.single() with multer.fields()
+- [ ] ⬇️ Update req.file access to req.files['screenshot']?.[0] and req.files['kyc_file']?.[0]
+- [ ] 🔄 Restart backend server: cd backend && npm run dev
+- [ ] 🧪 Test upload from Employee/Incentives.jsx frontend
+- [ ] ✅ Verify no other chained .single() in routes
+- [ ] 🎉 attempt_completion

@@ -22,19 +22,7 @@ const incentiveStorage = multer.diskStorage({
   }
 });
 
-const uploadIncentiveScreenshot = multer({ 
-  storage: incentiveStorage,
-  limits: { 
-    fileSize: 10 * 1024 * 1024 // 10MB
-  },
-  fileFilter: (req, file, cb) => {
-    if (file.mimetype.startsWith('image/')) {
-      cb(null, true);
-    } else {
-      cb(new Error('Only images (jpg, png, gif) are allowed'));
-    }
-  }
-});
+
 
 const kycStorage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -46,11 +34,36 @@ const kycStorage = multer.diskStorage({
   }
 });
 
-const uploadKyc = multer({ 
-  storage: kycStorage,
-  limits: { 
-    fileSize: 10 * 1024 * 1024 // 10MB
+export const uploadIncentiveScreenshot = multer({ 
+  storage: incentiveStorage,
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only images (jpg, png, gif) are allowed'));
+    }
+  }
+}).single('screenshot');
+
+export const uploadIncentiveFields = multer({
+  storage: incentiveStorage,
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/') || file.mimetype === 'application/pdf') {
+      cb(null, true);
+    } else {
+      cb(new Error('Only images or PDF allowed'));
+    }
   },
+}).fields([
+  { name: 'screenshot', maxCount: 1 },
+  { name: 'kyc_file', maxCount: 1 },
+]);
+
+export const uploadKyc = multer({ 
+  storage: kycStorage,
+  limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     if (file.mimetype === 'application/pdf' || file.mimetype.startsWith('image/')) {
       cb(null, true);
@@ -58,6 +71,4 @@ const uploadKyc = multer({
       cb(new Error('Only PDF and images allowed for KYC'));
     }
   }
-});
-
-export { uploadIncentiveScreenshot, uploadKyc };
+}).single('kyc_file');

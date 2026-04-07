@@ -3,7 +3,7 @@ import path from 'path';
 import { query } from '../db.js';
 import { authenticate, authorize, requireCompanyContext, tenantIsolation } from '../middleware/auth.middleware.js';
 import { enforceOfficePunchIpForEmployee } from '../middleware/networkPolicy.js';
-import { uploadIncentiveScreenshot, uploadKyc } from '../middleware/incentive_uploads.js';
+import { uploadIncentiveFields } from '../middleware/incentive_uploads.js';
 import { sendEmail } from '../utils/email.js';
 import {
   calculateIncentiveFromRules,
@@ -362,6 +362,7 @@ router.get('/submissions', authenticate, tenantIsolation, enforceOfficePunchIpFo
     }
     return res.json(result.rows);
   } catch (error) {
+    console.error('GET submissions failed:', error.message);
     return res.status(500).json({ message: error.message });
   }
 });
@@ -403,9 +404,7 @@ router.post(
   tenantIsolation,
   enforceOfficePunchIpForEmployee,
 
-  uploadIncentiveScreenshot.single('screenshot'),
-  uploadKyc.single('kyc_file'),
-  async (req, res) => {
+  uploadIncentiveFields, async (req, res) => {
     const {
       client_name,
       product_name,
@@ -464,7 +463,7 @@ router.post(
         price: resolvedPricing.price,
         packageType: package_type,
       });
-      const screenshot_path = toUploadsRelativePath(req.file);
+      const screenshot_path = toUploadsRelativePath(req.files['screenshot']?.[0]);
 
       const result = await query(
         `INSERT INTO incentive_submissions 
@@ -514,7 +513,7 @@ router.post(
           client_location || null,
           incentive_amount,
           screenshot_path,
-          req.kyc_file ? toUploadsRelativePath(req.kyc_file) : null,
+          req.files['kyc_file']?.[0] ? toUploadsRelativePath(req.files['kyc_file']?.[0]) : null,
         ],
       );
 
@@ -635,8 +634,7 @@ router.put(
   tenantIsolation,
   requireCompanyContext,
   enforceOfficePunchIpForEmployee,
-  uploadIncentiveScreenshot.single('screenshot'),
-  async (req, res) => {
+    uploadIncentiveFields, async (req, res) => {
     try {
       const submissionId = Number(req.params.id);
       const employeeId = await resolveEmployeeIdForUser(req.user.id);
@@ -722,7 +720,7 @@ router.put(
         packageType: String(next.package_type),
       });
 
-      const screenshot_path = req.file ? toUploadsRelativePath(req.file) : current.screenshot_path;
+      const screenshot_path = req.files?.screenshot?.[0] ? toUploadsRelativePath(req.files?.screenshot?.[0]) : current.screenshot_path;
 
       const result = await query(
         `UPDATE incentive_submissions
@@ -1304,6 +1302,9 @@ router.get(
           r.client_panel_username,
           r.client_panel_password,
           r.rate AS last_rate,
+          r.package_type AS last_package_type,
+          r.kyc_path AS last_kyc_path,
+          r.screenshot_path AS last_screenshot_path,
           r.product_name AS last_product,
           r.sms_quantity AS last_sms_quantity,
           r.gst_applied AS last_gst_applied,

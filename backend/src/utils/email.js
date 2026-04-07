@@ -1,4 +1,4 @@
-import nodemailer from 'nodemailer';
+import { createTransport } from 'nodemailer';
 import { config } from '../config.js';
 import { query } from '../db.js';
 
@@ -10,7 +10,7 @@ const createTransporter = () => {
     return null;
   }
 
-  transporter = nodemailer.createTransporter({
+  transporter = createTransport({
     host: config.email.host,
     port: config.email.port,
     secure: config.email.secure,
