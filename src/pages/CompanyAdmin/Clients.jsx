@@ -22,7 +22,7 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import { Close, Visibility, Download, InsertDriveFile } from '@mui/icons-material';
+import { Close, Visibility, Download, InsertDriveFile, Replay } from '@mui/icons-material';
 import { API_BASE_URL, apiRequest } from '../../lib/api';
 import { exportRowsToCsv } from '../../utils/fileExports';
 
@@ -135,6 +135,30 @@ export default function ClientsManagement() {
       { label: 'City', value: (r) => r.last_location || '' },
       { label: 'GST Amount', value: (r) => r.last_amount_received ?? '' },
     ], filename);
+  };
+
+  const [refundConfirmOpen, setRefundConfirmOpen] = useState(false);
+  const [refundTarget, setRefundTarget] = useState(null);
+
+  const handleInitiateRefund = (row) => {
+    setRefundTarget(row);
+    setRefundConfirmOpen(true);
+  };
+
+  const confirmRefund = async () => {
+    if (!refundTarget?.last_submission_id) return;
+    try {
+      await apiRequest(`/incentives/submissions/${refundTarget.last_submission_id}/status`, {
+        method: 'PUT',
+        body: { status: 'refunded' },
+      });
+      setMessage({ type: 'success', text: `Refund initiated for ${refundTarget.client_name}.` });
+      setRefundConfirmOpen(false);
+      setRefundTarget(null);
+      loadClients();
+    } catch (error) {
+      setMessage({ type: 'error', text: error.message });
+    }
   };
 
   const openClient = (client) => {
@@ -263,9 +287,12 @@ export default function ClientsManagement() {
                       ) : <Typography variant="caption" color="text.secondary">—</Typography>}
                     </TableCell>
                     <TableCell align="right">
-                      <Button size="small" variant="text" onClick={() => openClient(row)}>
-                        View Details
-                      </Button>
+                      <Stack direction="row" spacing={0.5} justifyContent="flex-end">
+                        <Button size="small" variant="text" onClick={() => openClient(row)}>View</Button>
+                        {row.last_status === 'approved' && row.last_submission_id ? (
+                          <Button size="small" variant="outlined" color="error" startIcon={<Replay />} onClick={() => handleInitiateRefund(row)}>Refund</Button>
+                        ) : null}
+                      </Stack>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -399,6 +426,23 @@ export default function ClientsManagement() {
         </DialogContent>
         <DialogActions>
           <Button onClick={closeClientDialog}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Refund Confirmation Dialog */}
+      <Dialog open={refundConfirmOpen} onClose={() => setRefundConfirmOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Initiate Refund</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Are you sure you want to initiate a refund for <strong>{refundTarget?.client_name}</strong>?
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            This will mark the submission as <strong>refunded</strong> and remove it from incentive totals and payroll calculations.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setRefundConfirmOpen(false)}>Cancel</Button>
+          <Button variant="contained" color="error" onClick={confirmRefund}>Confirm Refund</Button>
         </DialogActions>
       </Dialog>
     </Box>

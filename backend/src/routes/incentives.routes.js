@@ -583,7 +583,7 @@ router.post(
               `Calculated Incentive: ${submission.incentive_amount}\n\n` +
               `Attendify`,
             html: buildEmailHtml({
-              title: 'Incentive Submission',
+              title: 'Today Status',
               subtitle: employeeName,
               sections: [
                 {
@@ -1320,6 +1320,7 @@ router.get(
           END AS last_gst_amount,
           r.payment_mode AS last_payment_mode,
           r.client_location AS last_location,
+          r.id AS last_submission_id,
           r.status AS last_status,
           r.approved_at AS last_approved_at,
           r.submitted_at AS last_submitted_at,
@@ -1881,7 +1882,7 @@ router.put(
           (String(updated.status).toLowerCase() === 'refunded'
             ? 'Note: Refunded incentives are removed from totals and payroll calculations.'
             : '') +
-          `\n\nAttendify`;
+          `\n\nPrime Click IT`;
 
         const net = updated.price ?? null;
         const gross = updated.gst_applied && updated.price_gross ? updated.price_gross : null;
