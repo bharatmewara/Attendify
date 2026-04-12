@@ -275,13 +275,25 @@ router.delete('/companies/:id', authenticate, authorize('super_admin'), async (r
     return res.status(400).json({ message: 'Invalid company id' });
   }
 
+  const client = await pool.connect();
   try {
-    const companyResult = await query('SELECT id, company_name FROM companies WHERE id = $1', [companyId]);
+    const companyResult = await client.query('SELECT id, company_name FROM companies WHERE id = $1', [companyId]);
     if (companyResult.rows.length === 0) {
+      client.release();
       return res.status(404).json({ message: 'Company not found' });
     }
 
-    await query('DELETE FROM companies WHERE id = $1', [companyId]);
+    await client.query('BEGIN');
+    // Delete tables that lack ON DELETE CASCADE on company_id first
+    await client.query('DELETE FROM incentive_earnings WHERE company_id = $1', [companyId]);
+    await client.query('DELETE FROM incentive_submissions WHERE company_id = $1', [companyId]);
+    await client.query('DELETE FROM company_incentive_rules WHERE company_id = $1', [companyId]);
+    await client.query('DELETE FROM company_sales_target_tiers WHERE company_id = $1', [companyId]);
+    await client.query('DELETE FROM employee_monthly_sales_targets WHERE company_id = $1', [companyId]);
+    await client.query('DELETE FROM audit_logs WHERE company_id = $1', [companyId]);
+    // Remaining child tables cascade automatically
+    await client.query('DELETE FROM companies WHERE id = $1', [companyId]);
+    await client.query('COMMIT');
 
     await logAudit({
       companyId,
@@ -296,13 +308,10 @@ router.delete('/companies/:id', authenticate, authorize('super_admin'), async (r
 
     res.json({ message: 'Company deleted successfully' });
   } catch (error) {
-    // FK violations are expected when a company still has dependent data.
-    if (error?.code === '23503') {
-      return res.status(409).json({
-        message: 'Cannot delete company because related records exist. Deactivate it instead or remove dependent data first.',
-      });
-    }
+    await client.query('ROLLBACK').catch(() => {});
     res.status(500).json({ message: error.message });
+  } finally {
+    client.release();
   }
 });
 router.post('/companies/:id/assign-subscription', authenticate, authorize('super_admin'), async (req, res) => {
