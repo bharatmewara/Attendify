@@ -37,6 +37,64 @@ const generateUniqueCompanyCode = async (client, companyName) => {
   }
 };
 
+router.get('/settings', authenticate, authorize('super_admin'), async (req, res) => {
+  try {
+    const result = await query(
+      `SELECT u.email, u.username, COALESCE(s.value, 'Attendify') as product_name
+       FROM users u
+       LEFT JOIN system_settings s ON s.key = 'product_name'
+       WHERE u.id = $1 LIMIT 1`,
+      [req.user.id]
+    );
+    res.json(result.rows[0] || {});
+  } catch (error) {
+    // Fallback if system_settings table doesn't exist yet
+    try {
+      const result = await query('SELECT email, username FROM users WHERE id = $1 LIMIT 1', [req.user.id]);
+      res.json({ ...result.rows[0], product_name: 'Attendify' });
+    } catch (e) {
+      res.status(500).json({ message: e.message });
+    }
+  }
+});
+
+router.put('/settings', authenticate, authorize('super_admin'), async (req, res) => {
+  const { username, email, product_name } = req.body || {};
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const updates = [];
+    const values = [];
+    if (username !== undefined) { values.push(username); updates.push(`username = $${values.length}`); }
+    if (email !== undefined) {
+      const existing = await client.query('SELECT id FROM users WHERE email = $1 AND id != $2 LIMIT 1', [email, req.user.id]);
+      if (existing.rows.length > 0) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ message: 'Email already in use' });
+      }
+      values.push(email); updates.push(`email = $${values.length}`);
+    }
+    if (updates.length > 0) {
+      values.push(req.user.id);
+      await client.query(`UPDATE users SET ${updates.join(', ')}, updated_at = NOW() WHERE id = $${values.length}`, values);
+    }
+    if (product_name !== undefined) {
+      await client.query(
+        `INSERT INTO system_settings (key, value, updated_at) VALUES ('product_name', $1, NOW())
+         ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = NOW()`,
+        [product_name]
+      ).catch(() => {}); // ignore if table doesn't exist
+    }
+    await client.query('COMMIT');
+    res.json({ message: 'Settings updated successfully' });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ message: error.message });
+  } finally {
+    client.release();
+  }
+});
+
 router.get('/companies', authenticate, authorize('super_admin'), async (_req, res) => {
   try {
     const result = await query(`

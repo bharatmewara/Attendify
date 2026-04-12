@@ -31,6 +31,7 @@ import EmployeePerformanceDashboard from './pages/CompanyAdmin/EmployeePerforman
 import Companies from './pages/SuperAdmin/Companies';
 import Plans from './pages/SuperAdmin/Plans';
 import Analytics from './pages/SuperAdmin/Analytics';
+import AdminSettings from './pages/SuperAdmin/AdminSettings';
 
 function DashboardRouter() {
   const { user } = useAuth();
@@ -87,6 +88,7 @@ function App() {
               <Route path="companies" element={<Companies />} />
               <Route path="plans" element={<Plans />} />
               <Route path="analytics" element={<Analytics />} />
+              <Route path="settings" element={<AdminSettings />} />
               <Route path="employees" element={<EmployeeManagement />} />
               <Route path="employees/:employeeId/performance" element={<EmployeePerformanceDashboard />} />
               <Route path="attendance" element={<AttendanceRouter />} />

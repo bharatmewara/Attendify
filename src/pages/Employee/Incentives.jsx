@@ -370,8 +370,8 @@ export default function EmployeeIncentives() {
 
           {['Bulk SMS', 'WhatsApp SMS'].includes(requestForm.product_name) && (
             <>
-              <TextField fullWidth label="SMS Quantity" type="number" margin="normal" value={requestForm.sms_quantity} onChange={(e) => setRequestForm({ ...requestForm, sms_quantity: e.target.value })} />
-              <TextField fullWidth label="Rate" type="number" margin="normal" value={requestForm.rate} onChange={(e) => setRequestForm({ ...requestForm, rate: e.target.value })} error={rateInvalid} helperText={rateInvalid ? "Enter paisa rate like 0.12 (must be < 1)." : "Example: 0.12"} inputProps={{ step: "0.01", min: 0, max: 0.9999 }} />
+              <TextField fullWidth label="SMS Quantity" type="number" margin="normal" value={requestForm.sms_quantity} onChange={(e) => setRequestForm({ ...requestForm, sms_quantity: e.target.value })} onWheel={(e) => e.target.blur()} inputProps={{ onWheel: (e) => e.target.blur() }} />
+              <TextField fullWidth label="Rate" type="number" margin="normal" value={requestForm.rate} onChange={(e) => setRequestForm({ ...requestForm, rate: e.target.value })} error={rateInvalid} helperText={rateInvalid ? "Enter paisa rate like 0.12 (must be < 1)." : "Example: 0.12"} inputProps={{ step: "0.01", min: 0, max: 0.9999, onWheel: (e) => e.target.blur() }} onWheel={(e) => e.target.blur()} />
             </>
           )}
 
@@ -410,6 +410,8 @@ export default function EmployeeIncentives() {
                 type="number"
                 margin="normal"
                 value={requestForm.price_gross}
+                onWheel={(e) => e.target.blur()}
+                inputProps={{ onWheel: (e) => e.target.blur() }}
                 onChange={(e) => {
                   const gross = e.target.value;
                   setRequestForm((current) => ({
@@ -426,11 +428,12 @@ export default function EmployeeIncentives() {
                 margin="normal"
                 value={requestForm.price}
                 InputProps={{ readOnly: true }}
+                inputProps={{ onWheel: (e) => e.target.blur() }}
                 helperText="Auto-calculated (used for incentive)."
               />
             </Stack>
           ) : (
-            <TextField fullWidth label="Price" type="number" margin="normal" value={requestForm.price} onChange={(e) => setRequestForm({ ...requestForm, price: e.target.value })} />
+            <TextField fullWidth label="Price" type="number" margin="normal" value={requestForm.price} onChange={(e) => setRequestForm({ ...requestForm, price: e.target.value })} onWheel={(e) => e.target.blur()} inputProps={{ onWheel: (e) => e.target.blur() }} />
           )}
 
           {calculatedIncentive > 0 && (
@@ -516,8 +519,8 @@ export default function EmployeeIncentives() {
 
               {['Bulk SMS', 'WhatsApp SMS'].includes(editForm.product_name) && (
                 <>
-                  <TextField fullWidth label="SMS Quantity" type="number" margin="normal" value={editForm.sms_quantity} onChange={(e) => setEditForm({ ...editForm, sms_quantity: e.target.value })} />
-                  <TextField fullWidth label="Rate" type="number" margin="normal" value={editForm.rate} onChange={(e) => setEditForm({ ...editForm, rate: e.target.value })} error={editRateInvalid} helperText={editRateInvalid ? "Enter paisa rate like 0.12 (must be < 1)." : "Example: 0.12"} inputProps={{ step: "0.01", min: 0, max: 0.9999 }} />
+                  <TextField fullWidth label="SMS Quantity" type="number" margin="normal" value={editForm.sms_quantity} onChange={(e) => setEditForm({ ...editForm, sms_quantity: e.target.value })} onWheel={(e) => e.target.blur()} />
+                  <TextField fullWidth label="Rate" type="number" margin="normal" value={editForm.rate} onChange={(e) => setEditForm({ ...editForm, rate: e.target.value })} error={editRateInvalid} helperText={editRateInvalid ? "Enter paisa rate like 0.12 (must be < 1)." : "Example: 0.12"} inputProps={{ step: "0.01", min: 0, max: 0.9999 }} onWheel={(e) => e.target.blur()} />
                 </>
               )}
 
@@ -557,6 +560,8 @@ export default function EmployeeIncentives() {
                     type="number"
                     margin="normal"
                     value={editForm.price_gross}
+                    onWheel={(e) => e.target.blur()}
+                    inputProps={{ onWheel: (e) => e.target.blur() }}
                     onChange={(e) => {
                       const gross = e.target.value;
                       setEditForm((current) => {
@@ -572,11 +577,12 @@ export default function EmployeeIncentives() {
                     margin="normal"
                     value={editForm.price}
                     InputProps={{ readOnly: true }}
+                    inputProps={{ onWheel: (e) => e.target.blur() }}
                     helperText="Auto-calculated (used for incentive)."
                   />
                 </Stack>
               ) : (
-                <TextField fullWidth label="Price" type="number" margin="normal" value={editForm.price} onChange={(e) => setEditForm({ ...editForm, price: e.target.value })} />
+                <TextField fullWidth label="Price" type="number" margin="normal" value={editForm.price} onChange={(e) => setEditForm({ ...editForm, price: e.target.value })} onWheel={(e) => e.target.blur()} inputProps={{ onWheel: (e) => e.target.blur() }} />
               )}
               <TextField fullWidth label="Payment Mode" margin="normal" value={editForm.payment_mode} onChange={(e) => setEditForm({ ...editForm, payment_mode: e.target.value })} />
               <TextField

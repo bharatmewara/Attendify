@@ -14,6 +14,7 @@ import {
   Person,
   AccountBalanceWallet,
   Description,
+  Settings,
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import { API_BASE_URL } from '../lib/api';
@@ -31,6 +32,7 @@ const Sidebar = ({ mobileOpen, onClose, companyProfile }) => {
         { label: 'Companies', to: '/app/companies', icon: Business },
         { label: 'Plans', to: '/app/plans', icon: BarChart },
         { label: 'Analytics', to: '/app/analytics', icon: BarChart },
+        { label: 'Admin Settings', to: '/app/settings', icon: Settings },
       ];
     }
     if (user?.role === 'company_admin') {

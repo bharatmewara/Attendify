@@ -105,14 +105,18 @@ const [openEditDialog, setOpenEditDialog] = useState(false);
     emergency_contact_name: '',
   });
   const [editFormData, setEditFormData] = useState({
+    email: '',
+    employee_code: '',
     first_name: '',
     last_name: '',
     phone: '',
     department_id: '',
     designation_id: '',
     employment_type: '',
+    joining_date: '',
     date_of_birth: '',
     gender: '',
+    status: 'active',
     address: '',
     aadhar_number: '',
     pan_number: '',
@@ -121,6 +125,11 @@ const [openEditDialog, setOpenEditDialog] = useState(false);
     bank_ifsc: '',
     emergency_contact: '',
     emergency_contact_name: '',
+    new_password: '',
+    bank_ifsc: '',
+    emergency_contact: '',
+    emergency_contact_name: '',
+    new_password: '',
   });
 
   const loadData = async () => {
@@ -433,10 +442,14 @@ const [openEditDialog, setOpenEditDialog] = useState(false);
 
   const handleEdit = async () => {
     try {
-      await apiRequest(`/employees/${selectedEmployee.id}`, {
-        method: 'PUT',
-        body: editFormData,
-      });
+      const { new_password, ...rest } = editFormData;
+      await apiRequest(`/employees/${selectedEmployee.id}`, { method: 'PUT', body: rest });
+      if (new_password && new_password.length >= 6) {
+        await apiRequest(`/employees/${selectedEmployee.id}/password`, {
+          method: 'PUT',
+          body: { newPassword: new_password },
+        });
+      }
       setOpenEditDialog(false);
       setMessage('Employee updated successfully');
       loadData();
@@ -448,14 +461,18 @@ const [openEditDialog, setOpenEditDialog] = useState(false);
   const handleOpenEdit = (employee) => {
     setSelectedEmployee(employee);
     setEditFormData({
-      first_name: employee.first_name,
-      last_name: employee.last_name,
+      email: employee.email || '',
+      employee_code: employee.employee_code || '',
+      first_name: employee.first_name || '',
+      last_name: employee.last_name || '',
       phone: employee.phone || '',
-      department_id: employee.department_id || '',
-      designation_id: employee.designation_id || '',
-      employment_type: employee.employment_type,
-      date_of_birth: employee.date_of_birth || '',
+      department_id: employee.department_id ? String(employee.department_id) : '',
+      designation_id: employee.designation_id ? String(employee.designation_id) : '',
+      employment_type: employee.employment_type || 'full_time',
+      joining_date: employee.joining_date ? employee.joining_date.split('T')[0] : '',
+      date_of_birth: employee.date_of_birth ? employee.date_of_birth.split('T')[0] : '',
       gender: employee.gender || '',
+      status: employee.status || 'active',
       address: employee.address || '',
       aadhar_number: employee.aadhar_number || '',
       pan_number: employee.pan_number || '',
@@ -464,6 +481,7 @@ const [openEditDialog, setOpenEditDialog] = useState(false);
       bank_ifsc: employee.bank_ifsc || '',
       emergency_contact: employee.emergency_contact || '',
       emergency_contact_name: employee.emergency_contact_name || '',
+      new_password: '',
     });
     setOpenEditDialog(true);
   };
@@ -714,71 +732,83 @@ const [openEditDialog, setOpenEditDialog] = useState(false);
         </DialogActions>
       </Dialog>
 
-      {/* Edit Employee Dialog - Similar structure with edit fields */}
-      <Dialog open={openEditDialog} onClose={() => setOpenEditDialog(false)} maxWidth="md" fullWidth>
+      {/* Edit Employee Dialog */}
+      <Dialog open={openEditDialog} onClose={() => setOpenEditDialog(false)} maxWidth="lg" fullWidth>
         <DialogTitle>
-          <Typography variant="h6" component="div" sx={{ fontWeight: 600 }}>Edit Employee</Typography>
+          <Typography variant="h6" component="div" sx={{ fontWeight: 600 }}>Edit Employee — {selectedEmployee?.first_name} {selectedEmployee?.last_name}</Typography>
         </DialogTitle>
-        <DialogContent sx={{ maxHeight: '66vh', overflowY: 'auto', pt: 1 }}>
+        <DialogContent sx={{ maxHeight: '76vh', overflowY: 'auto', pt: 1 }}>
           <Grid container spacing={2} sx={{ mt: 1 }}>
             <Grid item xs={12}>
               <Paper variant="outlined" sx={{ p: 2, mb: 2, borderRadius: 2, bgcolor: 'grey.50' }}>
-                <Box sx={{ borderLeft: '4px solid', borderColor: 'primary.main', pl: 1, mb: 1 }}><Typography variant="h6" fontWeight={700}>Basic Information</Typography></Box>
+                <Box sx={{ borderLeft: '4px solid', borderColor: 'error.main', pl: 1, mb: 1 }}><Typography variant="h6" fontWeight={700} color="error">Account &amp; Login</Typography></Box>
                 <Divider sx={{ mb: 2 }} />
                 <Grid container spacing={2}>
-                  <Grid item xs={12} sm={6}><TextField fullWidth label="First Name" value={editFormData.first_name} onChange={(e) => setEditFormData({ ...editFormData, first_name: e.target.value })} /></Grid>
-                  <Grid item xs={12} sm={6}><TextField fullWidth label="Last Name" value={editFormData.last_name} onChange={(e) => setEditFormData({ ...editFormData, last_name: e.target.value })} /></Grid>
-                  <Grid item xs={12} sm={6}><TextField fullWidth label="Phone" value={editFormData.phone} onChange={(e) => setEditFormData({ ...editFormData, phone: e.target.value })} /></Grid>
-                  <Grid item xs={12} sm={6}><TextField fullWidth label="Aadhar Number" value={editFormData.aadhar_number} onChange={(e) => setEditFormData({ ...editFormData, aadhar_number: e.target.value })} /></Grid>
-                  <Grid item xs={12} sm={6}><TextField fullWidth label="PAN Number" value={editFormData.pan_number} onChange={(e) => setEditFormData({ ...editFormData, pan_number: e.target.value.toUpperCase() })} /></Grid>
+                  <Grid item xs={12} sm={6} md={4}><TextField fullWidth label="Employee Code" value={editFormData.employee_code} onChange={(e) => setEditFormData({ ...editFormData, employee_code: e.target.value })} /></Grid>
+                  <Grid item xs={12} sm={6} md={4}><TextField fullWidth label="Email (Login ID)" type="email" value={editFormData.email} onChange={(e) => setEditFormData({ ...editFormData, email: e.target.value })} /></Grid>
+                  <Grid item xs={12} sm={6} md={4}><TextField fullWidth label="New Password" type="password" value={editFormData.new_password} onChange={(e) => setEditFormData({ ...editFormData, new_password: e.target.value })} helperText="Leave blank to keep existing. Min 6 chars to change." /></Grid>
                 </Grid>
               </Paper>
             </Grid>
             <Grid item xs={12}>
               <Paper variant="outlined" sx={{ p: 2, mb: 2, borderRadius: 2, bgcolor: 'grey.50' }}>
-                <Box sx={{ borderLeft: '4px solid', borderColor: 'secondary.main', pl: 1, mb: 1 }}><Typography variant="h6" fontWeight={700}>Employment Details</Typography></Box>
+                <Box sx={{ borderLeft: '4px solid', borderColor: 'primary.main', pl: 1, mb: 1 }}><Typography variant="h6" fontWeight={700} color="primary">Basic Information</Typography></Box>
                 <Divider sx={{ mb: 2 }} />
                 <Grid container spacing={2}>
-                  <Grid item xs={12} sm={6}>
-                    <TextField
-                      fullWidth
-                      select
-                      label="Department"
-                      value={editFormData.department_id}
-                      onChange={(e) => addDepartmentIfNeeded(e.target.value, 'edit')}
-                      SelectProps={{ displayEmpty: true, MenuProps: { PaperProps: { style: { maxHeight: 300 } } } }}
-                    >
+                  <Grid item xs={12} sm={6} md={4}><TextField fullWidth label="First Name" value={editFormData.first_name} onChange={(e) => setEditFormData({ ...editFormData, first_name: e.target.value })} /></Grid>
+                  <Grid item xs={12} sm={6} md={4}><TextField fullWidth label="Last Name" value={editFormData.last_name} onChange={(e) => setEditFormData({ ...editFormData, last_name: e.target.value })} /></Grid>
+                  <Grid item xs={12} sm={6} md={4}><TextField fullWidth label="Phone" value={editFormData.phone} onChange={(e) => setEditFormData({ ...editFormData, phone: e.target.value })} /></Grid>
+                  <Grid item xs={12} sm={6} md={4}><TextField fullWidth label="Date of Birth" type="date" InputLabelProps={{ shrink: true }} value={editFormData.date_of_birth} onChange={(e) => setEditFormData({ ...editFormData, date_of_birth: e.target.value })} /></Grid>
+                  <Grid item xs={12} sm={6} md={4}><TextField fullWidth select label="Gender" value={editFormData.gender} onChange={(e) => setEditFormData({ ...editFormData, gender: e.target.value })} SelectProps={{ displayEmpty: true }}><MenuItem value="">Select Gender</MenuItem><MenuItem value="male">Male</MenuItem><MenuItem value="female">Female</MenuItem><MenuItem value="other">Other</MenuItem></TextField></Grid>
+                  <Grid item xs={12} sm={6} md={4}><TextField fullWidth label="Address" value={editFormData.address} onChange={(e) => setEditFormData({ ...editFormData, address: e.target.value })} /></Grid>
+                </Grid>
+              </Paper>
+            </Grid>
+            <Grid item xs={12}>
+              <Paper variant="outlined" sx={{ p: 2, mb: 2, borderRadius: 2, bgcolor: 'grey.50' }}>
+                <Box sx={{ borderLeft: '4px solid', borderColor: 'secondary.main', pl: 1, mb: 1 }}><Typography variant="h6" fontWeight={700} color="secondary">Employment Details</Typography></Box>
+                <Divider sx={{ mb: 2 }} />
+                <Grid container spacing={2}>
+                  <Grid item xs={12} sm={6} md={4}>
+                    <TextField fullWidth select label="Department" value={editFormData.department_id} onChange={(e) => addDepartmentIfNeeded(e.target.value, 'edit')} SelectProps={{ displayEmpty: true, MenuProps: { PaperProps: { style: { maxHeight: 300 } } } }}>
                       <MenuItem value="">Select Department</MenuItem>
                       <MenuItem value="__add__">+ Add new department</MenuItem>
                       {departments.map((dept) => (<MenuItem key={dept.id} value={String(dept.id)}>{dept.name}</MenuItem>))}
                     </TextField>
                   </Grid>
-                  <Grid item xs={12} sm={6}>
-                    <TextField
-                      fullWidth
-                      select
-                      label="Designation"
-                      value={editFormData.designation_id}
-                      onChange={(e) => addDesignationIfNeeded(e.target.value, 'edit')}
-                      SelectProps={{ displayEmpty: true, MenuProps: { PaperProps: { style: { maxHeight: 300 } } } }}
-                    >
+                  <Grid item xs={12} sm={6} md={4}>
+                    <TextField fullWidth select label="Designation" value={editFormData.designation_id} onChange={(e) => addDesignationIfNeeded(e.target.value, 'edit')} SelectProps={{ displayEmpty: true, MenuProps: { PaperProps: { style: { maxHeight: 300 } } } }}>
                       <MenuItem value="">Select Designation</MenuItem>
                       <MenuItem value="__add__">+ Add new designation</MenuItem>
                       {designations.map((desig) => (<MenuItem key={desig.id} value={String(desig.id)}>{desig.title}</MenuItem>))}
                     </TextField>
                   </Grid>
-                  <Grid item xs={12} sm={6}><TextField fullWidth select label="Employment Type" value={editFormData.employment_type} onChange={(e) => setEditFormData({ ...editFormData, employment_type: e.target.value })} SelectProps={{ displayEmpty: true }}><MenuItem value="">Select Employment Type</MenuItem><MenuItem value="full_time">Full Time</MenuItem><MenuItem value="part_time">Part Time</MenuItem><MenuItem value="contract">Contract</MenuItem><MenuItem value="intern">Intern</MenuItem></TextField></Grid>
+                  <Grid item xs={12} sm={6} md={4}><TextField fullWidth select label="Employment Type" value={editFormData.employment_type} onChange={(e) => setEditFormData({ ...editFormData, employment_type: e.target.value })} SelectProps={{ displayEmpty: true }}><MenuItem value="full_time">Full Time</MenuItem><MenuItem value="part_time">Part Time</MenuItem><MenuItem value="contract">Contract</MenuItem><MenuItem value="intern">Intern</MenuItem></TextField></Grid>
+                  <Grid item xs={12} sm={6} md={4}><TextField fullWidth label="Joining Date" type="date" InputLabelProps={{ shrink: true }} value={editFormData.joining_date} onChange={(e) => setEditFormData({ ...editFormData, joining_date: e.target.value })} /></Grid>
+                  <Grid item xs={12} sm={6} md={4}><TextField fullWidth select label="Status" value={editFormData.status} onChange={(e) => setEditFormData({ ...editFormData, status: e.target.value })}><MenuItem value="active">Active</MenuItem><MenuItem value="inactive">Inactive</MenuItem><MenuItem value="terminated">Terminated</MenuItem></TextField></Grid>
+                </Grid>
+              </Paper>
+            </Grid>
+            <Grid item xs={12}>
+              <Paper variant="outlined" sx={{ p: 2, mb: 2, borderRadius: 2, bgcolor: 'grey.50' }}>
+                <Box sx={{ borderLeft: '4px solid', borderColor: 'info.main', pl: 1, mb: 1 }}><Typography variant="h6" fontWeight={700} color="info.main">Identity &amp; Bank Details</Typography></Box>
+                <Divider sx={{ mb: 2 }} />
+                <Grid container spacing={2}>
+                  <Grid item xs={12} sm={6} md={4}><TextField fullWidth label="Aadhar Number" value={editFormData.aadhar_number} onChange={(e) => setEditFormData({ ...editFormData, aadhar_number: e.target.value.replace(/\D/g, '').slice(0, 12) })} inputProps={{ maxLength: 12 }} helperText="12 digits" /></Grid>
+                  <Grid item xs={12} sm={6} md={4}><TextField fullWidth label="PAN Number" value={editFormData.pan_number} onChange={(e) => setEditFormData({ ...editFormData, pan_number: e.target.value.toUpperCase() })} inputProps={{ maxLength: 10 }} /></Grid>
+                  <Grid item xs={12} sm={6} md={4}><TextField fullWidth label="Bank Account Number" value={editFormData.bank_account_number} onChange={(e) => setEditFormData({ ...editFormData, bank_account_number: e.target.value })} /></Grid>
+                  <Grid item xs={12} sm={6} md={4}><TextField fullWidth label="Bank Name" value={editFormData.bank_name} onChange={(e) => setEditFormData({ ...editFormData, bank_name: e.target.value })} /></Grid>
+                  <Grid item xs={12} sm={6} md={4}><TextField fullWidth label="IFSC Code" value={editFormData.bank_ifsc} onChange={(e) => setEditFormData({ ...editFormData, bank_ifsc: e.target.value.toUpperCase() })} inputProps={{ maxLength: 11 }} /></Grid>
                 </Grid>
               </Paper>
             </Grid>
             <Grid item xs={12}>
               <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, bgcolor: 'grey.50' }}>
-                <Box sx={{ borderLeft: '4px solid', borderColor: 'info.main', pl: 1, mb: 1 }}><Typography variant="h6" fontWeight={700}>Identity & Bank Details</Typography></Box>
+                <Box sx={{ borderLeft: '4px solid', borderColor: 'success.main', pl: 1, mb: 1 }}><Typography variant="h6" fontWeight={700} color="success.main">Emergency Contact</Typography></Box>
                 <Divider sx={{ mb: 2 }} />
                 <Grid container spacing={2}>
-                  <Grid item xs={12} sm={6}><TextField fullWidth label="Aadhar Number" value={editFormData.aadhar_number} onChange={(e) => setEditFormData({ ...editFormData, aadhar_number: e.target.value })} /></Grid>
-                  <Grid item xs={12} sm={6}><TextField fullWidth label="PAN Number" value={editFormData.pan_number} onChange={(e) => setEditFormData({ ...editFormData, pan_number: e.target.value.toUpperCase() })} /></Grid>
-                  <Grid item xs={12} sm={6}><TextField fullWidth label="Bank Name" value={editFormData.bank_name} onChange={(e) => setEditFormData({ ...editFormData, bank_name: e.target.value })} /></Grid>
+                  <Grid item xs={12} sm={6}><TextField fullWidth label="Emergency Contact Name" value={editFormData.emergency_contact_name} onChange={(e) => setEditFormData({ ...editFormData, emergency_contact_name: e.target.value })} /></Grid>
+                  <Grid item xs={12} sm={6}><TextField fullWidth label="Emergency Contact Number" value={editFormData.emergency_contact} onChange={(e) => setEditFormData({ ...editFormData, emergency_contact: e.target.value })} /></Grid>
                 </Grid>
               </Paper>
             </Grid>
@@ -790,7 +820,6 @@ const [openEditDialog, setOpenEditDialog] = useState(false);
         </DialogActions>
       </Dialog>
 
-      {/* Delete Confirmation Dialog */}
       <Dialog open={openDeleteDialog} onClose={() => setOpenDeleteDialog(false)} maxWidth="sm">
         <DialogTitle>Confirm Delete</DialogTitle>
         <DialogContent>

@@ -410,28 +410,47 @@ router.get('/:id/impersonate', authenticate, authorize('company_admin', 'super_a
 router.put('/:id', authenticate, authorize('company_admin', 'super_admin'), tenantIsolation, async (req, res) => {
   const { id } = req.params;
   const {
+    email, employee_code,
     first_name, last_name, date_of_birth, gender, phone, emergency_contact,
     emergency_contact_name, address, city, state, country, postal_code,
-    department_id, designation_id, manager_id, employment_type, status,
+    department_id, designation_id, manager_id, employment_type, joining_date, status,
     aadhar_number, pan_number, bank_account_number, bank_name, bank_ifsc,
   } = req.body;
 
   try {
+    // Update email on users table if provided
+    if (email) {
+      const empUser = await query(
+        'SELECT u.id FROM users u JOIN employees e ON e.user_id = u.id WHERE e.id = $1 AND ($2::int IS NULL OR e.company_id = $2)',
+        [id, req.companyId]
+      );
+      if (empUser.rows.length > 0) {
+        const existing = await query('SELECT id FROM users WHERE email = $1 AND id != $2 LIMIT 1', [email.toLowerCase(), empUser.rows[0].id]);
+        if (existing.rows.length > 0) {
+          return res.status(409).json({ message: 'Email already in use by another account' });
+        }
+        await query('UPDATE users SET email = $1, updated_at = NOW() WHERE id = $2', [email.toLowerCase(), empUser.rows[0].id]);
+      }
+    }
+
     const result = await query(
-      `UPDATE employees 
+      `UPDATE employees
        SET first_name = $1::text, last_name = $2::text, date_of_birth = $3::date, gender = $4::text, phone = $5::text,
            emergency_contact = $6::text, emergency_contact_name = $7::text, address = $8::text, city = $9::text,
            state = $10::text, country = $11::text, postal_code = $12::text, department_id = $13::int,
            designation_id = $14::int, manager_id = $15::int, employment_type = $16::text, status = $17::text,
            aadhar_number = $18::text, pan_number = $19::text, bank_account_number = $20::text, bank_name = $21::text, bank_ifsc = $22::text,
+           joining_date = COALESCE($23::date, joining_date),
+           employee_code = COALESCE(NULLIF($24::text, ''), employee_code),
            updated_at = NOW()
-       WHERE id = $23::int AND ($24::int IS NULL OR company_id = $24::int)
-      RETURNING *`,
+       WHERE id = $25::int AND ($26::int IS NULL OR company_id = $26::int)
+       RETURNING *`,
       [
         first_name, last_name, nullable(date_of_birth), nullable(gender), nullable(phone), nullable(emergency_contact),
         nullable(emergency_contact_name), nullable(address), nullable(city), nullable(state), nullable(country), nullable(postal_code),
         nullable(department_id), nullable(designation_id), nullable(manager_id), nullable(employment_type), nullable(status) || 'active',
         nullable(aadhar_number), nullable(pan_number), nullable(bank_account_number), nullable(bank_name), nullable(bank_ifsc),
+        nullable(joining_date), nullable(employee_code),
         id, req.companyId,
       ]
     );
@@ -442,7 +461,7 @@ router.put('/:id', authenticate, authorize('company_admin', 'super_admin'), tena
 
     res.json(result.rows[0]);
   } catch (error) {
-    console.error('Error fetching employees:', error);
+    console.error('Error updating employee:', error);
     res.status(500).json({ message: error.message });
   }
 });
