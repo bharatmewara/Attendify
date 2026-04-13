@@ -37,6 +37,20 @@ export default defineConfig(({ command, mode }) => {
           target,
           changeOrigin: true,
           secure: false,
+          configure: (proxy) => {
+            proxy.on('proxyReq', (proxyReq, req) => {
+              // Forward the real client IP so network policy checks work
+              const realIp =
+                req.headers['x-forwarded-for'] ||
+                req.socket?.remoteAddress ||
+                req.connection?.remoteAddress ||
+                '';
+              if (realIp) {
+                proxyReq.setHeader('x-forwarded-for', realIp);
+                proxyReq.setHeader('x-real-ip', realIp.split(',')[0].trim());
+              }
+            });
+          },
         },
         '/uploads': {
           target,
