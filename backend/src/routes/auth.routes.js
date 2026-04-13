@@ -16,6 +16,18 @@ const signToken = (payload) =>
     expiresIn: '12h',
   });
 
+router.get('/my-ip', async (req, res) => {
+  const ip = getClientIp(req);
+  return res.json({
+    detected_ip: ip,
+    raw_ip: req.ip,
+    x_forwarded_for: req.headers['x-forwarded-for'] || null,
+    x_real_ip: req.headers['x-real-ip'] || null,
+    cf_connecting_ip: req.headers['cf-connecting-ip'] || null,
+    socket_remote: req.socket?.remoteAddress || null,
+  });
+});
+
 router.post('/login', async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) {

@@ -1,13 +1,29 @@
 export const getClientIp = (req) => {
-  const forwarded = req.headers['x-forwarded-for'];
-  if (forwarded) {
-    const [first] = forwarded.split(',');
-    return first.trim();
+  // Check common proxy headers in priority order
+  const proxyHeaders = [
+    'x-real-ip',
+    'x-forwarded-for',
+    'cf-connecting-ip',   // Cloudflare
+    'x-client-ip',
+  ];
+
+  for (const header of proxyHeaders) {
+    const val = req.headers[header];
+    if (val) {
+      const ip = val.split(',')[0].trim();
+      if (ip) return normalizeIp(ip);
+    }
   }
 
-  const rawIp = req.ip || req.connection?.remoteAddress || '';
-  if (rawIp.startsWith('::ffff:')) {
-    return rawIp.replace('::ffff:', '');
-  }
-  return rawIp;
+  const rawIp = req.ip || req.socket?.remoteAddress || req.connection?.remoteAddress || '';
+  return normalizeIp(rawIp);
+};
+
+const normalizeIp = (ip) => {
+  if (!ip) return '';
+  // Strip IPv6-mapped IPv4 prefix
+  if (ip.startsWith('::ffff:')) return ip.slice(7);
+  // Loopback normalization
+  if (ip === '::1') return '127.0.0.1';
+  return ip;
 };

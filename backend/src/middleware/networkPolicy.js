@@ -3,17 +3,22 @@ import { getClientIp } from '../utils/network.js';
 
 export const isCompanyIpAllowedByPolicy = async (companyId, ip, policyField) => {
   try {
-    // If no network policies exist for the company, allow access
+    // Always allow loopback (server-side / local dev only)
+    if (!ip || ip === '127.0.0.1' || ip === '::1') {
+      return true;
+    }
+
+    // If no active policies configured for this company, allow everyone
     const policiesExist = await query(
-      `SELECT COUNT(*) as count FROM network_policies WHERE company_id = $1 AND is_active = TRUE`,
+      `SELECT COUNT(*) as count FROM network_policies WHERE company_id = $1 AND is_active = TRUE AND ${policyField} = TRUE`,
       [companyId]
     );
 
-    if (policiesExist.rows[0].count === '0') {
-      return true; // No policies configured, allow access
+    if (parseInt(policiesExist.rows[0].count, 10) === 0) {
+      return true;
     }
 
-    // Check if IP matches any policy
+    // Policies exist — only allow if IP matches one of them
     const result = await query(
       `SELECT id
        FROM network_policies
@@ -27,8 +32,7 @@ export const isCompanyIpAllowedByPolicy = async (companyId, ip, policyField) => 
 
     return Boolean(result.rows[0]);
   } catch (error) {
-    console.error('Network policy check error:', error);
-    // On error, allow access to prevent blocking legitimate users
+    console.error('Network policy check error:', error.message, '| IP:', ip);
     return true;
   }
 };
