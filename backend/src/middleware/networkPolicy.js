@@ -3,6 +3,11 @@ import { getClientIp } from '../utils/network.js';
 
 export const isCompanyIpAllowedByPolicy = async (companyId, ip, policyField) => {
   try {
+    // Skip check for true loopback only (server internal calls)
+    if (ip === '127.0.0.1' || ip === '::1') {
+      return true;
+    }
+
     // If no active policies configured for this field, allow everyone
     const policiesExist = await query(
       `SELECT COUNT(*) as count FROM network_policies WHERE company_id = $1 AND is_active = TRUE AND ${policyField} = TRUE`,
@@ -13,8 +18,7 @@ export const isCompanyIpAllowedByPolicy = async (companyId, ip, policyField) => 
       return true;
     }
 
-    // Policies exist — check if IP matches
-    console.log(`[NetworkPolicy] Checking IP: ${ip} for company: ${companyId} field: ${policyField}`);
+    console.log(`[NetworkPolicy] Checking IP: ${ip} | company: ${companyId} | field: ${policyField}`);
 
     const result = await query(
       `SELECT id, label, network_cidr::text
@@ -28,14 +32,14 @@ export const isCompanyIpAllowedByPolicy = async (companyId, ip, policyField) => 
     );
 
     if (result.rows[0]) {
-      console.log(`[NetworkPolicy] ALLOWED — matched policy: ${result.rows[0].label} (${result.rows[0].network_cidr})`);
-    } else {
-      console.log(`[NetworkPolicy] BLOCKED — no matching policy for IP: ${ip}`);
+      console.log(`[NetworkPolicy] ALLOWED — matched: ${result.rows[0].label} (${result.rows[0].network_cidr})`);
+      return true;
     }
 
-    return Boolean(result.rows[0]);
+    console.log(`[NetworkPolicy] BLOCKED — no policy matched IP: ${ip}`);
+    return false;
   } catch (error) {
-    console.error('[NetworkPolicy] Check error:', error.message, '| IP:', ip);
+    console.error('[NetworkPolicy] Error:', error.message, '| IP:', ip);
     return true;
   }
 };

@@ -8,6 +8,11 @@ import { Delete, MyLocation, Wifi, WifiOff } from '@mui/icons-material';
 import { useAuth } from '../../context/AuthContext';
 import { apiRequest } from '../../lib/api';
 
+const isPrivateIp = (cidr) => {
+  const ip = cidr?.split('/')[0] || '';
+  return ip.startsWith('192.168.') || ip.startsWith('10.') || /^172\.(1[6-9]|2\d|3[01])\./.test(ip);
+};
+
 const normalizeCidr = (value) => {
   try {
     const trimmed = value.trim();
@@ -41,6 +46,15 @@ const NetworkPolicyManager = () => {
   const [form, setForm] = useState(emptyForm);
   const [detectedIp, setDetectedIp] = useState('');
   const [loadingIp, setLoadingIp] = useState(false);
+  const [currentIp, setCurrentIp] = useState('');
+
+  // Auto-detect current IP on load
+  useEffect(() => {
+    fetch('https://api.ipify.org?format=json', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((d) => { if (d.ip) setCurrentIp(d.ip); })
+      .catch(() => {});
+  }, []);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [snack, setSnack] = useState({ open: false, msg: '', severity: 'success' });
 
@@ -68,14 +82,16 @@ const NetworkPolicyManager = () => {
   const handleUseCurrentWifi = async () => {
     setLoadingIp(true);
     try {
-      const data = await apiRequest('/auth/my-ip');
-      const ip = data.detected_ip;
+      // Same service used by api.js on load — guaranteed to match what backend sees
+      const res = await fetch('https://api.ipify.org?format=json', { cache: 'no-store' });
+      const data = await res.json();
+      const ip = data.ip;
+      if (!ip) throw new Error('No IP returned');
       setDetectedIp(ip);
-      // Set as /32 single host by default
       setField('networkCidr', `${ip}/32`);
-      notify(`Detected IP: ${ip} — set as /32. Change to /24 for full subnet.`, 'info');
+      notify(`Your current public IP: ${ip}`, 'info');
     } catch (err) {
-      notify('Could not detect current IP: ' + err.message, 'error');
+      notify('Could not detect IP. Enter manually. Error: ' + err.message, 'error');
     } finally {
       setLoadingIp(false);
     }
@@ -151,10 +167,27 @@ const NetworkPolicyManager = () => {
             </Tooltip>
           </Stack>
 
+          {currentIp && (
+            <Alert
+              severity="info"
+              sx={{ mb: 2 }}
+              action={
+                <Button size="small" color="inherit" onClick={handleUseCurrentWifi}>
+                  Use This IP
+                </Button>
+              }
+            >
+              Your current public IP is <strong>{currentIp}</strong>.
+              {policies.some((p) => p.network_cidr === `${currentIp}/32` || p.network_cidr === currentIp)
+                ? ' ✅ Already saved as a policy.'
+                : ' ⚠ Not saved yet — click "Use This IP" to add it.'}
+            </Alert>
+          )}
+
           {detectedIp && (
-            <Alert severity="info" sx={{ mb: 2 }}>
-              Detected IP: <strong>{detectedIp}</strong> — saved as <strong>{detectedIp}/32</strong> (single device).
-              Change to <strong>{detectedIp.split('.').slice(0, 3).join('.')}.0/24</strong> to allow the entire subnet.
+            <Alert severity="success" sx={{ mb: 2 }}>
+              ✅ Your current public IP is <strong>{detectedIp}</strong> — this is what the server sees.
+              Save this policy, then <strong>delete any old private IP policies</strong> (192.168.x.x) for this to work correctly.
             </Alert>
           )}
 
@@ -209,6 +242,13 @@ const NetworkPolicyManager = () => {
             <Chip label={policies.length} size="small" sx={{ ml: 1 }} />
           </Typography>
 
+          {currentIp && policies.length > 0 && !policies.some((p) => p.is_active && (p.network_cidr === `${currentIp}/32` || p.network_cidr === currentIp)) && (
+            <Alert severity="warning" sx={{ mb: 2 }}>
+              Your current IP <strong>{currentIp}</strong> does not match any active policy.
+              Employees on this network will be <strong>blocked</strong>. Click "Use This IP" above to add it.
+            </Alert>
+          )}
+
           {policies.length === 0 ? (
             <Alert severity="warning">
               No policies configured — all employees can login from any network.
@@ -232,9 +272,14 @@ const NetworkPolicyManager = () => {
                       {policy.is_active ? <Wifi color="success" /> : <WifiOff color="disabled" />}
                       <Box>
                         <Typography fontWeight={700}>{policy.label}</Typography>
-                        <Typography variant="body2" color="text.secondary" fontFamily="monospace">
-                          {policy.network_cidr}
-                        </Typography>
+                        <Stack direction="row" alignItems="center" spacing={1}>
+                          <Typography variant="body2" color="text.secondary" fontFamily="monospace">
+                            {policy.network_cidr}
+                          </Typography>
+                          {isPrivateIp(policy.network_cidr) && (
+                            <Chip size="small" label="⚠ Private IP — won't work" color="warning" />
+                          )}
+                        </Stack>
                       </Box>
                     </Stack>
 
