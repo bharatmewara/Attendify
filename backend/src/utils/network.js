@@ -1,10 +1,5 @@
 export const getClientIp = (req) => {
-  // Highest priority: real public IP sent by the frontend (detected via ipify.org)
-  // This solves the localhost proxy problem where backend always sees 127.0.0.1
-  const clientRealIp = req.headers['x-client-real-ip'];
-  if (clientRealIp) return normalizeIp(clientRealIp.trim());
-
-  // Production reverse proxy headers
+  // Production reverse proxy headers (trusted server-side only)
   const realIp = req.headers['x-real-ip'];
   if (realIp) return normalizeIp(realIp.split(',')[0].trim());
 

@@ -53,25 +53,6 @@ const getStoredToken = () => {
   return stored;
 };
 
-// Detect and cache the real public IP once per session
-const REAL_IP_KEY = 'attendify_real_ip';
-const detectAndCacheRealIp = async () => {
-  if (typeof window === 'undefined') return;
-  if (sessionStorage.getItem(REAL_IP_KEY)) return; // already cached
-  try {
-    const res = await fetch('https://api.ipify.org?format=json', { cache: 'no-store' });
-    const data = await res.json();
-    if (data.ip) sessionStorage.setItem(REAL_IP_KEY, data.ip);
-  } catch {
-    // silently fail — backend will use socket IP
-  }
-};
-detectAndCacheRealIp();
-
-const getRealIp = () => {
-  if (typeof window === 'undefined') return '';
-  return sessionStorage.getItem(REAL_IP_KEY) || '';
-};
 
 const parseResponse = async (res) => {
   const text = await res.text();
@@ -102,10 +83,8 @@ const getToken = (tokenOverride) => tokenOverride || getStoredToken();
 export const apiRequest = async (path, { method = 'GET', body, token, headers: customHeaders } = {}) => {
   const authToken = getToken(token);
   const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
-  const realIp = getRealIp();
   const headers = {
     ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
-    ...(realIp ? { 'x-client-real-ip': realIp } : {}),
     ...customHeaders,
   };
 
