@@ -36,6 +36,10 @@ router.post('/', tenantIsolation, async (req, res) => {
     return res.status(400).json({ message: 'company_id is required' });
   }
   try {
+    // Use PostgreSQL to normalize the CIDR (masks host bits automatically)
+    const normalized = await query(`SELECT network($1::inet)::text AS cidr`, [networkCidr]);
+    const cidr = normalized.rows[0].cidr;
+
     const created = await query(
       `INSERT INTO network_policies
         (company_id, label, network_cidr, employee_login_allowed, punch_allowed, is_active, created_by)
@@ -44,7 +48,7 @@ router.post('/', tenantIsolation, async (req, res) => {
       [
         companyId,
         label,
-        networkCidr,
+        cidr,
         Boolean(employeeLoginAllowed),
         Boolean(punchAllowed),
         isActive !== false,
@@ -54,6 +58,9 @@ router.post('/', tenantIsolation, async (req, res) => {
     return res.status(201).json({ policy: created.rows[0] });
   } catch (error) {
     console.error('network POST error:', error.message);
+    if (error.message.includes('invalid') || error.message.includes('cidr') || error.message.includes('inet')) {
+      return res.status(400).json({ message: `Invalid IP/CIDR: "${networkCidr}". Use format like 192.168.1.0/24 or 192.168.1.5/32` });
+    }
     return res.status(500).json({ message: error.message });
   }
 });
@@ -71,9 +78,16 @@ router.patch('/:id', tenantIsolation, async (req, res) => {
       return res.status(404).json({ message: 'Policy not found' });
     }
 
+    let cidr = existing.network_cidr;
+    if (req.body.networkCidr) {
+      // Normalize the CIDR
+      const normalized = await query(`SELECT network($1::inet)::text AS cidr`, [req.body.networkCidr]);
+      cidr = normalized.rows[0].cidr;
+    }
+
     const next = {
       label: req.body.label ?? existing.label,
-      network_cidr: req.body.networkCidr ?? existing.network_cidr,
+      network_cidr: cidr,
       employee_login_allowed: req.body.employeeLoginAllowed ?? existing.employee_login_allowed,
       punch_allowed: req.body.punchAllowed ?? existing.punch_allowed,
       is_active: req.body.isActive ?? existing.is_active,
@@ -90,6 +104,9 @@ router.patch('/:id', tenantIsolation, async (req, res) => {
     return res.json({ policy: updated.rows[0] });
   } catch (error) {
     console.error('network PATCH error:', error.message);
+    if (error.message.includes('invalid') || error.message.includes('cidr') || error.message.includes('inet')) {
+      return res.status(400).json({ message: `Invalid IP/CIDR format. Use format like 192.168.1.0/24 or 192.168.1.5/32` });
+    }
     return res.status(500).json({ message: error.message });
   }
 });
