@@ -260,6 +260,27 @@ export default function IncentiveRulesManager({ rulesText, onRulesChange }) {
     return `${(pct * 100).toFixed(1)}%`;
   };
 
+  // Helper to format range display as ≥min ≤max (inclusive)
+  const formatRangeLabel = (minVal, maxVal, isQty = false, isPrice = false, isRate = false) => {
+    const minStr = minVal !== null && minVal !== undefined ? 
+      (isQty ? minVal.toLocaleString() : 
+       isPrice ? `₹${minVal.toLocaleString()}` :
+       Number(minVal).toFixed(isRate ? 3 : 2)) : '0';
+    const maxStr = maxVal !== null && maxVal !== undefined ? 
+      (isQty ? maxVal.toLocaleString() : 
+       isPrice ? `₹${maxVal.toLocaleString()}` :
+       Number(maxVal).toFixed(isRate ? 3 : 2)) : '∞';
+
+    if (minVal !== null && minVal !== undefined && maxVal !== null && maxVal !== undefined) {
+      return `≥${minStr} ≤${maxStr}`;
+    } else if (minVal !== null && minVal !== undefined) {
+      return `≥${minStr}`;
+    } else if (maxVal !== null && maxVal !== undefined) {
+      return `≤${maxStr}`;
+    }
+    return '≥0 ≤∞';
+  };
+
   return (
     <Box>
       <Card>
@@ -371,6 +392,10 @@ export default function IncentiveRulesManager({ rulesText, onRulesChange }) {
                     <Alert severity="info">This product is inactive. Employees cannot submit it.</Alert>
                   )}
 
+                  <Alert severity="info">
+                    Min values use <strong>&gt;=</strong> and max values use <strong>&lt;=</strong>, so the exact boundary value is included.
+                  </Alert>
+
                   <TableContainer component={Paper}>
                     <Table size="small">
                       <TableHead>
@@ -388,25 +413,14 @@ export default function IncentiveRulesManager({ rulesText, onRulesChange }) {
                         {(selectedProduct.rules || []).map((rule, index) => (
                           <TableRow key={index}>
                             <TableCell sx={{ fontWeight: 600 }}>{rule.mode || 'set'}</TableCell>
-                            <TableCell fontSize="small">
-                              {rule.min_qty !== null && rule.min_qty !== undefined ? `${rule.min_qty.toLocaleString()}` : '0'}
-                              {rule.max_qty !== null && rule.max_qty !== undefined ? `–${rule.max_qty.toLocaleString()}` : '+'}
+                            <TableCell fontSize="small" title="Inclusive range: quantity ≥ min_qty AND ≤ max_qty">
+                              {formatRangeLabel(rule.min_qty, rule.max_qty, true)}
                             </TableCell>
-                            <TableCell fontSize="small">
-                              {rule.min_rate !== null && rule.min_rate !== undefined
-                                ? `${Number(rule.min_rate).toFixed(3)}`
-                                : '—'}
-                              {rule.max_rate !== null && rule.max_rate !== undefined
-                                ? `–${Number(rule.max_rate).toFixed(3)}`
-                                : ''}
+                            <TableCell fontSize="small" title="Inclusive range: rate ≥ min_rate AND ≤ max_rate">
+                              {formatRangeLabel(rule.min_rate, rule.max_rate, false, false, true)}
                             </TableCell>
-                            <TableCell fontSize="small">
-                              {rule.min_price !== null && rule.min_price !== undefined
-                                ? `₹${rule.min_price.toLocaleString()}`
-                                : '—'}
-                              {rule.max_price !== null && rule.max_price !== undefined
-                                ? `–₹${rule.max_price.toLocaleString()}`
-                                : ''}
+                            <TableCell fontSize="small" title="Inclusive range: price ≥ min_price AND ≤ max_price">
+                              {formatRangeLabel(rule.min_price, rule.max_price, false, true)}
                             </TableCell>
                             <TableCell align="center">{rule.flat !== null ? `₹${rule.flat}` : '—'}</TableCell>
                             <TableCell align="center">
@@ -496,7 +510,7 @@ export default function IncentiveRulesManager({ rulesText, onRulesChange }) {
             </Typography>
 
             <TextField
-              label="Min Quantity"
+              label="Min Quantity (>=)"
               type="number"
               value={ruleForm.min_qty ?? ''}
               onChange={(e) => handleRuleFormChange('min_qty', e.target.value === '' ? null : Number(e.target.value))}
@@ -505,7 +519,7 @@ export default function IncentiveRulesManager({ rulesText, onRulesChange }) {
             />
 
             <TextField
-              label="Max Quantity"
+              label="Max Quantity (<=)"
               type="number"
               value={ruleForm.max_qty ?? ''}
               onChange={(e) => handleRuleFormChange('max_qty', e.target.value === '' ? null : Number(e.target.value))}
@@ -514,8 +528,8 @@ export default function IncentiveRulesManager({ rulesText, onRulesChange }) {
             />
 
             <TextField
-              label="Min Rate (₹)"
               type="number"
+              label="Min Rate (>=)"
               value={ruleForm.min_rate ?? ''}
               onChange={(e) => handleRuleFormChange('min_rate', e.target.value === '' ? null : Number(e.target.value))}
               fullWidth
@@ -523,8 +537,8 @@ export default function IncentiveRulesManager({ rulesText, onRulesChange }) {
             />
 
             <TextField
-              label="Max Rate (₹)"
               type="number"
+              label="Max Rate (<=)"
               value={ruleForm.max_rate ?? ''}
               onChange={(e) => handleRuleFormChange('max_rate', e.target.value === '' ? null : Number(e.target.value))}
               fullWidth
@@ -532,8 +546,8 @@ export default function IncentiveRulesManager({ rulesText, onRulesChange }) {
             />
 
             <TextField
-              label="Min Price (₹)"
               type="number"
+              label="Min Price (>=)"
               value={ruleForm.min_price ?? ''}
               onChange={(e) => handleRuleFormChange('min_price', e.target.value === '' ? null : Number(e.target.value))}
               fullWidth
@@ -541,8 +555,8 @@ export default function IncentiveRulesManager({ rulesText, onRulesChange }) {
             />
 
             <TextField
-              label="Max Price (₹)"
               type="number"
+              label="Max Price (<=)"
               value={ruleForm.max_price ?? ''}
               onChange={(e) => handleRuleFormChange('max_price', e.target.value === '' ? null : Number(e.target.value))}
               fullWidth

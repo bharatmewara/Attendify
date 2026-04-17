@@ -22,7 +22,7 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import { Close, Visibility, Download, InsertDriveFile, Replay } from '@mui/icons-material';
+import { Close, Visibility, Download, InsertDriveFile, Replay, Delete } from '@mui/icons-material';
 import { API_BASE_URL, apiRequest } from '../../lib/api';
 import { exportRowsToCsv } from '../../utils/fileExports';
 
@@ -140,6 +140,9 @@ export default function ClientsManagement() {
   const [refundConfirmOpen, setRefundConfirmOpen] = useState(false);
   const [refundTarget, setRefundTarget] = useState(null);
 
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+
   const handleInitiateRefund = (row) => {
     setRefundTarget(row);
     setRefundConfirmOpen(true);
@@ -155,6 +158,24 @@ export default function ClientsManagement() {
       setMessage({ type: 'success', text: `Refund initiated for ${refundTarget.client_name}.` });
       setRefundConfirmOpen(false);
       setRefundTarget(null);
+      loadClients();
+    } catch (error) {
+      setMessage({ type: 'error', text: error.message });
+    }
+  };
+
+  const handleDeleteClient = (row) => {
+    setDeleteTarget(row);
+    setDeleteConfirmOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget?.client_key) return;
+    try {
+      await apiRequest(`/incentives/clients/${deleteTarget.client_key}`, { method: 'DELETE' });
+      setMessage({ type: 'success', text: `Deleted client ${deleteTarget.client_name}.` });
+      setDeleteConfirmOpen(false);
+      setDeleteTarget(null);
       loadClients();
     } catch (error) {
       setMessage({ type: 'error', text: error.message });
@@ -292,6 +313,9 @@ export default function ClientsManagement() {
                         {row.last_status === 'approved' && row.last_submission_id ? (
                           <Button size="small" variant="outlined" color="error" startIcon={<Replay />} onClick={() => handleInitiateRefund(row)}>Refund</Button>
                         ) : null}
+                        <IconButton size="small" color="error" onClick={() => handleDeleteClient(row)} title="Delete Client">
+                          <Delete fontSize="small" />
+                        </IconButton>
                       </Stack>
                     </TableCell>
                   </TableRow>
@@ -432,6 +456,23 @@ export default function ClientsManagement() {
       {/* Refund Confirmation Dialog */}
       <Dialog open={refundConfirmOpen} onClose={() => setRefundConfirmOpen(false)} maxWidth="xs" fullWidth>
         <DialogTitle>Initiate Refund</DialogTitle>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteConfirmOpen} onClose={() => setDeleteConfirmOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Delete Client</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Are you sure you want to delete <strong>{deleteTarget?.client_name}</strong>?
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            This will permanently remove the client record and all associated incentive submissions. Payroll will be recalculated.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteConfirmOpen(false)}>Cancel</Button>
+          <Button variant="contained" color="error" onClick={confirmDelete}>Delete Client</Button>
+        </DialogActions>
+      </Dialog>
         <DialogContent>
           <Typography>
             Are you sure you want to initiate a refund for <strong>{refundTarget?.client_name}</strong>?

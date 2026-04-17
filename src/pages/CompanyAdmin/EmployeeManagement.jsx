@@ -68,7 +68,7 @@ export default function EmployeeManagement() {
   const [departments, setDepartments] = useState([]);
   const [designations, setDesignations] = useState([]);
   const [openDialog, setOpenDialog] = useState(false);
-const [openEditDialog, setOpenEditDialog] = useState(false);
+  const [openEditDialog, setOpenEditDialog] = useState(false);
   const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
   const [selectedEmployee, setSelectedEmployee] = useState(null);
   const [openViewDialog, setOpenViewDialog] = useState(false);
@@ -122,10 +122,6 @@ const [openEditDialog, setOpenEditDialog] = useState(false);
     pan_number: '',
     bank_account_number: '',
     bank_name: '',
-    bank_ifsc: '',
-    emergency_contact: '',
-    emergency_contact_name: '',
-    new_password: '',
     bank_ifsc: '',
     emergency_contact: '',
     emergency_contact_name: '',

@@ -6,11 +6,11 @@
       name: 'Bulk SMS',
       active: true,
       rules: [
-        { mode: 'set', min_qty: 100000, max_qty: 199999, min_rate: 0.08, max_rate: 0.14, flat: 200 },
-        { mode: 'set', min_qty: 200000, max_qty: 299999, min_rate: 0.08, max_rate: 0.14, flat: 250 },
-        { mode: 'set', min_qty: 300000, max_qty: 399999, min_rate: 0.08, max_rate: 0.14, flat: 300 },
-        { mode: 'set', min_qty: 400000, max_qty: 499999, min_rate: 0.08, max_rate: 0.14, flat: 400 },
-        { mode: 'set', min_qty: 500000, max_qty: 900000, min_rate: 0.08, max_rate: 0.14, flat: 500 },
+        { mode: 'set', min_qty: 100000, max_qty: 200000, min_rate: 0.08, max_rate: 0.14, flat: 200 },  /* Inclusive up to 200k */
+        { mode: 'set', min_qty: 200001, max_qty: 300000, min_rate: 0.08, max_rate: 0.14, flat: 250 },
+        { mode: 'set', min_qty: 300001, max_qty: 400000, min_rate: 0.08, max_rate: 0.14, flat: 300 },
+        { mode: 'set', min_qty: 400001, max_qty: 500000, min_rate: 0.08, max_rate: 0.14, flat: 400 },
+        { mode: 'set', min_qty: 500001, max_qty: 900000, min_rate: 0.08, max_rate: 0.14, flat: 500 },
         { mode: 'add', min_qty: 1000000, max_qty: 1500000, percent_of_price: 0.02 },
       ],
     },
@@ -18,26 +18,26 @@
       name: 'WhatsApp SMS',
       active: true,
       rules: [
-        { mode: 'set', min_qty: 50000, max_qty: 99999, min_rate: 0.03, max_rate: 0.04, flat: 100 },
+        { mode: 'set', min_qty: 50000, max_qty: 100000, min_rate: 0.03, max_rate: 0.04, flat: 100 },  /* Inclusive up to 100k */
 
-        { mode: 'set', min_qty: 100000, max_qty: 199999, min_rate: 0.05, max_rate: 0.06, flat: 200 },
-        { mode: 'set', min_qty: 100000, max_qty: 199999, min_rate: 0.06, max_rate: 0.12, flat: 300 },
+        { mode: 'set', min_qty: 100001, max_qty: 200000, min_rate: 0.05, max_rate: 0.06, flat: 200 },
+        { mode: 'set', min_qty: 100001, max_qty: 200000, min_rate: 0.06, max_rate: 0.12, flat: 300 },
 
-        { mode: 'set', min_qty: 200000, max_qty: 299999, min_rate: 0.03, max_rate: 0.04, flat: 200 },
-        { mode: 'set', min_qty: 200000, max_qty: 299999, min_rate: 0.05, max_rate: 0.06, flat: 300 },
-        { mode: 'set', min_qty: 200000, max_qty: 299999, min_rate: 0.07, max_rate: 0.12, flat: 400 },
+        { mode: 'set', min_qty: 200001, max_qty: 300000, min_rate: 0.03, max_rate: 0.04, flat: 200 },
+        { mode: 'set', min_qty: 200001, max_qty: 300000, min_rate: 0.05, max_rate: 0.06, flat: 300 },
+        { mode: 'set', min_qty: 200001, max_qty: 300000, min_rate: 0.07, max_rate: 0.12, flat: 400 },
 
-        { mode: 'set', min_qty: 300000, max_qty: 399999, min_rate: 0.03, max_rate: 0.04, flat: 250 },
-        { mode: 'set', min_qty: 300000, max_qty: 399999, min_rate: 0.05, max_rate: 0.06, flat: 350 },
-        { mode: 'set', min_qty: 300000, max_qty: 399999, min_rate: 0.07, max_rate: 0.12, flat: 500 },
+        { mode: 'set', min_qty: 300001, max_qty: 400000, min_rate: 0.03, max_rate: 0.04, flat: 250 },
+        { mode: 'set', min_qty: 300001, max_qty: 400000, min_rate: 0.05, max_rate: 0.06, flat: 350 },
+        { mode: 'set', min_qty: 300001, max_qty: 400000, min_rate: 0.07, max_rate: 0.12, flat: 500 },
 
-        { mode: 'set', min_qty: 400000, max_qty: 499999, min_rate: 0.03, max_rate: 0.04, flat: 300 },
-        { mode: 'set', min_qty: 400000, max_qty: 499999, min_rate: 0.05, max_rate: 0.06, flat: 400 },
-        { mode: 'set', min_qty: 400000, max_qty: 499999, min_rate: 0.07, max_rate: 0.12, flat: 600 },
+        { mode: 'set', min_qty: 400001, max_qty: 500000, min_rate: 0.03, max_rate: 0.04, flat: 300 },
+        { mode: 'set', min_qty: 400001, max_qty: 500000, min_rate: 0.05, max_rate: 0.06, flat: 400 },
+        { mode: 'set', min_qty: 400001, max_qty: 500000, min_rate: 0.07, max_rate: 0.12, flat: 600 },
 
-        { mode: 'set', min_qty: 500000, min_rate: 0.03, max_rate: 0.06, flat: 400 },
-        { mode: 'set', min_qty: 500000, min_rate: 0.07, max_rate: 0.09, flat: 900 },
-        { mode: 'set', min_qty: 500000, min_rate: 0.1, max_rate: 0.12, flat: 1200 },
+        { mode: 'set', min_qty: 500001, min_rate: 0.03, max_rate: 0.06, flat: 400 },
+        { mode: 'set', min_qty: 500001, min_rate: 0.07, max_rate: 0.09, flat: 900 },
+        { mode: 'set', min_qty: 500001, min_rate: 0.1, max_rate: 0.12, flat: 1200 },
       ],
     },
     { name: 'WhatsApp Meta Setup', active: true, rules: [{ mode: 'set', flat: 100 }] },
@@ -49,6 +49,21 @@
 });
 
 const isNumber = (v) => typeof v === 'number' && Number.isFinite(v);
+
+const getFirstDefined = (...values) => values.find((value) => value !== null && value !== undefined);
+
+const getNumericBound = (rule, keys) => {
+  const raw = getFirstDefined(...keys.map((key) => rule?.[key]));
+  if (raw === null || raw === undefined || raw === '') return null;
+  const num = Number(raw);
+  return Number.isFinite(num) ? num : null;
+};
+
+const getCondition = (rule, keys, fallback) => {
+  const raw = getFirstDefined(...keys.map((key) => rule?.[key]));
+  const normalized = String(raw ?? fallback).trim();
+  return normalized || fallback;
+};
 
 export const validateIncentiveRulesConfigV1 = (config) => {
   if (!config || typeof config !== 'object') return { ok: false, message: 'Config must be an object.' };
@@ -65,7 +80,19 @@ export const validateIncentiveRulesConfigV1 = (config) => {
       const mode = rule.mode || 'set';
       if (!['set', 'add'].includes(mode)) return { ok: false, message: `Rule mode must be set/add in ${product.name}.` };
 
-      const numericFields = ['min_qty', 'max_qty', 'min_rate', 'max_rate', 'min_price', 'max_price', 'flat', 'percent_of_price', 'priority'];
+      const numericFields = [
+        'min_qty',
+        'max_qty',
+        'min_order',
+        'max_order',
+        'min_rate',
+        'max_rate',
+        'min_price',
+        'max_price',
+        'flat',
+        'percent_of_price',
+        'priority',
+      ];
       for (const f of numericFields) {
         if (Object.prototype.hasOwnProperty.call(rule, f) && rule[f] !== null && rule[f] !== undefined) {
           const num = Number(rule[f]);
@@ -87,9 +114,16 @@ export const validateIncentiveRulesConfigV1 = (config) => {
   return { ok: true };
 };
 
-const matchesRange = (value, min, max) => {
-  if (min !== null && min !== undefined && isNumber(Number(min)) && value < Number(min)) return false;
-  if (max !== null && max !== undefined && isNumber(Number(max)) && value > Number(max)) return false;
+const matchesRange = (value, min, max, minCondition = '>=', maxCondition = '<=') => {
+  /* Default boundaries are inclusive so exact min/max values still qualify. */
+  if (min !== null && min !== undefined && isNumber(Number(min))) {
+    const minValue = Number(min);
+    if (minCondition === '>' ? value <= minValue : value < minValue) return false;
+  }
+  if (max !== null && max !== undefined && isNumber(Number(max))) {
+    const maxValue = Number(max);
+    if (maxCondition === '<' ? value >= maxValue : value > maxValue) return false;
+  }
   return true;
 };
 
@@ -132,9 +166,25 @@ export const calculateIncentiveFromRules = ({
   let incentive = 0;
 
   for (const rule of rules) {
-    const matchQty = matchesRange(qty, rule.min_qty, rule.max_qty);
-    const matchRate = rateNum === null ? matchesRange(0, rule.min_rate, rule.max_rate) : matchesRange(rateNum, rule.min_rate, rule.max_rate);
-    const matchPrice = matchesRange(priceNum, rule.min_price, rule.max_price);
+    const qtyMin = getNumericBound(rule, ['min_qty', 'min_order']);
+    const qtyMax = getNumericBound(rule, ['max_qty', 'max_order']);
+    const rateMin = getNumericBound(rule, ['min_rate']);
+    const rateMax = getNumericBound(rule, ['max_rate']);
+    const priceMin = getNumericBound(rule, ['min_price']);
+    const priceMax = getNumericBound(rule, ['max_price']);
+
+    const qtyMinCondition = getCondition(rule, ['min_qty_condition', 'min_order_condition', 'min_condition'], '>=');
+    const qtyMaxCondition = getCondition(rule, ['max_qty_condition', 'max_order_condition', 'max_condition'], '<=');
+    const rateMinCondition = getCondition(rule, ['min_rate_condition', 'min_condition'], '>=');
+    const rateMaxCondition = getCondition(rule, ['max_rate_condition', 'max_condition'], '<=');
+    const priceMinCondition = getCondition(rule, ['min_price_condition', 'min_condition'], '>=');
+    const priceMaxCondition = getCondition(rule, ['max_price_condition', 'max_condition'], '<=');
+
+    const matchQty = matchesRange(qty, qtyMin, qtyMax, qtyMinCondition, qtyMaxCondition);
+    const matchRate = rateNum === null
+      ? matchesRange(0, rateMin, rateMax, rateMinCondition, rateMaxCondition)
+      : matchesRange(rateNum, rateMin, rateMax, rateMinCondition, rateMaxCondition);
+    const matchPrice = matchesRange(priceNum, priceMin, priceMax, priceMinCondition, priceMaxCondition);
 
     if (!matchQty || !matchRate || !matchPrice) continue;
 

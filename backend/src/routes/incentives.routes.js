@@ -123,33 +123,33 @@ const calculateIncentive = (productName, smsQuantity, rate, price, packageType) 
 
   if (productName === 'Bulk SMS') {
     if (rate >= 0.08 && rate <= 0.14) {
-      if (smsQuantity >= 100000 && smsQuantity < 200000) incentive = 200;
-      else if (smsQuantity >= 200000 && smsQuantity < 300000) incentive = 250;
-      else if (smsQuantity >= 300000 && smsQuantity < 400000) incentive = 300;
-      else if (smsQuantity >= 400000 && smsQuantity < 500000) incentive = 400;
-      else if (smsQuantity >= 500000 && smsQuantity <= 900000) incentive = 500;
+      if (smsQuantity >= 100000 && smsQuantity <= 200000) incentive = 200;  /* Inclusive <= */
+      else if (smsQuantity >= 200001 && smsQuantity <= 300000) incentive = 250;
+      else if (smsQuantity >= 300001 && smsQuantity <= 400000) incentive = 300;
+      else if (smsQuantity >= 400001 && smsQuantity <= 500000) incentive = 400;
+      else if (smsQuantity >= 500001 && smsQuantity <= 900000) incentive = 500;
     }
     if (smsQuantity >= 1000000 && smsQuantity <= 1500000) {
       incentive += price * 0.02;
     }
   } else if (productName === 'WhatsApp SMS') {
-    if (smsQuantity >= 50000 && smsQuantity < 100000 && rate >= 0.03 && rate <= 0.04) incentive = 100;
-    else if (smsQuantity >= 100000 && smsQuantity < 200000) {
+    if (smsQuantity >= 50000 && smsQuantity <= 100000 && rate >= 0.03 && rate <= 0.04) incentive = 100;  /* Inclusive */
+    else if (smsQuantity >= 100001 && smsQuantity <= 200000) {
       if (rate >= 0.05 && rate <= 0.06) incentive = 200;
       else if (rate >= 0.06 && rate <= 0.12) incentive = 300;
-    } else if (smsQuantity >= 200000 && smsQuantity < 300000) {
+    } else if (smsQuantity >= 200001 && smsQuantity <= 300000) {
       if (rate >= 0.03 && rate <= 0.04) incentive = 200;
       else if (rate >= 0.05 && rate <= 0.06) incentive = 300;
       else if (rate >= 0.07 && rate <= 0.12) incentive = 400;
-    } else if (smsQuantity >= 300000 && smsQuantity < 400000) {
+    } else if (smsQuantity >= 300001 && smsQuantity <= 400000) {
       if (rate >= 0.03 && rate <= 0.04) incentive = 250;
       else if (rate >= 0.05 && rate <= 0.06) incentive = 350;
       else if (rate >= 0.07 && rate <= 0.12) incentive = 500;
-    } else if (smsQuantity >= 400000 && smsQuantity < 500000) {
+    } else if (smsQuantity >= 400001 && smsQuantity <= 500000) {
       if (rate >= 0.03 && rate <= 0.04) incentive = 300;
       else if (rate >= 0.05 && rate <= 0.06) incentive = 400;
       else if (rate >= 0.07 && rate <= 0.12) incentive = 600;
-    } else if (smsQuantity >= 500000) {
+    } else if (smsQuantity >= 500001) {
       if (rate >= 0.03 && rate <= 0.06) incentive = 400;
       else if (rate >= 0.07 && rate <= 0.09) incentive = 900;
       else if (rate >= 0.1 && rate <= 0.12) incentive = 1200;
@@ -1230,6 +1230,131 @@ router.get(
   tenantIsolation,
   requireCompanyContext,
   async (req, res) => {
+
+router.delete(
+  '/clients/:clientKey',
+  authenticate,
+  authorize('company_admin', 'super_admin'),
+  tenantIsolation,
+  requireCompanyContext,
+  async (req, res) => {
+    try {
+      const clientKey = req.params.clientKey;
+      if (!clientKey) {
+        return res.status(400).json({ message: 'clientKey is required' });
+      }
+
+      // First find the last_submission_id for the client_key
+      const subResult = await query(
+        `WITH base AS (
+          SELECT id, client_key, employee_id
+          FROM incentive_submissions
+          WHERE company_id = $1::int
+            AND client_key = $2
+        ),
+        ranked AS (
+          SELECT id, employee_id, ROW_NUMBER() OVER (ORDER BY approved_at DESC NULLS LAST, submitted_at DESC) as rn
+          FROM base
+        )
+        SELECT id, employee_id FROM ranked WHERE rn = 1`,
+        [req.companyId, clientKey]
+      );
+
+      if (subResult.rows.length === 0) {
+        return res.status(404).json({ message: 'Client not found' });
+      }
+
+      const submission = subResult.rows[0];
+      const submissionId = submission.id;
+      const employeeId = submission.employee_id;
+
+      // Delete incentive_earnings linked to this submission
+      await query(
+        `DELETE FROM incentive_earnings WHERE submission_id = $1 AND company_id = $2`,
+        [submissionId, req.companyId]
+      );
+
+      // Delete the incentive_submission(s) for this client_key
+      await query(
+        `DELETE FROM incentive_submissions WHERE client_key = $1 AND company_id = $2`,
+        [clientKey, req.companyId]
+      );
+
+      // Recalculate affected payroll for the employee
+      // Find recent payroll months for the employee
+      const payrollMonths = await query(
+        `SELECT DISTINCT month, year FROM payroll_calculations 
+         WHERE employee_id = $1 AND company_id = $2 
+         AND incentives > 0`,
+        [employeeId, req.companyId]
+      );
+
+      for (const pm of payrollMonths.rows) {
+        const month = pm.month;
+        const year = pm.year;
+        // Recalc incentives total
+        const totalResult = await query(
+          `SELECT COALESCE(SUM(incentive_amount), 0) AS total
+           FROM incentive_submissions
+           WHERE employee_id = $1 AND company_id = $2
+           AND status = 'approved' AND approved_at IS NOT NULL
+           AND EXTRACT(MONTH FROM approved_at) = $3 AND EXTRACT(YEAR FROM approved_at) = $4`,
+          [employeeId, req.companyId, month, year]
+        );
+        const totalIncentives = Number(totalResult.rows[0]?.total || 0);
+
+        const salesResult = await query(
+          `SELECT COALESCE(SUM(price), 0) AS total
+           FROM incentive_submissions
+           WHERE employee_id = $1 AND company_id = $2
+           AND status = 'approved' AND approved_at IS NOT NULL
+           AND EXTRACT(MONTH FROM approved_at) = $3 AND EXTRACT(YEAR FROM approved_at) = $4`,
+          [employeeId, req.companyId, month, year]
+        );
+        const salesTotal = Number(salesResult.rows[0]?.total || 0);
+
+        const payroll = await query(
+          `SELECT id, basic_salary, total_allowances, total_deductions, 
+                  late_penalties, early_leave_penalties, working_days, present_days
+           FROM payroll_calculations
+           WHERE employee_id = $1 AND company_id = $2 AND month = $3 AND year = $4`,
+          [employeeId, req.companyId, month, year]
+        ).then(r => r.rows[0]);
+
+        if (payroll) {
+          const tierResult = await query(
+            `SELECT target_total_salary FROM company_sales_target_tiers 
+             WHERE company_id = $1 AND is_active = TRUE 
+             AND min_sales_amount <= $2 ORDER BY min_sales_amount DESC LIMIT 1`,
+            [req.companyId, salesTotal]
+          );
+          const targetTotalSalary = Number(tierResult.rows[0]?.target_total_salary || 0);
+          const basicSalary = Number(payroll.basic_salary || 0);
+          const workingDays = Number(payroll.working_days || 26);
+          const presentDays = Number(payroll.present_days || 0);
+          const extraIncome = Math.max(0, targetTotalSalary - basicSalary);
+          const earnedBasic = (basicSalary / workingDays) * presentDays;
+          const earnedExtra = (extraIncome / workingDays) * presentDays;
+          const grossSalary = earnedBasic + earnedExtra + Number(payroll.total_allowances || 0) + totalIncentives;
+          const netSalary = grossSalary - Number(payroll.total_deductions || 0) - Number(payroll.late_penalties || 0) - Number(payroll.early_leave_penalties || 0);
+
+          await query(
+            `UPDATE payroll_calculations SET
+             incentives = $1, sales_total = $2, target_total_salary = $3,
+             extra_income = $4, gross_salary = $5, net_salary = $6, processed_at = NOW()
+             WHERE id = $7 AND company_id = $8`,
+            [totalIncentives, salesTotal, targetTotalSalary, extraIncome, grossSalary, netSalary, payroll.id, req.companyId]
+          );
+        }
+      }
+
+      return res.json({ message: `Deleted client ${clientKey} and updated payroll.` });
+    } catch (error) {
+      console.error('Delete client failed:', error);
+      return res.status(500).json({ message: error.message });
+    }
+  }
+);
     try {
       const q = req.query.q ? String(req.query.q).trim() : '';
       const date_from_raw = req.query.date_from ?? req.query.dateFrom ?? '';
