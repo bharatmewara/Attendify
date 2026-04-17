@@ -454,11 +454,43 @@ export default function ClientsManagement() {
       </Dialog>
 
       {/* Refund Confirmation Dialog */}
-      <Dialog open={refundConfirmOpen} onClose={() => setRefundConfirmOpen(false)} maxWidth="xs" fullWidth>
+      <Dialog
+        open={refundConfirmOpen}
+        onClose={() => {
+          setRefundConfirmOpen(false);
+          setRefundTarget(null);
+        }}
+        maxWidth="xs"
+        fullWidth
+      >
         <DialogTitle>Initiate Refund</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Are you sure you want to initiate a refund for <strong>{refundTarget?.client_name}</strong>?
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            This will mark the submission as <strong>refunded</strong> and remove it from incentive totals and payroll calculations.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => {
+            setRefundConfirmOpen(false);
+            setRefundTarget(null);
+          }}>Cancel</Button>
+          <Button variant="contained" color="error" onClick={confirmRefund}>Confirm Refund</Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Delete Confirmation Dialog */}
-      <Dialog open={deleteConfirmOpen} onClose={() => setDeleteConfirmOpen(false)} maxWidth="xs" fullWidth>
+      <Dialog
+        open={deleteConfirmOpen}
+        onClose={() => {
+          setDeleteConfirmOpen(false);
+          setDeleteTarget(null);
+        }}
+        maxWidth="xs"
+        fullWidth
+      >
         <DialogTitle>Delete Client</DialogTitle>
         <DialogContent>
           <Typography>
@@ -469,21 +501,11 @@ export default function ClientsManagement() {
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDeleteConfirmOpen(false)}>Cancel</Button>
+          <Button onClick={() => {
+            setDeleteConfirmOpen(false);
+            setDeleteTarget(null);
+          }}>Cancel</Button>
           <Button variant="contained" color="error" onClick={confirmDelete}>Delete Client</Button>
-        </DialogActions>
-      </Dialog>
-        <DialogContent>
-          <Typography>
-            Are you sure you want to initiate a refund for <strong>{refundTarget?.client_name}</strong>?
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-            This will mark the submission as <strong>refunded</strong> and remove it from incentive totals and payroll calculations.
-          </Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setRefundConfirmOpen(false)}>Cancel</Button>
-          <Button variant="contained" color="error" onClick={confirmRefund}>Confirm Refund</Button>
         </DialogActions>
       </Dialog>
     </Box>

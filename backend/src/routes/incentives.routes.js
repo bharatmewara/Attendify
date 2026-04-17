@@ -1230,131 +1230,6 @@ router.get(
   tenantIsolation,
   requireCompanyContext,
   async (req, res) => {
-
-router.delete(
-  '/clients/:clientKey',
-  authenticate,
-  authorize('company_admin', 'super_admin'),
-  tenantIsolation,
-  requireCompanyContext,
-  async (req, res) => {
-    try {
-      const clientKey = req.params.clientKey;
-      if (!clientKey) {
-        return res.status(400).json({ message: 'clientKey is required' });
-      }
-
-      // First find the last_submission_id for the client_key
-      const subResult = await query(
-        `WITH base AS (
-          SELECT id, client_key, employee_id
-          FROM incentive_submissions
-          WHERE company_id = $1::int
-            AND client_key = $2
-        ),
-        ranked AS (
-          SELECT id, employee_id, ROW_NUMBER() OVER (ORDER BY approved_at DESC NULLS LAST, submitted_at DESC) as rn
-          FROM base
-        )
-        SELECT id, employee_id FROM ranked WHERE rn = 1`,
-        [req.companyId, clientKey]
-      );
-
-      if (subResult.rows.length === 0) {
-        return res.status(404).json({ message: 'Client not found' });
-      }
-
-      const submission = subResult.rows[0];
-      const submissionId = submission.id;
-      const employeeId = submission.employee_id;
-
-      // Delete incentive_earnings linked to this submission
-      await query(
-        `DELETE FROM incentive_earnings WHERE submission_id = $1 AND company_id = $2`,
-        [submissionId, req.companyId]
-      );
-
-      // Delete the incentive_submission(s) for this client_key
-      await query(
-        `DELETE FROM incentive_submissions WHERE client_key = $1 AND company_id = $2`,
-        [clientKey, req.companyId]
-      );
-
-      // Recalculate affected payroll for the employee
-      // Find recent payroll months for the employee
-      const payrollMonths = await query(
-        `SELECT DISTINCT month, year FROM payroll_calculations 
-         WHERE employee_id = $1 AND company_id = $2 
-         AND incentives > 0`,
-        [employeeId, req.companyId]
-      );
-
-      for (const pm of payrollMonths.rows) {
-        const month = pm.month;
-        const year = pm.year;
-        // Recalc incentives total
-        const totalResult = await query(
-          `SELECT COALESCE(SUM(incentive_amount), 0) AS total
-           FROM incentive_submissions
-           WHERE employee_id = $1 AND company_id = $2
-           AND status = 'approved' AND approved_at IS NOT NULL
-           AND EXTRACT(MONTH FROM approved_at) = $3 AND EXTRACT(YEAR FROM approved_at) = $4`,
-          [employeeId, req.companyId, month, year]
-        );
-        const totalIncentives = Number(totalResult.rows[0]?.total || 0);
-
-        const salesResult = await query(
-          `SELECT COALESCE(SUM(price), 0) AS total
-           FROM incentive_submissions
-           WHERE employee_id = $1 AND company_id = $2
-           AND status = 'approved' AND approved_at IS NOT NULL
-           AND EXTRACT(MONTH FROM approved_at) = $3 AND EXTRACT(YEAR FROM approved_at) = $4`,
-          [employeeId, req.companyId, month, year]
-        );
-        const salesTotal = Number(salesResult.rows[0]?.total || 0);
-
-        const payroll = await query(
-          `SELECT id, basic_salary, total_allowances, total_deductions, 
-                  late_penalties, early_leave_penalties, working_days, present_days
-           FROM payroll_calculations
-           WHERE employee_id = $1 AND company_id = $2 AND month = $3 AND year = $4`,
-          [employeeId, req.companyId, month, year]
-        ).then(r => r.rows[0]);
-
-        if (payroll) {
-          const tierResult = await query(
-            `SELECT target_total_salary FROM company_sales_target_tiers 
-             WHERE company_id = $1 AND is_active = TRUE 
-             AND min_sales_amount <= $2 ORDER BY min_sales_amount DESC LIMIT 1`,
-            [req.companyId, salesTotal]
-          );
-          const targetTotalSalary = Number(tierResult.rows[0]?.target_total_salary || 0);
-          const basicSalary = Number(payroll.basic_salary || 0);
-          const workingDays = Number(payroll.working_days || 26);
-          const presentDays = Number(payroll.present_days || 0);
-          const extraIncome = Math.max(0, targetTotalSalary - basicSalary);
-          const earnedBasic = (basicSalary / workingDays) * presentDays;
-          const earnedExtra = (extraIncome / workingDays) * presentDays;
-          const grossSalary = earnedBasic + earnedExtra + Number(payroll.total_allowances || 0) + totalIncentives;
-          const netSalary = grossSalary - Number(payroll.total_deductions || 0) - Number(payroll.late_penalties || 0) - Number(payroll.early_leave_penalties || 0);
-
-          await query(
-            `UPDATE payroll_calculations SET
-             incentives = $1, sales_total = $2, target_total_salary = $3,
-             extra_income = $4, gross_salary = $5, net_salary = $6, processed_at = NOW()
-             WHERE id = $7 AND company_id = $8`,
-            [totalIncentives, salesTotal, targetTotalSalary, extraIncome, grossSalary, netSalary, payroll.id, req.companyId]
-          );
-        }
-      }
-
-      return res.json({ message: `Deleted client ${clientKey} and updated payroll.` });
-    } catch (error) {
-      console.error('Delete client failed:', error);
-      return res.status(500).json({ message: error.message });
-    }
-  }
-);
     try {
       const q = req.query.q ? String(req.query.q).trim() : '';
       const date_from_raw = req.query.date_from ?? req.query.dateFrom ?? '';
@@ -1478,6 +1353,157 @@ router.delete(
       return res.json(result.rows);
     } catch (error) {
       console.error('Clients list fetch failed', error);
+      return res.status(500).json({ message: error.message });
+    }
+  },
+);
+router.delete(
+  '/clients/:clientKey',
+  authenticate,
+  authorize('company_admin', 'super_admin'),
+  tenantIsolation,
+  requireCompanyContext,
+  async (req, res) => {
+    try {
+      const clientKey = String(req.params.clientKey || '').trim();
+      if (!clientKey) {
+        return res.status(400).json({ message: 'clientKey is required' });
+      }
+
+      const matchingSubmissions = await query(
+        `WITH keyed AS (
+          SELECT
+            id,
+            employee_id,
+            approved_at,
+            COALESCE(NULLIF(client_mobile_1, ''), NULLIF(client_email, ''), CONCAT('submission:', id::text)) AS client_key
+          FROM incentive_submissions
+          WHERE company_id = $1::int
+        )
+        SELECT id, employee_id, approved_at
+        FROM keyed
+        WHERE client_key = $2`,
+        [req.companyId, clientKey],
+      );
+
+      if (!matchingSubmissions.rows.length) {
+        return res.status(404).json({ message: 'Client not found' });
+      }
+
+      const submissionIds = matchingSubmissions.rows.map((row) => Number(row.id)).filter(Number.isFinite);
+      const affectedMonths = new Map();
+
+      for (const row of matchingSubmissions.rows) {
+        const employeeId = Number(row.employee_id);
+        if (!Number.isFinite(employeeId) || !row.approved_at) continue;
+
+        const approvedDate = new Date(row.approved_at);
+        const month = approvedDate.getUTCMonth() + 1;
+        const year = approvedDate.getUTCFullYear();
+        if (!month || !year) continue;
+
+        const key = `${employeeId}:${year}:${month}`;
+        affectedMonths.set(key, { employeeId, year, month });
+      }
+
+      await query(
+        `DELETE FROM incentive_earnings
+         WHERE company_id = $1::int
+           AND submission_id = ANY($2::int[])`,
+        [req.companyId, submissionIds],
+      );
+
+      await query(
+        `DELETE FROM incentive_submissions
+         WHERE company_id = $1::int
+           AND id = ANY($2::int[])`,
+        [req.companyId, submissionIds],
+      );
+
+      for (const { employeeId, year, month } of affectedMonths.values()) {
+        const totalResult = await query(
+          `SELECT COALESCE(SUM(incentive_amount), 0) AS total
+           FROM incentive_submissions
+           WHERE employee_id = $1::int
+             AND company_id = $2::int
+             AND status = 'approved'
+             AND approved_at IS NOT NULL
+             AND EXTRACT(MONTH FROM approved_at) = $3::int
+             AND EXTRACT(YEAR FROM approved_at) = $4::int`,
+          [employeeId, req.companyId, month, year],
+        );
+        const totalIncentives = Number(totalResult.rows[0]?.total || 0);
+
+        const salesResult = await query(
+          `SELECT COALESCE(SUM(price), 0) AS total
+           FROM incentive_submissions
+           WHERE employee_id = $1::int
+             AND company_id = $2::int
+             AND status = 'approved'
+             AND approved_at IS NOT NULL
+             AND EXTRACT(MONTH FROM approved_at) = $3::int
+             AND EXTRACT(YEAR FROM approved_at) = $4::int`,
+          [employeeId, req.companyId, month, year],
+        );
+        const salesTotal = Number(salesResult.rows[0]?.total || 0);
+
+        const payrollResult = await query(
+          `SELECT id, basic_salary, total_allowances, total_deductions,
+                  late_penalties, early_leave_penalties, working_days, present_days
+           FROM payroll_calculations
+           WHERE employee_id = $1::int
+             AND company_id = $2::int
+             AND month = $3::int
+             AND year = $4::int
+           LIMIT 1`,
+          [employeeId, req.companyId, month, year],
+        );
+        const payroll = payrollResult.rows[0];
+        if (!payroll) continue;
+
+        const tierResult = await query(
+          `SELECT target_total_salary
+           FROM company_sales_target_tiers
+           WHERE company_id = $1::int
+             AND is_active = TRUE
+             AND min_sales_amount <= $2
+           ORDER BY min_sales_amount DESC
+           LIMIT 1`,
+          [req.companyId, salesTotal],
+        );
+
+        const targetTotalSalary = Number(tierResult.rows[0]?.target_total_salary || 0);
+        const basicSalary = Number(payroll.basic_salary || 0);
+        const workingDays = Number(payroll.working_days || 26);
+        const presentDays = Number(payroll.present_days || 0);
+        const extraIncome = Math.max(0, targetTotalSalary - basicSalary);
+        const earnedBasic = (basicSalary / workingDays) * presentDays;
+        const earnedExtra = (extraIncome / workingDays) * presentDays;
+        const grossSalary = earnedBasic + earnedExtra + Number(payroll.total_allowances || 0) + totalIncentives;
+        const netSalary =
+          grossSalary -
+          Number(payroll.total_deductions || 0) -
+          Number(payroll.late_penalties || 0) -
+          Number(payroll.early_leave_penalties || 0);
+
+        await query(
+          `UPDATE payroll_calculations
+           SET incentives = $1,
+               sales_total = $2,
+               target_total_salary = $3,
+               extra_income = $4,
+               gross_salary = $5,
+               net_salary = $6,
+               processed_at = NOW()
+           WHERE id = $7::int
+             AND company_id = $8::int`,
+          [totalIncentives, salesTotal, targetTotalSalary, extraIncome, grossSalary, netSalary, payroll.id, req.companyId],
+        );
+      }
+
+      return res.json({ message: `Deleted client ${clientKey} and updated payroll.` });
+    } catch (error) {
+      console.error('Delete client failed:', error);
       return res.status(500).json({ message: error.message });
     }
   },
