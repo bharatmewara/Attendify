@@ -6,12 +6,29 @@ import { enforcePunchIp } from '../middleware/networkPolicy.js';
 import { autoMarkAbsent } from '../utils/attendanceHelper.js';
 
 const router = express.Router();
+const ATTENDANCE_TZ_OFFSET = process.env.ATTENDANCE_TZ_OFFSET || '+05:30';
+
+const getDateKeyInOffset = (date = new Date(), offset = ATTENDANCE_TZ_OFFSET) => {
+  const match = String(offset).trim().match(/^([+-])(\d{2}):(\d{2})$/);
+  if (!match) {
+    return date.toISOString().split('T')[0];
+  }
+
+  const [, sign, hh, mm] = match;
+  const offsetMinutes = (Number(hh) * 60 + Number(mm)) * (sign === '+' ? 1 : -1);
+  const shifted = new Date(date.getTime() + (offsetMinutes * 60 * 1000));
+  const year = shifted.getUTCFullYear();
+  const month = String(shifted.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(shifted.getUTCDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 const normalizeWorkDate = (value) => {
   if (!value) return null;
   if (value instanceof Date) {
-    const year = value.getFullYear();
-    const month = String(value.getMonth() + 1).padStart(2, '0');
-    const day = String(value.getDate()).padStart(2, '0');
+    const year = value.getUTCFullYear();
+    const month = String(value.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(value.getUTCDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
   }
 
@@ -33,9 +50,12 @@ const getPreviousWorkDate = (workDate) => {
 const combineDateTime = (workDate, time) => {
   if (!workDate || !time) return null;
   const normalizedDate = normalizeWorkDate(workDate);
-  const normalizedTime = String(time).trim();
-  const hasSeconds = normalizedTime.split(':').length >= 3;
-  const dateTimeStr = `${normalizedDate}T${hasSeconds ? normalizedTime : `${normalizedTime}:00`}`;
+  const normalizedTime = String(time).trim().replace(/\.\d+$/, '');
+  const timeParts = normalizedTime.split(':');
+  const hh = String(timeParts[0] || '00').padStart(2, '0');
+  const mi = String(timeParts[1] || '00').padStart(2, '0');
+  const ss = String(timeParts[2] || '00').padStart(2, '0');
+  const dateTimeStr = `${normalizedDate}T${hh}:${mi}:${ss}${ATTENDANCE_TZ_OFFSET}`;
   const date = new Date(dateTimeStr);
   return isNaN(date.getTime()) ? null : date;
 };
@@ -169,7 +189,7 @@ router.post('/punch-in', authenticate, tenantIsolation, enforcePunchIp, async (r
     }
     const employeeId = empResult.rows[0].id;
 
-    const today = new Date().toISOString().split('T')[0];
+    const today = getDateKeyInOffset(new Date());
     
     // Check if already punched in
     const existing = await query(
@@ -242,7 +262,7 @@ router.post('/punch-out', authenticate, tenantIsolation, async (req, res) => {
     }
     const employeeId = empResult.rows[0].id;
 
-    const today = new Date().toISOString().split('T')[0];
+    const today = getDateKeyInOffset(new Date());
     
     const existing = await query(
       'SELECT * FROM attendance_records WHERE employee_id = $1 AND work_date = $2',
@@ -307,7 +327,7 @@ const getTodayAttendanceStatus = async (req, res) => {
       return res.status(404).json({ message: 'Employee profile not found' });
     }
 
-    const today = new Date().toISOString().split('T')[0];
+    const today = getDateKeyInOffset(new Date());
     const result = await query(
       'SELECT * FROM attendance_records WHERE employee_id = $1 AND work_date = $2',
       [empResult.rows[0].id, today]
@@ -487,7 +507,7 @@ router.post('/regularization-requests', authenticate, authorize('employee'), ten
       return res.status(400).json({ message: 'work_date and reason are required' });
     }
 
-    const today = new Date().toISOString().split('T')[0];
+    const today = getDateKeyInOffset(new Date());
     if (work_date > today) {
       return res.status(400).json({ message: 'ER request can only be raised for past or current dates' });
     }
