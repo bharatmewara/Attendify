@@ -170,6 +170,7 @@ export const calculateIncentiveFromRules = ({
     .sort((a, b) => Number(a?.priority || 0) - Number(b?.priority || 0));
 
   let incentive = 0;
+  let setApplied = false;
 
   for (const rule of rules) {
     const qtyMin = getNumericBound(rule, ['min_qty', 'min_order']);
@@ -201,7 +202,11 @@ export const calculateIncentiveFromRules = ({
     if (String(rule.mode || 'set') === 'add') {
       incentive += amount;
     } else {
+      // First matching "set" rule wins to avoid boundary overlaps
+      // (for example, qty=200001 matching two adjacent slabs).
+      if (setApplied) continue;
       incentive = amount;
+      setApplied = true;
     }
   }
 
