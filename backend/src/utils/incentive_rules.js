@@ -59,10 +59,16 @@ const getNumericBound = (rule, keys) => {
   return Number.isFinite(num) ? num : null;
 };
 
+const normalizeRangeCondition = (value, fallback) => {
+  const normalized = String(value ?? fallback).trim();
+  if (normalized === '>') return '>=';
+  if (normalized === '<') return '<=';
+  return normalized || fallback;
+};
+
 const getCondition = (rule, keys, fallback) => {
   const raw = getFirstDefined(...keys.map((key) => rule?.[key]));
-  const normalized = String(raw ?? fallback).trim();
-  return normalized || fallback;
+  return normalizeRangeCondition(raw, fallback);
 };
 
 export const validateIncentiveRulesConfigV1 = (config) => {

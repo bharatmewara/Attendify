@@ -122,7 +122,9 @@ export default function ClientsManagement() {
       { label: 'Email', value: 'client_email' },
       { label: 'Product', value: (r) => r.last_product || r.product_name || '' },
       { label: 'SMS Qty', value: (r) => r.last_sms_quantity ?? r.sms_quantity ?? '' },
-      { label: 'Price', value: (r) => r.last_price_ex_gst ?? '' },
+      { label: 'Price (excl GST)', value: (r) => r.last_price_ex_gst ?? '' },
+      { label: 'GST Amount', value: (r) => r.last_gst_amount ?? '' },
+      { label: 'Price (incl GST)', value: (r) => r.last_amount_received ?? '' },
       { label: 'Rate', value: (r) => r.last_rate != null ? r.last_rate : '—' },
       { label: 'Sales Date', value: (r) => r.last_approved_at || r.last_submitted_at || '' },
       { label: 'Employee By', value: (r) => r.first_name ? `${r.first_name} ${r.last_name}` : '' },
@@ -133,7 +135,6 @@ export default function ClientsManagement() {
       { label: 'KYC Document', value: (r) => r.last_kyc_path ? toScreenshotUrl(r.last_kyc_path) : '' },
       { label: 'Employee Client Count', value: (r) => r.submissions_count || '' },
       { label: 'City', value: (r) => r.last_location || '' },
-      { label: 'GST Amount', value: (r) => r.last_amount_received ?? '' },
     ], filename);
   };
 

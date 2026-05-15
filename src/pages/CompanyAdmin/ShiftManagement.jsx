@@ -182,6 +182,7 @@ export default function ShiftManagement() {
                   <TableCell>Timings</TableCell>
                   <TableCell>Working Days</TableCell>
                   <TableCell>Grace Period</TableCell>
+                  <TableCell>Attendance Rules</TableCell>
                   <TableCell>Penalties</TableCell>
                   <TableCell>Status</TableCell>
                   <TableCell>Action</TableCell>
@@ -196,6 +197,11 @@ export default function ShiftManagement() {
                       <TableCell>{shift.start_time} to {shift.end_time}</TableCell>
                       <TableCell>{days.join(', ')}</TableCell>
                       <TableCell>{shift.grace_period_minutes} min</TableCell>
+                      <TableCell>
+                        Full Day: {Number(shift.min_hours_full_day || 8).toFixed(2)}h
+                        <br />
+                        Half Day: {Number(shift.min_hours_half_day || 4).toFixed(2)}h
+                      </TableCell>
                       <TableCell>Late: Rs. {shift.late_penalty_per_minute}/min | Early: Rs. {shift.early_leave_penalty_per_minute}/min</TableCell>
                       <TableCell><Chip size="small" label={shift.is_active ? 'Active' : 'Inactive'} color={shift.is_active ? 'success' : 'default'} /></TableCell>
                       <TableCell>

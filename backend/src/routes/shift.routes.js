@@ -3,6 +3,10 @@ import { query } from '../db.js';
 import { authenticate, authorize, requireCompanyContext, tenantIsolation } from '../middleware/auth.middleware.js';
 
 const router = express.Router();
+const normalizeOptionalTime = (value) => {
+  const normalized = String(value ?? '').trim();
+  return normalized || null;
+};
 
 // Get all shifts
 router.get('/', authenticate, tenantIsolation, async (req, res) => {
@@ -37,7 +41,7 @@ router.post('/', authenticate, authorize('company_admin', 'super_admin'), tenant
       [
         req.companyId, name, start_time, end_time, JSON.stringify(working_days), grace_period_minutes, 
         late_penalty_per_minute, early_leave_penalty_per_minute,
-        min_hours_full_day || 8.0, min_hours_half_day || 4.0, max_punch_in_time || null
+        min_hours_full_day || 8.0, min_hours_half_day || 4.0, normalizeOptionalTime(max_punch_in_time)
       ]
     );
 
@@ -67,7 +71,7 @@ router.put('/:id', authenticate, authorize('company_admin', 'super_admin'), tena
       [
         name, start_time, end_time, JSON.stringify(working_days), grace_period_minutes, 
         late_penalty_per_minute, early_leave_penalty_per_minute, is_active,
-        min_hours_full_day, min_hours_half_day, max_punch_in_time,
+        min_hours_full_day, min_hours_half_day, normalizeOptionalTime(max_punch_in_time),
         id, req.companyId
       ]
     );
@@ -97,7 +101,7 @@ router.post('/assign', authenticate, authorize('company_admin', 'super_admin'), 
       `INSERT INTO employee_shifts (employee_id, shift_id, effective_from, effective_to)
        VALUES ($1, $2, $3, $4)
        RETURNING *`,
-      [employee_id, shift_id, effective_from, effective_to]
+      [employee_id, shift_id, effective_from, normalizeOptionalTime(effective_to)]
     );
 
     res.status(201).json(result.rows[0]);

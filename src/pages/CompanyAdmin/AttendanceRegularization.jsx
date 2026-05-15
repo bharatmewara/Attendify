@@ -86,6 +86,9 @@ export default function AttendanceRegularization() {
         body: { status, rejection_reason: rejectionReason },
       });
       setMessage(`Request ${status} successfully`);
+      if (status === 'approved') {
+        window.dispatchEvent(new Event('attendance:updated'));
+      }
       loadData();
     } catch (error) {
       setMessage(error.message);

@@ -43,8 +43,7 @@ const normalizeBoolean = (value) => {
 const roundMoney = (value) => Math.round(Number(value) * 100) / 100;
 
 const resolvePricingWithGst = ({ packageType, gstApplied, price, priceGross }) => {
-  const isCurrent = String(packageType || '').toLowerCase() === 'new';
-  const applyGst = isCurrent && normalizeBoolean(gstApplied);
+  const applyGst = normalizeBoolean(gstApplied);
 
   const grossCandidate = priceGross !== undefined && priceGross !== null && priceGross !== ''
     ? Number(priceGross)
@@ -61,6 +60,66 @@ const resolvePricingWithGst = ({ packageType, gstApplied, price, priceGross }) =
     price_gross: null,
     price: netCandidate !== null && Number.isFinite(netCandidate) ? roundMoney(netCandidate) : null,
   };
+};
+
+const normalizeDuplicateText = (value) => String(value ?? '').trim().toLowerCase();
+const normalizeDuplicateNumber = (value) => {
+  if (value === null || value === undefined || value === '') return null;
+  const num = Number(value);
+  return Number.isFinite(num) ? roundMoney(num) : null;
+};
+
+const findDuplicatePendingSubmission = async ({
+  companyId,
+  employeeId,
+  clientName,
+  productName,
+  clientMobile1,
+  clientEmail,
+  packageType,
+  smsQuantity,
+  rate,
+  price,
+  priceGross,
+  paymentMode,
+  excludeId = null,
+}) => {
+  const result = await query(
+    `SELECT id
+     FROM incentive_submissions
+     WHERE company_id = $1::int
+       AND employee_id = $2::int
+       AND status = 'pending'
+       AND lower(trim(client_name)) = $3
+       AND lower(trim(product_name)) = $4
+       AND lower(trim(client_mobile_1)) = $5
+       AND lower(trim(client_email)) = $6
+       AND lower(trim(package_type)) = $7
+       AND COALESCE(sms_quantity, -1) = COALESCE($8::int, -1)
+       AND COALESCE(rate, -1) = COALESCE($9::decimal, -1)
+       AND COALESCE(price, -1) = COALESCE($10::decimal, -1)
+       AND COALESCE(price_gross, -1) = COALESCE($11::decimal, -1)
+       AND lower(trim(COALESCE(payment_mode, ''))) = $12
+       AND ($13::int IS NULL OR id <> $13::int)
+     LIMIT 1`,
+    [
+      companyId,
+      employeeId,
+      normalizeDuplicateText(clientName),
+      normalizeDuplicateText(productName),
+      normalizeDuplicateText(clientMobile1),
+      normalizeDuplicateText(clientEmail),
+      normalizeDuplicateText(packageType),
+      smsQuantity === null || smsQuantity === undefined || smsQuantity === '' ? null : Number(smsQuantity),
+      normalizeDuplicateNumber(rate),
+      normalizeDuplicateNumber(price),
+      normalizeDuplicateNumber(priceGross),
+      normalizeDuplicateText(paymentMode),
+      excludeId,
+    ],
+  );
+
+  return result.rows[0] || null;
 };
 
 const escapeHtml = (value) =>
@@ -455,6 +514,24 @@ router.post(
         priceGross: price_gross,
       });
 
+      const duplicate = await findDuplicatePendingSubmission({
+        companyId: req.companyId,
+        employeeId,
+        clientName: client_name,
+        productName: product_name,
+        clientMobile1: client_mobile_1,
+        clientEmail: client_email,
+        packageType: package_type,
+        smsQuantity,
+        rate,
+        price: resolvedPricing.price,
+        priceGross: resolvedPricing.price_gross,
+        paymentMode: payment_mode,
+      });
+      if (duplicate) {
+        return res.status(400).json({ message: 'A pending Today Status request with the same details already exists.' });
+      }
+
       const { incentive: incentive_amount } = await calculateCompanyIncentiveAmount({
         companyId: req.companyId,
         productName: product_name,
@@ -710,6 +787,25 @@ router.put(
         price: next.price,
         priceGross: next.price_gross,
       });
+
+      const duplicate = await findDuplicatePendingSubmission({
+        companyId: req.companyId,
+        employeeId,
+        clientName: next.client_name,
+        productName: next.product_name,
+        clientMobile1: next.client_mobile_1,
+        clientEmail: next.client_email,
+        packageType: next.package_type,
+        smsQuantity: next.sms_quantity,
+        rate: next.rate,
+        price: resolvedPricing.price,
+        priceGross: resolvedPricing.price_gross,
+        paymentMode: next.payment_mode,
+        excludeId: submissionId,
+      });
+      if (duplicate) {
+        return res.status(400).json({ message: 'A pending Today Status request with the same details already exists.' });
+      }
 
       const { incentive: incentive_amount } = await calculateCompanyIncentiveAmount({
         companyId: req.companyId,
@@ -1353,6 +1449,43 @@ router.get(
       return res.json(result.rows);
     } catch (error) {
       console.error('Clients list fetch failed', error);
+      return res.status(500).json({ message: error.message });
+    }
+  },
+);
+
+router.delete(
+  '/submissions/:id/self',
+  authenticate,
+  authorize('employee'),
+  tenantIsolation,
+  requireCompanyContext,
+  enforceOfficePunchIpForEmployee,
+  async (req, res) => {
+    try {
+      const submissionId = Number(req.params.id);
+      const employeeId = await resolveEmployeeIdForUser(req.user.id);
+      if (!employeeId) {
+        return res.status(404).json({ message: 'Employee profile not found' });
+      }
+
+      const result = await query(
+        `DELETE FROM incentive_submissions
+         WHERE id = $1::int
+           AND company_id = $2::int
+           AND employee_id = $3::int
+           AND status = 'pending'
+         RETURNING id`,
+        [submissionId, req.companyId, employeeId],
+      );
+
+      if (!result.rows.length) {
+        return res.status(404).json({ message: 'Pending Today Status request not found' });
+      }
+
+      return res.json({ message: 'Today Status request deleted successfully' });
+    } catch (error) {
+      console.error('Employee incentive self-delete failed', error);
       return res.status(500).json({ message: error.message });
     }
   },

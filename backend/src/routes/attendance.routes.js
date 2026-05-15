@@ -6,11 +6,156 @@ import { enforcePunchIp } from '../middleware/networkPolicy.js';
 import { autoMarkAbsent } from '../utils/attendanceHelper.js';
 
 const router = express.Router();
+const normalizeWorkDate = (value) => {
+  if (!value) return null;
+  if (value instanceof Date) {
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, '0');
+    const day = String(value.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  const raw = String(value).trim();
+  const isoMatch = raw.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (isoMatch) return isoMatch[1];
+  return raw;
+};
+
+const getPreviousWorkDate = (workDate) => {
+  const normalized = normalizeWorkDate(workDate);
+  if (!normalized) return null;
+  const [year, month, day] = normalized.split('-').map(Number);
+  const date = new Date(year, month - 1, day);
+  date.setDate(date.getDate() - 1);
+  return normalizeWorkDate(date);
+};
+
 const combineDateTime = (workDate, time) => {
   if (!workDate || !time) return null;
-  const dateTimeStr = `${workDate}T${time}:00`;
+  const normalizedDate = normalizeWorkDate(workDate);
+  const normalizedTime = String(time).trim();
+  const hasSeconds = normalizedTime.split(':').length >= 3;
+  const dateTimeStr = `${normalizedDate}T${hasSeconds ? normalizedTime : `${normalizedTime}:00`}`;
   const date = new Date(dateTimeStr);
   return isNaN(date.getTime()) ? null : date;
+};
+
+const getShiftForWorkDate = async (employeeId, workDate, companyId = null) => {
+  const result = await query(
+    `SELECT s.*
+     FROM employee_shifts es
+     JOIN shifts s ON es.shift_id = s.id
+     WHERE es.employee_id = $1::int
+       AND es.effective_from <= $2::date
+       AND (es.effective_to IS NULL OR es.effective_to >= $2::date)
+     ORDER BY es.effective_from DESC
+     LIMIT 1`,
+    [employeeId, workDate],
+  );
+
+  if (result.rows[0]) return result.rows[0];
+  if (!companyId) return null;
+
+  const fallback = await query(
+    `SELECT *
+     FROM shifts
+     WHERE company_id = $1::int
+       AND is_active = TRUE
+     ORDER BY id DESC
+     LIMIT 1`,
+    [companyId],
+  );
+
+  return fallback.rows[0] || null;
+};
+
+const resolveAttendanceStatusFromShift = (shift, totalHours) => {
+  if (!shift || totalHours === null || totalHours === undefined || totalHours === '') {
+    return 'present';
+  }
+
+  const hours = Number(totalHours);
+  if (!Number.isFinite(hours)) return 'present';
+  if (hours < Number(shift.min_hours_half_day || 4)) return 'absent';
+  if (hours < Number(shift.min_hours_full_day || 8)) return 'half_day';
+  return 'present';
+};
+
+const syncApprovedRegularizations = async (companyId, employeeId, startDate, endDate) => {
+  const params = [companyId, startDate, endDate];
+  let employeeFilterSql = '';
+
+  if (employeeId) {
+    params.push(employeeId);
+    employeeFilterSql = ` AND arr.employee_id = $4::int`;
+  }
+
+  const requestsResult = await query(
+    `SELECT arr.*
+     FROM attendance_regularization_requests arr
+     WHERE ($1::int IS NULL OR arr.company_id = $1::int)
+       AND arr.status = 'approved'
+       AND arr.work_date >= $2::date
+       AND arr.work_date <= $3::date
+       ${employeeFilterSql}
+     ORDER BY arr.work_date ASC, arr.id ASC`,
+    params,
+  );
+
+  for (const regularization of requestsResult.rows) {
+    const normalizedWorkDate = normalizeWorkDate(regularization.work_date);
+    const punchInAt = regularization.punch_in_time ? combineDateTime(normalizedWorkDate, regularization.punch_in_time) : null;
+    const punchOutAt = regularization.punch_out_time ? combineDateTime(normalizedWorkDate, regularization.punch_out_time) : null;
+    const totalHours = (punchInAt && punchOutAt) ? ((punchOutAt - punchInAt) / (1000 * 60 * 60)).toFixed(2) : null;
+    const shift = await getShiftForWorkDate(regularization.employee_id, normalizedWorkDate, regularization.company_id);
+    const resolvedStatus = resolveAttendanceStatusFromShift(shift, totalHours);
+    const erNote = `Attendance ER approved: ${regularization.reason}`;
+    const previousWorkDate = getPreviousWorkDate(normalizedWorkDate);
+
+    if (previousWorkDate) {
+      await query(
+        `DELETE FROM attendance_records
+         WHERE employee_id = $1::int
+           AND company_id = $2::int
+           AND work_date = $3::date
+           AND notes = $4::text
+           AND punch_in_time IS NULL
+           AND punch_out_time IS NULL
+           AND total_hours IS NULL`,
+        [regularization.employee_id, regularization.company_id, previousWorkDate, erNote],
+      );
+    }
+
+    await query(
+      `INSERT INTO attendance_records (
+         employee_id, company_id, work_date, punch_in_time, punch_out_time, total_hours, status, source, notes, approved_by
+       ) VALUES ($1::int, $2::int, $3::date, $4::timestamptz, $5::timestamptz, $6::decimal, $7::varchar(50), 'web', $8::text, $9::int)
+       ON CONFLICT (employee_id, work_date)
+       DO UPDATE SET
+         punch_in_time = COALESCE(EXCLUDED.punch_in_time, attendance_records.punch_in_time),
+         punch_out_time = COALESCE(EXCLUDED.punch_out_time, attendance_records.punch_out_time),
+         total_hours = COALESCE(EXCLUDED.total_hours, attendance_records.total_hours),
+         status = CASE
+           WHEN attendance_records.status = 'on_leave' THEN attendance_records.status
+           ELSE EXCLUDED.status
+         END,
+         source = EXCLUDED.source,
+         notes = EXCLUDED.notes,
+         approved_by = COALESCE(EXCLUDED.approved_by, attendance_records.approved_by),
+         updated_at = NOW()`,
+      [
+        regularization.employee_id,
+        regularization.company_id,
+        normalizedWorkDate,
+        punchInAt,
+        punchOutAt,
+        totalHours,
+        resolvedStatus,
+        erNote,
+        regularization.approved_by,
+      ],
+    );
+  }
 };
 
 // Punch in
@@ -37,15 +182,7 @@ router.post('/punch-in', authenticate, tenantIsolation, enforcePunchIp, async (r
     }
 
     // Get employee shift
-    const shiftResult = await query(
-      `SELECT s.* FROM employee_shifts es
-       JOIN shifts s ON es.shift_id = s.id
-       WHERE es.employee_id = $1 AND (es.effective_to IS NULL OR es.effective_to >= CURRENT_DATE)
-       ORDER BY es.effective_from DESC LIMIT 1`,
-      [employeeId]
-    );
-
-    const shift = shiftResult.rows[0];
+    const shift = await getShiftForWorkDate(employeeId, today, req.companyId);
     const punchInTime = new Date();
     let lateMinutes = 0;
 
@@ -125,17 +262,9 @@ router.post('/punch-out', authenticate, tenantIsolation, async (req, res) => {
     const totalHours = ((punchOutTime - punchInTime) / (1000 * 60 * 60)).toFixed(2);
 
     // Check early leave
-    const shiftResult = await query(
-      `SELECT s.* FROM employee_shifts es
-       JOIN shifts s ON es.shift_id = s.id
-       WHERE es.employee_id = $1 AND (es.effective_to IS NULL OR es.effective_to >= CURRENT_DATE)
-       ORDER BY es.effective_from DESC LIMIT 1`,
-      [employeeId]
-    );
-
     let earlyLeaveMinutes = 0;
-    if (shiftResult.rows.length > 0) {
-      const shift = shiftResult.rows[0];
+    const shift = await getShiftForWorkDate(employeeId, today, req.companyId);
+    if (shift) {
       const [hours, minutes] = shift.end_time.split(':');
       const shiftEnd = new Date();
       shiftEnd.setHours(parseInt(hours), parseInt(minutes), 0, 0);
@@ -146,16 +275,7 @@ router.post('/punch-out', authenticate, tenantIsolation, async (req, res) => {
     }
 
     // Determine status based on hours rules
-    let finalStatus = 'present';
-    if (shiftResult.rows.length > 0) {
-      const shift = shiftResult.rows[0];
-      const hours = parseFloat(totalHours);
-      if (hours < (shift.min_hours_half_day || 4)) {
-        finalStatus = 'absent';
-      } else if (hours < (shift.min_hours_full_day || 8)) {
-        finalStatus = 'half_day';
-      }
-    }
+    const finalStatus = resolveAttendanceStatusFromShift(shift, totalHours);
 
     const result = await query(
       `UPDATE attendance_records 
@@ -217,6 +337,7 @@ router.get('/records', authenticate, tenantIsolation, async (req, res) => {
         targetEmpId = empResult.rows[0]?.id;
       }
       await autoMarkAbsent(req.companyId, targetEmpId, start_date, end_date);
+      await syncApprovedRegularizations(req.companyId, targetEmpId, start_date, end_date);
     }
 
     let queryText = `
@@ -441,6 +562,7 @@ router.put('/regularization-requests/:id', authenticate, authorize('company_admi
     if (!regularization.work_date) {
       return res.status(400).json({ message: 'Invalid work_date in ER request' });
     }
+    const normalizedWorkDate = normalizeWorkDate(regularization.work_date);
     if (regularization.status !== 'pending') {
       return res.status(400).json({ message: 'Only pending ER requests can be updated' });
     }
@@ -450,36 +572,41 @@ router.put('/regularization-requests/:id', authenticate, authorize('company_admi
     }
 
     if (status === 'approved') {
-      const punchInAt = regularization.punch_in_time ? combineDateTime(regularization.work_date, regularization.punch_in_time) : null;
-      const punchOutAt = regularization.punch_out_time ? combineDateTime(regularization.work_date, regularization.punch_out_time) : null;
+      const punchInAt = regularization.punch_in_time ? combineDateTime(normalizedWorkDate, regularization.punch_in_time) : null;
+      const punchOutAt = regularization.punch_out_time ? combineDateTime(normalizedWorkDate, regularization.punch_out_time) : null;
       const totalHours = (punchInAt && punchOutAt) ? ((punchOutAt - punchInAt) / (1000 * 60 * 60)).toFixed(2) : null;
+      const shift = await getShiftForWorkDate(regularization.employee_id, normalizedWorkDate, regularization.company_id);
+      const resolvedStatus = resolveAttendanceStatusFromShift(shift, totalHours);
 
-      if (punchInAt || punchOutAt || totalHours !== null) {
-        await query(
-          `INSERT INTO attendance_records (
-             employee_id, company_id, work_date, punch_in_time, punch_out_time, total_hours, status, source, notes, approved_by
-           ) VALUES ($1::int, $2::int, $3::date, $4::timestamptz, $5::timestamptz, $6::decimal, 'present', 'web', $7::text, $8::int)
-           ON CONFLICT (employee_id, work_date)
-           DO UPDATE SET
-             punch_in_time = COALESCE(EXCLUDED.punch_in_time, attendance_records.punch_in_time),
-             punch_out_time = COALESCE(EXCLUDED.punch_out_time, attendance_records.punch_out_time),
-             total_hours = COALESCE(EXCLUDED.total_hours, attendance_records.total_hours),
-             status = CASE WHEN attendance_records.status = 'on_leave' THEN attendance_records.status ELSE 'present' END,
-             notes = EXCLUDED.notes,
-             approved_by = EXCLUDED.approved_by,
-             updated_at = NOW()`,
-          [
-            regularization.employee_id,
-            regularization.company_id,
-            regularization.work_date,
-            punchInAt,
-            punchOutAt,
-            totalHours,
-            `Attendance ER approved: ${regularization.reason}`,
-            req.user.id,
-          ],
-        );
-      }
+      await query(
+        `INSERT INTO attendance_records (
+           employee_id, company_id, work_date, punch_in_time, punch_out_time, total_hours, status, source, notes, approved_by
+         ) VALUES ($1::int, $2::int, $3::date, $4::timestamptz, $5::timestamptz, $6::decimal, $7::varchar(50), 'web', $8::text, $9::int)
+         ON CONFLICT (employee_id, work_date)
+         DO UPDATE SET
+           punch_in_time = COALESCE(EXCLUDED.punch_in_time, attendance_records.punch_in_time),
+           punch_out_time = COALESCE(EXCLUDED.punch_out_time, attendance_records.punch_out_time),
+           total_hours = COALESCE(EXCLUDED.total_hours, attendance_records.total_hours),
+           status = CASE
+             WHEN attendance_records.status = 'on_leave' THEN attendance_records.status
+             ELSE EXCLUDED.status
+           END,
+           source = EXCLUDED.source,
+           notes = EXCLUDED.notes,
+           approved_by = EXCLUDED.approved_by,
+           updated_at = NOW()`,
+        [
+          regularization.employee_id,
+          regularization.company_id,
+          normalizedWorkDate,
+          punchInAt,
+          punchOutAt,
+          totalHours,
+          resolvedStatus,
+          `Attendance ER approved: ${regularization.reason}`,
+          req.user.id,
+        ],
+      );
     }
 
     const updateResult = await query(

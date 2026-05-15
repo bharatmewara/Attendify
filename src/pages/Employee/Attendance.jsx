@@ -29,18 +29,47 @@ const shellCardSx = {
   boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
 };
 
+const toDateKey = (value) => {
+  if (!value) return '';
+  if (value instanceof Date) {
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, '0');
+    const day = String(value.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  const raw = String(value).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    return raw;
+  }
+
+  const date = new Date(raw);
+  if (!Number.isNaN(date.getTime())) {
+    return toDateKey(date);
+  }
+
+  return raw;
+};
+
+const formatDateKey = (dateKey, options) => {
+  if (!dateKey) return '';
+  const [year, month, day] = String(dateKey).split('-').map(Number);
+  if (!year || !month || !day) return String(dateKey);
+  return new Date(year, month - 1, day).toLocaleDateString('en-GB', options);
+};
+
 export default function EmployeeAttendance() {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [records, setRecords] = useState([]);
   const [holidays, setHolidays] = useState([]);
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedDate, setSelectedDate] = useState(toDateKey(new Date()));
 
   const loadData = async () => {
     try {
       const year = currentMonth.getFullYear();
       const month = currentMonth.getMonth() + 1;
-      const startRecord = new Date(year, month - 1, 1).toLocaleDateString('en-CA');
-      const endRecord = new Date(year, month, 0).toLocaleDateString('en-CA');
+      const startRecord = toDateKey(new Date(year, month - 1, 1));
+      const endRecord = toDateKey(new Date(year, month, 0));
 
       const [res, holidayRes] = await Promise.all([
         apiRequest(`/attendance/records?start_date=${startRecord}&end_date=${endRecord}`),
@@ -55,6 +84,29 @@ export default function EmployeeAttendance() {
 
   useEffect(() => {
     loadData();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentMonth]);
+
+  useEffect(() => {
+    const handleAttendanceRefresh = () => {
+      loadData();
+    };
+
+    const handleVisibilityRefresh = () => {
+      if (document.visibilityState === 'visible') {
+        loadData();
+      }
+    };
+
+    window.addEventListener('attendance:updated', handleAttendanceRefresh);
+    window.addEventListener('focus', handleAttendanceRefresh);
+    document.addEventListener('visibilitychange', handleVisibilityRefresh);
+
+    return () => {
+      window.removeEventListener('attendance:updated', handleAttendanceRefresh);
+      window.removeEventListener('focus', handleAttendanceRefresh);
+      document.removeEventListener('visibilitychange', handleVisibilityRefresh);
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentMonth]);
 
@@ -109,18 +161,18 @@ export default function EmployeeAttendance() {
 
   const getRecordForDate = (date) => {
     if (!date) return null;
-    const dateStr = typeof date === 'string' ? date : date.toLocaleDateString('en-CA');
+    const dateStr = toDateKey(date);
     return records.find(r => {
-      const rDate = r.work_date.split('T')[0];
+      const rDate = toDateKey(r.work_date);
       return rDate === dateStr;
     });
   };
 
   const getHolidayForDate = (date) => {
     if (!date) return null;
-    const dateStr = typeof date === 'string' ? date : date.toLocaleDateString('en-CA');
+    const dateStr = toDateKey(date);
     return holidays.find(h => {
-      const hDate = h.holiday_date.split('T')[0];
+      const hDate = toDateKey(h.holiday_date);
       return hDate === dateStr;
     });
   };
@@ -157,7 +209,9 @@ export default function EmployeeAttendance() {
         >
           <strong>Upcoming Holidays:</strong>{' '}
           {upcomingHolidays.map((h, i) => {
-            const d = new Date(h.holiday_date);
+            const holidayKey = toDateKey(h.holiday_date);
+            const [holidayYear, holidayMonth, holidayDay] = holidayKey.split('-').map(Number);
+            const d = new Date(holidayYear, holidayMonth - 1, holidayDay);
             const daysLeft = Math.ceil((d - new Date()) / (1000 * 60 * 60 * 24));
             return (
               <span key={h.id}>
@@ -201,9 +255,9 @@ export default function EmployeeAttendance() {
                     }} />
                   );
                   
-                  const dateStr = day.toLocaleDateString('en-CA');
+                  const dateStr = toDateKey(day);
                   const isSelected = selectedDate === dateStr;
-                  const isToday = new Date().toLocaleDateString('en-CA') === dateStr;
+                  const isToday = toDateKey(new Date()) === dateStr;
                   const record = getRecordForDate(day);
                   const holiday = getHolidayForDate(day);
                   
@@ -305,8 +359,9 @@ export default function EmployeeAttendance() {
         {/* Selected Date Details */}
           <Card sx={{ ...shellCardSx, bgcolor: '#f8fafc', width: '100%' }}>
             <CardContent>
-              <Typography variant="h6" sx={{ fontWeight: 800, mb: 2 }}>{new Date(selectedDate).toLocaleDateString('default', { weekday: 'long', month: 'long', day: 'numeric' })}</Typography>
-              
+              <Typography variant="h6" sx={{ fontWeight: 800, mb: 2 }}>
+                {formatDateKey(selectedDate, { weekday: 'long', month: 'long', day: 'numeric' })}
+              </Typography>
               {selectedHoliday && (
                 <Alert icon={<BeachAccess />} severity="warning" sx={{ mb: 2, bgcolor: 'rgba(234,179,8,0.1)', color: '#854d0e', border: '1px solid rgba(234,179,8,0.3)', '& .MuiAlert-icon': { color: '#ca8a04' } }}>
                   <strong>🎉 Holiday:</strong> {selectedHoliday.name}{selectedHoliday.description ? ` — ${selectedHoliday.description}` : ''}
@@ -375,11 +430,11 @@ export default function EmployeeAttendance() {
                   </TableHead>
                   <TableBody>
                     {records.length > 0 ? records.map((record) => {
-                      const dateObj = new Date(record.work_date);
+                      const dateKey = toDateKey(record.work_date);
                       const isMinus = record.total_hours && (Number(record.total_hours) - EXPECTED_HOURS) < 0;
                       return (
-                        <TableRow key={record.id} hover onClick={() => setSelectedDate(dateObj.toLocaleDateString('en-CA'))} sx={{ cursor: 'pointer' }}>
-                          <TableCell sx={{ fontWeight: 500 }}>{dateObj.toLocaleDateString('en-GB')}</TableCell>
+                        <TableRow key={record.id} hover onClick={() => setSelectedDate(dateKey)} sx={{ cursor: 'pointer' }}>
+                          <TableCell sx={{ fontWeight: 500 }}>{formatDateKey(dateKey, { day: '2-digit', month: '2-digit', year: 'numeric' })}</TableCell>
                           <TableCell>
                             <Chip label={record.status} size="small" color={record.status === 'present' ? 'success' : record.status === 'absent' ? 'error' : 'warning'} sx={{ textTransform: 'capitalize', fontWeight: 600, height: 24 }} />
                           </TableCell>

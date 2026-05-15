@@ -7,6 +7,7 @@ import {
   CardContent,
   Chip,
   Checkbox,
+  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
@@ -26,7 +27,7 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material';
-import { Add, Edit, UploadFile } from '@mui/icons-material';
+import { Add, Delete, Edit, UploadFile } from '@mui/icons-material';
 import { apiRequest } from '../../lib/api';
 
 const capitalizeStatus = (status) => {
@@ -78,6 +79,29 @@ const GST_RATE = 0.18;
 const roundMoney = (value) => Math.round(Number(value) * 100) / 100;
 const calcNetFromGross = (gross) => roundMoney(Number(gross) / (1 + GST_RATE));
 
+const normalizeMatchText = (value) => String(value ?? '').trim().toLowerCase();
+const normalizeMatchNumber = (value) => {
+  if (value === '' || value === null || value === undefined) return '';
+  const num = Number(value);
+  return Number.isFinite(num) ? String(roundMoney(num)) : '';
+};
+
+const isDuplicatePendingSubmission = (rows, form, resolvedPricing, excludeId = null) =>
+  (rows || []).some((row) =>
+    String(row.status) === 'pending'
+    && Number(row.id) !== Number(excludeId)
+    && normalizeMatchText(row.client_name) === normalizeMatchText(form.client_name)
+    && normalizeMatchText(row.product_name) === normalizeMatchText(form.product_name)
+    && normalizeMatchText(row.client_mobile_1) === normalizeMatchText(form.client_mobile_1)
+    && normalizeMatchText(row.client_email) === normalizeMatchText(form.client_email)
+    && normalizeMatchText(row.package_type) === normalizeMatchText(form.package_type)
+    && normalizeMatchText(row.payment_mode) === normalizeMatchText(form.payment_mode)
+    && normalizeMatchNumber(row.sms_quantity) === normalizeMatchNumber(form.sms_quantity)
+    && normalizeMatchNumber(row.rate) === normalizeMatchNumber(form.rate)
+    && normalizeMatchNumber(row.price) === normalizeMatchNumber(resolvedPricing.price)
+    && normalizeMatchNumber(row.price_gross) === normalizeMatchNumber(resolvedPricing.price_gross)
+  );
+
 export default function EmployeeIncentives() {
   const [requests, setRequests] = useState([]);
   const [openRequestDialog, setOpenRequestDialog] = useState(false);
@@ -86,6 +110,9 @@ export default function EmployeeIncentives() {
   const [calculatedIncentive, setCalculatedIncentive] = useState(0);
   const [officeOnlyBlocked, setOfficeOnlyBlocked] = useState(false);
   const [productOptions, setProductOptions] = useState(fallbackProductOptions);
+  const [submitting, setSubmitting] = useState(false);
+  const [editSaving, setEditSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
 
   const [editOpen, setEditOpen] = useState(false);
   const [editForm, setEditForm] = useState(null);
@@ -203,7 +230,14 @@ export default function EmployeeIncentives() {
       return;
     }
 
+    const resolvedPricing = buildPreviewPayload(editForm);
+    if (isDuplicatePendingSubmission(requests, editForm, resolvedPricing, editForm.id)) {
+      setMessage({ type: 'error', text: 'A pending Today Status request with the same details already exists.' });
+      return;
+    }
+
     try {
+      setEditSaving(true);
       const formData = new FormData();
       Object.keys(editForm).forEach((key) => {
         if (key === 'id') return;
@@ -234,6 +268,8 @@ export default function EmployeeIncentives() {
         return;
       }
       setMessage({ type: 'error', text: msg });
+    } finally {
+      setEditSaving(false);
     }
   };
 
@@ -244,6 +280,12 @@ export default function EmployeeIncentives() {
     }
     if (rateInvalid) {
       setMessage({ type: 'error', text: 'Rate must be entered in paisa (example 0.12) and must be less than 1.' });
+      return;
+    }
+
+    const resolvedPricing = buildPreviewPayload(requestForm);
+    if (isDuplicatePendingSubmission(requests, requestForm, resolvedPricing)) {
+      setMessage({ type: 'error', text: 'A pending Today Status request with the same details already exists.' });
       return;
     }
 
@@ -259,6 +301,7 @@ export default function EmployeeIncentives() {
       });
 
     try {
+      setSubmitting(true);
       await apiRequest('/incentives/submissions', {
         method: 'POST',
         body: formData,
@@ -271,6 +314,23 @@ export default function EmployeeIncentives() {
       window.dispatchEvent(new Event('incentives:updated'));
     } catch (error) {
       setMessage({ type: 'error', text: error.message });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDelete = async (id) => {
+    try {
+      setDeletingId(id);
+      await apiRequest(`/incentives/submissions/${id}/self`, { method: 'DELETE' });
+      setMessage({ type: 'success', text: 'Today Status request deleted.' });
+      await loadData();
+      window.dispatchEvent(new Event('incentives:updated'));
+    } catch (error) {
+      const msg = String(error?.message || 'Request failed');
+      setMessage({ type: 'error', text: msg });
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -306,6 +366,7 @@ export default function EmployeeIncentives() {
                     <TableCell>Incentive</TableCell>
                     <TableCell>Status</TableCell>
                     <TableCell>Submitted At</TableCell>
+                    <TableCell align="right">Delete</TableCell>
                     <TableCell align="right">Edit</TableCell>
                   </TableRow>
                 </TableHead>
@@ -324,6 +385,20 @@ export default function EmployeeIncentives() {
                         />
                       </TableCell>
                       <TableCell>{new Date(row.submitted_at).toLocaleString()}</TableCell>
+                      <TableCell align="right">
+                        <Tooltip title={officeOnlyBlocked ? 'Office network required' : 'Delete (pending only)'}>
+                          <span>
+                            <IconButton
+                              size="small"
+                              color="error"
+                              onClick={() => handleDelete(row.id)}
+                              disabled={officeOnlyBlocked || String(row.status) !== 'pending' || deletingId === row.id}
+                            >
+                              {deletingId === row.id ? <CircularProgress size={18} /> : <Delete fontSize="small" />}
+                            </IconButton>
+                          </span>
+                        </Tooltip>
+                      </TableCell>
                       <TableCell align="right">
                         <Tooltip title={officeOnlyBlocked ? 'Office network required' : 'Edit (pending only)'}>
                           <span>
@@ -363,6 +438,20 @@ export default function EmployeeIncentives() {
           <TextField fullWidth select label="Product Name" margin="normal" value={requestForm.product_name} onChange={(e) => setRequestForm({ ...requestForm, product_name: e.target.value })}>
             {productOptions.map(option => <MenuItem key={option} value={option}>{option}</MenuItem>)}
           </TextField>
+          <TextField
+            fullWidth
+            select
+            label="Client Package Type"
+            margin="normal"
+            value={requestForm.package_type}
+            onChange={(e) => {
+              const nextType = e.target.value;
+              setRequestForm((current) => ({ ...current, package_type: nextType }));
+            }}
+          >
+            <MenuItem value="new">New</MenuItem>
+            <MenuItem value="renew">Renew</MenuItem>
+          </TextField>
 
           <Alert severity="info" sx={{ mt: 1 }}>
             Incentive is calculated automatically based on admin rules.
@@ -375,34 +464,32 @@ export default function EmployeeIncentives() {
             </>
           )}
 
-          {String(requestForm.package_type || '').toLowerCase() === 'new' ? (
-            <FormControlLabel
-              sx={{ mt: 1 }}
-              control={
-                <Checkbox
-                  checked={Boolean(requestForm.gst_applied)}
-                  onChange={(e) => {
-                    const checked = e.target.checked;
-                    setRequestForm((current) => {
-                      if (!checked) {
-                        const nextPrice = current.price_gross !== '' ? current.price_gross : current.price;
-                        return { ...current, gst_applied: false, price_gross: '', price: nextPrice };
-                      }
+          <FormControlLabel
+            sx={{ mt: 1 }}
+            control={
+              <Checkbox
+                checked={Boolean(requestForm.gst_applied)}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  setRequestForm((current) => {
+                    if (!checked) {
+                      const nextPrice = current.price_gross !== '' ? current.price_gross : current.price;
+                      return { ...current, gst_applied: false, price_gross: '', price: nextPrice };
+                    }
 
-                      const gross = current.price_gross !== '' ? current.price_gross : current.price;
-                      if (gross === '' || gross === null || gross === undefined) {
-                        return { ...current, gst_applied: true, price_gross: '', price: current.price };
-                      }
-                      return { ...current, gst_applied: true, price_gross: gross, price: String(calcNetFromGross(gross)) };
-                    });
-                  }}
-                />
-              }
-              label="Apply GST (18%)"
-            />
-          ) : null}
+                    const gross = current.price_gross !== '' ? current.price_gross : current.price;
+                    if (gross === '' || gross === null || gross === undefined) {
+                      return { ...current, gst_applied: true, price_gross: '', price: current.price };
+                    }
+                    return { ...current, gst_applied: true, price_gross: gross, price: String(calcNetFromGross(gross)) };
+                  });
+                }}
+              />
+            }
+            label="Apply GST (18%)"
+          />
 
-          {String(requestForm.package_type || '').toLowerCase() === 'new' && requestForm.gst_applied ? (
+          {requestForm.gst_applied ? (
             <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} sx={{ mt: 0.5 }}>
               <TextField
                 fullWidth
@@ -456,26 +543,6 @@ export default function EmployeeIncentives() {
             <MenuItem value="Current">Current</MenuItem>
             <MenuItem value="Saving">Saving</MenuItem>
           </TextField>
-          <TextField
-            fullWidth
-            select
-            label="Client Package Type"
-            margin="normal"
-            value={requestForm.package_type}
-            onChange={(e) => {
-              const nextType = e.target.value;
-              setRequestForm((current) => {
-                const next = { ...current, package_type: nextType };
-                if (String(nextType || '').toLowerCase() !== 'new') {
-                  return { ...next, gst_applied: false, price_gross: '' };
-                }
-                return { ...next, gst_applied: current.gst_applied ?? true };
-              });
-            }}
-          >
-            <MenuItem value="new">New</MenuItem>
-            <MenuItem value="renew">Renew</MenuItem>
-          </TextField>
           <TextField fullWidth label="Client Location" margin="normal" value={requestForm.client_location} onChange={(e) => setRequestForm({ ...requestForm, client_location: e.target.value })} />
 
           <Button component="label" variant="outlined" startIcon={<UploadFile />} sx={{ mt: 1 }}>
@@ -492,8 +559,10 @@ export default function EmployeeIncentives() {
 
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setOpenRequestDialog(false)}>Cancel</Button>
-          <Button variant="contained" onClick={handleSubmit} disabled={officeOnlyBlocked}>Submit</Button>
+          <Button onClick={() => setOpenRequestDialog(false)} disabled={submitting}>Cancel</Button>
+          <Button variant="contained" onClick={handleSubmit} disabled={officeOnlyBlocked || submitting}>
+            {submitting ? <CircularProgress size={20} color="inherit" /> : 'Submit'}
+          </Button>
         </DialogActions>
       </Dialog>
 
@@ -516,6 +585,23 @@ export default function EmployeeIncentives() {
               <TextField fullWidth select label="Product Name" margin="normal" value={editForm.product_name} onChange={(e) => setEditForm({ ...editForm, product_name: e.target.value })}>
                 {productOptions.map(option => <MenuItem key={option} value={option}>{option}</MenuItem>)}
               </TextField>
+              <TextField
+                fullWidth
+                select
+                label="Client Package Type"
+                margin="normal"
+                value={editForm.package_type}
+                onChange={(e) => {
+                  const nextType = e.target.value;
+                  setEditForm((current) => {
+                    if (!current) return current;
+                    return { ...current, package_type: nextType };
+                  });
+                }}
+              >
+                <MenuItem value="new">New</MenuItem>
+                <MenuItem value="renew">Renew</MenuItem>
+              </TextField>
 
               {['Bulk SMS', 'WhatsApp SMS'].includes(editForm.product_name) && (
                 <>
@@ -524,35 +610,33 @@ export default function EmployeeIncentives() {
                 </>
               )}
 
-              {String(editForm.package_type || '').toLowerCase() === 'new' ? (
-                <FormControlLabel
-                  sx={{ mt: 1 }}
-                  control={
-                    <Checkbox
-                      checked={Boolean(editForm.gst_applied)}
-                      onChange={(e) => {
-                        const checked = e.target.checked;
-                        setEditForm((current) => {
-                          if (!current) return current;
-                          if (!checked) {
-                            const nextPrice = current.price_gross !== '' ? current.price_gross : current.price;
-                            return { ...current, gst_applied: false, price_gross: '', price: nextPrice };
-                          }
+              <FormControlLabel
+                sx={{ mt: 1 }}
+                control={
+                  <Checkbox
+                    checked={Boolean(editForm.gst_applied)}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setEditForm((current) => {
+                        if (!current) return current;
+                        if (!checked) {
+                          const nextPrice = current.price_gross !== '' ? current.price_gross : current.price;
+                          return { ...current, gst_applied: false, price_gross: '', price: nextPrice };
+                        }
 
-                          const gross = current.price_gross !== '' ? current.price_gross : current.price;
-                          if (gross === '' || gross === null || gross === undefined) {
-                            return { ...current, gst_applied: true, price_gross: '', price: current.price };
-                          }
-                          return { ...current, gst_applied: true, price_gross: gross, price: String(calcNetFromGross(gross)) };
-                        });
-                      }}
-                    />
-                  }
-                  label="Apply GST (18%)"
-                />
-              ) : null}
+                        const gross = current.price_gross !== '' ? current.price_gross : current.price;
+                        if (gross === '' || gross === null || gross === undefined) {
+                          return { ...current, gst_applied: true, price_gross: '', price: current.price };
+                        }
+                        return { ...current, gst_applied: true, price_gross: gross, price: String(calcNetFromGross(gross)) };
+                      });
+                    }}
+                  />
+                }
+                label="Apply GST (18%)"
+              />
 
-              {String(editForm.package_type || '').toLowerCase() === 'new' && editForm.gst_applied ? (
+              {editForm.gst_applied ? (
                 <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} sx={{ mt: 0.5 }}>
                   <TextField
                     fullWidth
@@ -585,27 +669,6 @@ export default function EmployeeIncentives() {
                 <TextField fullWidth label="Price" type="number" margin="normal" value={editForm.price} onChange={(e) => setEditForm({ ...editForm, price: e.target.value })} onWheel={(e) => e.target.blur()} inputProps={{ onWheel: (e) => e.target.blur() }} />
               )}
               <TextField fullWidth label="Payment Mode" margin="normal" value={editForm.payment_mode} onChange={(e) => setEditForm({ ...editForm, payment_mode: e.target.value })} />
-              <TextField
-                fullWidth
-                select
-                label="Client Package Type"
-                margin="normal"
-                value={editForm.package_type}
-                onChange={(e) => {
-                  const nextType = e.target.value;
-                  setEditForm((current) => {
-                    if (!current) return current;
-                    const next = { ...current, package_type: nextType };
-                    if (String(nextType || '').toLowerCase() !== 'new') {
-                      return { ...next, gst_applied: false, price_gross: '' };
-                    }
-                    return { ...next, gst_applied: current.gst_applied ?? true };
-                  });
-                }}
-              >
-                <MenuItem value="new">New</MenuItem>
-                <MenuItem value="renew">Renew</MenuItem>
-              </TextField>
               <TextField fullWidth label="Client Location" margin="normal" value={editForm.client_location} onChange={(e) => setEditForm({ ...editForm, client_location: e.target.value })} />
 
               <Button component="label" variant="outlined" startIcon={<UploadFile />} sx={{ mt: 1 }} disabled={officeOnlyBlocked}>
@@ -617,8 +680,10 @@ export default function EmployeeIncentives() {
           ) : null}
         </DialogContent>
         <DialogActions>
-          <Button onClick={closeEdit}>Cancel</Button>
-          <Button variant="contained" onClick={saveEdit} disabled={!editForm || editRateInvalid || officeOnlyBlocked}>Save</Button>
+          <Button onClick={closeEdit} disabled={editSaving}>Cancel</Button>
+          <Button variant="contained" onClick={saveEdit} disabled={!editForm || editRateInvalid || officeOnlyBlocked || editSaving}>
+            {editSaving ? <CircularProgress size={20} color="inherit" /> : 'Save'}
+          </Button>
         </DialogActions>
       </Dialog>
     </Box>
