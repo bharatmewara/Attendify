@@ -522,7 +522,7 @@ router.post(
         clientMobile1: client_mobile_1,
         clientEmail: client_email,
         packageType: package_type,
-        smsQuantity,
+        smsQuantity: sms_quantity,
         rate,
         price: resolvedPricing.price,
         priceGross: resolvedPricing.price_gross,
@@ -1370,6 +1370,7 @@ router.get(
               SUM(
                 CASE
                   WHEN gst_applied = TRUE AND price_gross IS NOT NULL THEN price_gross
+                  WHEN gst_applied = TRUE AND price IS NOT NULL THEN ROUND((price * 1.18)::numeric, 2)
                   ELSE price
                 END
               ) FILTER (WHERE status = 'approved'),
@@ -1379,6 +1380,7 @@ router.get(
               SUM(
                 CASE
                   WHEN gst_applied = TRUE AND price_gross IS NOT NULL AND price IS NOT NULL THEN (price_gross - price)
+                  WHEN gst_applied = TRUE AND price IS NOT NULL THEN ROUND((price * 0.18)::numeric, 2)
                   ELSE 0
                 END
               ) FILTER (WHERE status = 'approved'),
@@ -1408,11 +1410,13 @@ router.get(
           r.price_gross AS last_price_inc_gst,
           CASE
             WHEN r.gst_applied = TRUE AND r.price_gross IS NOT NULL THEN r.price_gross
+            WHEN r.gst_applied = TRUE AND r.price IS NOT NULL THEN ROUND((r.price * 1.18)::numeric, 2)
             ELSE r.price
           END AS last_amount_received,
           CASE
             WHEN r.gst_applied = TRUE AND r.price_gross IS NOT NULL AND r.price IS NOT NULL THEN (r.price_gross - r.price)
-            ELSE NULL
+            WHEN r.gst_applied = TRUE AND r.price IS NOT NULL THEN ROUND((r.price * 0.18)::numeric, 2)
+            ELSE 0
           END AS last_gst_amount,
           r.payment_mode AS last_payment_mode,
           r.client_location AS last_location,
