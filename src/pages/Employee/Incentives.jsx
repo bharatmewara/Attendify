@@ -110,6 +110,7 @@ export default function EmployeeIncentives() {
   const [calculatedIncentive, setCalculatedIncentive] = useState(0);
   const [officeOnlyBlocked, setOfficeOnlyBlocked] = useState(false);
   const [productOptions, setProductOptions] = useState(fallbackProductOptions);
+  const [rulesConfig, setRulesConfig] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
@@ -117,6 +118,20 @@ export default function EmployeeIncentives() {
   const [editOpen, setEditOpen] = useState(false);
   const [editForm, setEditForm] = useState(null);
   const [editFile, setEditFile] = useState(null);
+
+  const productNeedsQtyOrRate = (productName) => {
+    const products = Array.isArray(rulesConfig?.products) ? rulesConfig.products : [];
+    const product = products.find((p) => String(p?.name || '') === String(productName || ''));
+    if (!product || !Array.isArray(product.rules)) return false;
+    return product.rules.some((rule) =>
+      rule?.min_qty !== undefined
+      || rule?.max_qty !== undefined
+      || rule?.min_order !== undefined
+      || rule?.max_order !== undefined
+      || rule?.min_rate !== undefined
+      || rule?.max_rate !== undefined
+    );
+  };
 
   const loadData = async () => {
     try {
@@ -139,7 +154,11 @@ export default function EmployeeIncentives() {
     loadData();
     (async () => {
       try {
-        const products = await apiRequest('/incentives/products');
+        const [products, rulesRes] = await Promise.all([
+          apiRequest('/incentives/products'),
+          apiRequest('/incentives/rules'),
+        ]);
+        setRulesConfig(rulesRes?.config || null);
         if (Array.isArray(products) && products.length) {
           setProductOptions(products);
           if (!products.includes(requestForm.product_name)) {
@@ -151,6 +170,12 @@ export default function EmployeeIncentives() {
       }
     })();
   }, []);
+
+  useEffect(() => {
+    if (!productNeedsQtyOrRate(requestForm.product_name)) {
+      setRequestForm((current) => ({ ...current, sms_quantity: '', rate: '' }));
+    }
+  }, [requestForm.product_name, rulesConfig]);
 
   useEffect(() => {
     if (officeOnlyBlocked) return;
@@ -168,7 +193,7 @@ export default function EmployeeIncentives() {
     return () => clearTimeout(handle);
   }, [officeOnlyBlocked, requestForm.product_name, requestForm.sms_quantity, requestForm.rate, requestForm.price, requestForm.package_type]);
 
-  const rateInvalid = ['Bulk SMS', 'WhatsApp SMS'].includes(requestForm.product_name)
+  const rateInvalid = productNeedsQtyOrRate(requestForm.product_name)
     && requestForm.rate !== ''
     && Number(requestForm.rate) >= 1;
 
@@ -214,7 +239,7 @@ export default function EmployeeIncentives() {
   };
 
   const editRateInvalid = editForm
-    ? ['Bulk SMS', 'WhatsApp SMS'].includes(editForm.product_name)
+    ? productNeedsQtyOrRate(editForm.product_name)
     && editForm.rate !== ''
     && Number(editForm.rate) >= 1
     : false;
@@ -457,7 +482,7 @@ export default function EmployeeIncentives() {
             Incentive is calculated automatically based on admin rules.
           </Alert>
 
-          {['Bulk SMS', 'WhatsApp SMS'].includes(requestForm.product_name) && (
+          {productNeedsQtyOrRate(requestForm.product_name) && (
             <>
               <TextField fullWidth label="SMS Quantity" type="number" margin="normal" value={requestForm.sms_quantity} onChange={(e) => setRequestForm({ ...requestForm, sms_quantity: e.target.value })} onWheel={(e) => e.target.blur()} inputProps={{ onWheel: (e) => e.target.blur() }} />
               <TextField fullWidth label="Rate" type="number" margin="normal" value={requestForm.rate} onChange={(e) => setRequestForm({ ...requestForm, rate: e.target.value })} error={rateInvalid} helperText={rateInvalid ? "Enter paisa rate like 0.12 (must be < 1)." : "Example: 0.12"} inputProps={{ step: "0.01", min: 0, max: 0.9999, onWheel: (e) => e.target.blur() }} onWheel={(e) => e.target.blur()} />
@@ -603,7 +628,7 @@ export default function EmployeeIncentives() {
                 <MenuItem value="renew">Renew</MenuItem>
               </TextField>
 
-              {['Bulk SMS', 'WhatsApp SMS'].includes(editForm.product_name) && (
+              {productNeedsQtyOrRate(editForm.product_name) && (
                 <>
                   <TextField fullWidth label="SMS Quantity" type="number" margin="normal" value={editForm.sms_quantity} onChange={(e) => setEditForm({ ...editForm, sms_quantity: e.target.value })} onWheel={(e) => e.target.blur()} />
                   <TextField fullWidth label="Rate" type="number" margin="normal" value={editForm.rate} onChange={(e) => setEditForm({ ...editForm, rate: e.target.value })} error={editRateInvalid} helperText={editRateInvalid ? "Enter paisa rate like 0.12 (must be < 1)." : "Example: 0.12"} inputProps={{ step: "0.01", min: 0, max: 0.9999 }} onWheel={(e) => e.target.blur()} />
