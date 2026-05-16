@@ -40,11 +40,38 @@ const toScreenshotUrl = (screenshotPath) => {
 };
 
 const RUPEE = '\u20B9';
+const GST_RATE = 0.18;
+const roundMoney = (value) => Math.round(Number(value) * 100) / 100;
 const formatMoney = (value) => {
   if (value === null || value === undefined || value === '') return 'N/A';
   const num = Number(value);
   if (!Number.isFinite(num)) return 'N/A';
   return num.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
+
+const resolveGstFields = (row) => {
+  const gstApplied = Boolean(row?.last_gst_applied);
+  const rawEx = row?.last_price_ex_gst;
+  const rawInc = row?.last_amount_received ?? row?.last_price_inc_gst;
+  const rawGst = row?.last_gst_amount;
+
+  const exNum = rawEx !== null && rawEx !== undefined && rawEx !== '' ? Number(rawEx) : null;
+  const incNum = rawInc !== null && rawInc !== undefined && rawInc !== '' ? Number(rawInc) : null;
+  const gstNum = rawGst !== null && rawGst !== undefined && rawGst !== '' ? Number(rawGst) : null;
+
+  const excl = Number.isFinite(exNum)
+    ? exNum
+    : (gstApplied && Number.isFinite(incNum) ? roundMoney(incNum / (1 + GST_RATE)) : null);
+
+  const incl = Number.isFinite(incNum)
+    ? incNum
+    : (gstApplied && Number.isFinite(excl) ? roundMoney(excl * (1 + GST_RATE)) : excl);
+
+  const gst = Number.isFinite(gstNum)
+    ? gstNum
+    : (gstApplied && Number.isFinite(incl) && Number.isFinite(excl) ? roundMoney(incl - excl) : 0);
+
+  return { excl, gst, incl };
 };
 
 export default function ClientsManagement() {
@@ -122,9 +149,9 @@ export default function ClientsManagement() {
       { label: 'Email', value: 'client_email' },
       { label: 'Product', value: (r) => r.last_product || r.product_name || '' },
       { label: 'SMS Qty', value: (r) => r.last_sms_quantity ?? r.sms_quantity ?? '' },
-      { label: 'Price (excl GST)', value: (r) => r.last_price_ex_gst ?? '' },
-      { label: 'GST Amount', value: (r) => r.last_gst_amount ?? '' },
-      { label: 'Price (incl GST)', value: (r) => r.last_amount_received ?? '' },
+      { label: 'Price (excl GST)', value: (r) => resolveGstFields(r).excl ?? '' },
+      { label: 'GST Amount', value: (r) => resolveGstFields(r).gst ?? '' },
+      { label: 'Price (incl GST)', value: (r) => resolveGstFields(r).incl ?? '' },
       { label: 'Rate', value: (r) => r.last_rate != null ? r.last_rate : '—' },
       { label: 'Sales Date', value: (r) => r.last_approved_at || r.last_submitted_at || '' },
       { label: 'Employee By', value: (r) => r.first_name ? `${r.first_name} ${r.last_name}` : '' },
