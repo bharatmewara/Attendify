@@ -4,6 +4,7 @@ import { authenticate, authorize, tenantIsolation } from '../middleware/auth.mid
 import { logAudit } from '../utils/audit.js';
 import { enforcePunchIp } from '../middleware/networkPolicy.js';
 import { autoMarkAbsent } from '../utils/attendanceHelper.js';
+import { sendEmail } from '../utils/email.js';
 
 const router = express.Router();
 const ATTENDANCE_TZ_OFFSET = process.env.ATTENDANCE_TZ_OFFSET || '+05:30';
@@ -551,6 +552,37 @@ router.post('/regularization-requests', authenticate, authorize('employee'), ten
       newValues: result.rows[0],
       ipAddress: req.ip,
     });
+
+    try {
+      const employeeProfile = await query(
+        `SELECT e.first_name, e.last_name, u.email
+         FROM employees e
+         JOIN users u ON u.id = e.user_id
+         WHERE e.id = $1 AND e.company_id = $2`,
+        [employeeId, req.companyId],
+      );
+      const employee = employeeProfile.rows[0];
+
+      const adminResult = await query(
+        `SELECT email
+         FROM users
+         WHERE company_id = $1
+           AND role IN ('company_admin', 'super_admin')
+           AND is_active = true`,
+        [req.companyId],
+      );
+      const adminEmails = adminResult.rows.map((row) => row.email).filter(Boolean).join(',');
+
+      if (adminEmails && employee) {
+        await sendEmail({
+          to: adminEmails,
+          subject: `ER request submitted: ${employee.first_name} ${employee.last_name}`,
+          text: `An attendance regularization request has been submitted.\n\nEmployee: ${employee.first_name} ${employee.last_name} (${employee.email})\nWork Date: ${work_date}\nPunch In: ${punch_in_time || 'Not provided'}\nPunch Out: ${punch_out_time || 'Not provided'}\nReason: ${reason}`,
+        });
+      }
+    } catch (emailError) {
+      console.error('ER request email send failed', emailError);
+    }
 
     res.status(201).json(result.rows[0]);
   } catch (error) {

@@ -6,6 +6,18 @@ import { sendEmail } from '../utils/email.js';
 
 const router = express.Router();
 
+const getCompanyAdminEmails = async (companyId) => {
+  const adminResult = await query(
+    `SELECT u.email
+     FROM users u
+     WHERE u.company_id = $1
+       AND u.role IN ('company_admin', 'super_admin')
+       AND u.is_active = true`,
+    [companyId],
+  );
+  return adminResult.rows.map((row) => row.email).filter(Boolean).join(',');
+};
+
 const applyApprovedLeaveEffects = async ({ leave, companyId }) => {
   const currentYear = new Date().getFullYear();
   await query(
@@ -247,11 +259,7 @@ router.post('/requests', authenticate, tenantIsolation, async (req, res) => {
       );
       const employee = employeeResult.rows[0];
 
-      const adminResult = await query(
-        `SELECT u.email FROM users u WHERE u.company_id = $1 AND u.role IN ('company_admin', 'super_admin') AND u.is_active = true`,
-        [req.companyId]
-      );
-      const adminEmails = adminResult.rows.map((r) => r.email).join(',');
+      const adminEmails = await getCompanyAdminEmails(req.companyId);
 
       const subject = `Leave Request Submitted: ${result.rows[0].total_days} day(s)`;
       const body = `Hi ${employee.first_name},\n\nYour leave request from ${start_date} to ${end_date} has been submitted and is pending approval.\n\nReason: ${reason || 'No reason provided'}\n\nThanks,\nAttendify`; 
@@ -398,6 +406,75 @@ router.put('/requests/:id', authenticate, authorize('company_admin', 'super_admi
     res.json(result.rows[0]);
   } catch (error) {
     res.status(500).json({ message: error.message });
+  }
+});
+
+// Cancel leave request (employee only, pending requests)
+router.put('/requests/:id/cancel', authenticate, authorize('employee'), tenantIsolation, async (req, res) => {
+  try {
+    const empResult = await query('SELECT id, first_name, last_name FROM employees WHERE user_id = $1', [req.user.id]);
+    if (empResult.rows.length === 0) {
+      return res.status(404).json({ message: 'Employee profile not found' });
+    }
+    const employee = empResult.rows[0];
+
+    const leaveResult = await query(
+      `SELECT lr.*, lt.name AS leave_type_name
+       FROM leave_requests lr
+       JOIN leave_types lt ON lt.id = lr.leave_type_id
+       WHERE lr.id = $1
+         AND lr.employee_id = $2
+         AND ($3::int IS NULL OR lr.company_id = $3)`,
+      [req.params.id, employee.id, req.companyId],
+    );
+
+    if (leaveResult.rows.length === 0) {
+      return res.status(404).json({ message: 'Leave request not found' });
+    }
+
+    const leave = leaveResult.rows[0];
+    if (leave.status !== 'pending') {
+      return res.status(400).json({ message: 'Only pending leave requests can be cancelled' });
+    }
+
+    const result = await query(
+      `UPDATE leave_requests
+       SET status = 'cancelled',
+           rejection_reason = 'Cancelled by employee',
+           approved_at = NOW(),
+           updated_at = NOW()
+       WHERE id = $1
+       RETURNING *`,
+      [req.params.id],
+    );
+
+    await logAudit({
+      companyId: req.companyId,
+      userId: req.user.id,
+      action: 'CANCEL_LEAVE',
+      entityType: 'leave_request',
+      entityId: Number(req.params.id),
+      newValues: result.rows[0],
+      ipAddress: req.ip,
+    });
+
+    try {
+      const userResult = await query('SELECT email FROM users WHERE id = $1', [req.user.id]);
+      const adminEmails = await getCompanyAdminEmails(req.companyId);
+      if (adminEmails) {
+        await sendEmail({
+          to: adminEmails,
+          subject: `Leave request cancelled: ${employee.first_name} ${employee.last_name}`,
+          text: `${employee.first_name} ${employee.last_name} (${userResult.rows[0]?.email || 'N/A'}) cancelled a leave request.\n\nLeave Type: ${leave.leave_type_name}\nFrom: ${new Date(leave.start_date).toISOString().split('T')[0]}\nTo: ${new Date(leave.end_date).toISOString().split('T')[0]}\nTotal Days: ${leave.total_days}\nReason: ${leave.reason || 'No reason provided'}`,
+        });
+      }
+    } catch (emailError) {
+      console.error('Leave cancellation email send failed', emailError);
+    }
+
+    return res.json(result.rows[0]);
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
   }
 });
 

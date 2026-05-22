@@ -24,6 +24,8 @@ import {
   TextField,
   Typography,
   Snackbar,
+  Tooltip,
+  CircularProgress,
 } from '@mui/material';
 import { Add, Check, Close, Delete, Edit, Visibility } from '@mui/icons-material';
 import { apiRequest } from '../../lib/api';
@@ -76,6 +78,7 @@ export default function LeaveManagement() {
   const [selectedReasonLeave, setSelectedReasonLeave] = useState(null);
   const [editingType, setEditingType] = useState(null);
   const [deleteTypeConfirm, setDeleteTypeConfirm] = useState(null);
+  const [cancellingLeaveId, setCancellingLeaveId] = useState(null);
 
   const loadData = async () => {
     try {
@@ -107,7 +110,7 @@ export default function LeaveManagement() {
 
   const pendingRequests = leaveRequests.filter((item) => item.status === 'pending');
   const approvedRequests = leaveRequests.filter((item) => item.status === 'approved');
-  const rejectedRequests = leaveRequests.filter((item) => item.status === 'rejected');
+  const rejectedRequests = leaveRequests.filter((item) => item.status === 'rejected' || item.status === 'cancelled');
   const activeList = tabValue === 0 ? pendingRequests : tabValue === 1 ? approvedRequests : rejectedRequests;
 
   const stats = useMemo(
@@ -229,6 +232,19 @@ export default function LeaveManagement() {
     }
   };
 
+  const handleCancelLeave = async (id) => {
+    setCancellingLeaveId(id);
+    try {
+      await apiRequest(`/leave/requests/${id}/cancel`, { method: 'PUT' });
+      setMessage({ type: 'success', text: 'Leave request cancelled.' });
+      loadData();
+    } catch (error) {
+      setMessage({ type: 'error', text: error.message });
+    } finally {
+      setCancellingLeaveId(null);
+    }
+  };
+
   return (
     <Box sx={{ px: { xs: 2, md: 4 }, py: { xs: 2, md: 3 } }}>
       <Box sx={{ maxWidth: 1400, mx: 'auto' }}>
@@ -342,7 +358,7 @@ export default function LeaveManagement() {
                         <TableCell sx={{ fontWeight: 700 }}>Days</TableCell>
                         <TableCell sx={{ fontWeight: 700 }}>Reason</TableCell>
                         <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
-                        {!isEmployee ? <TableCell align="right" sx={{ fontWeight: 700 }}>Actions</TableCell> : null}
+                        {(isEmployee && tabValue === 0) || !isEmployee ? <TableCell align="right" sx={{ fontWeight: 700 }}>Actions</TableCell> : null}
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -379,8 +395,31 @@ export default function LeaveManagement() {
                               </Box>
                             </TableCell>
                             <TableCell>
-                              <Chip label={leave.status} size="small" color={leave.status === 'approved' ? 'success' : leave.status === 'rejected' ? 'error' : 'default'} sx={{ textTransform: 'capitalize', fontWeight: 600, px: 1 }} />
+                              <Chip label={leave.status} size="small" color={leave.status === 'approved' ? 'success' : leave.status === 'rejected' ? 'error' : leave.status === 'cancelled' ? 'warning' : 'default'} sx={{ textTransform: 'capitalize', fontWeight: 600, px: 1 }} />
                             </TableCell>
+                            {isEmployee && tabValue === 0 ? (
+                              <TableCell align="right">
+                                <Tooltip title="Cancel this pending leave request">
+                                  <Button
+                                    size="small"
+                                    variant="outlined"
+                                    color="warning"
+                                    startIcon={
+                                      cancellingLeaveId === leave.id ? (
+                                        <CircularProgress size={14} color="inherit" />
+                                      ) : (
+                                        <Close />
+                                      )
+                                    }
+                                    onClick={() => handleCancelLeave(leave.id)}
+                                    disabled={cancellingLeaveId === leave.id}
+                                    sx={{ borderRadius: 2, textTransform: 'none' }}
+                                  >
+                                    {cancellingLeaveId === leave.id ? 'Cancelling...' : 'Cancel Leave'}
+                                  </Button>
+                                </Tooltip>
+                              </TableCell>
+                            ) : null}
                             {!isEmployee ? (
                               <TableCell align="right">
                                 <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
@@ -404,7 +443,7 @@ export default function LeaveManagement() {
                         ))
                       ) : (
                         <TableRow>
-                          <TableCell colSpan={isEmployee ? 5 : 7} align="center" sx={{ py: 6, color: 'text.secondary' }}>
+                          <TableCell colSpan={isEmployee ? (tabValue === 0 ? 7 : 6) : 7} align="center" sx={{ py: 6, color: 'text.secondary' }}>
                             <Box sx={{ color: 'text.disabled', mb: 1.5 }}>
                               <Check sx={{ fontSize: 40, opacity: 0.5 }} />
                             </Box>
