@@ -23,6 +23,15 @@ const createTransporter = () => {
   return transporter;
 };
 
+const normalizeSenderEmail = (rawFrom, fallbackEmail) => {
+  const value = String(rawFrom || '').trim();
+  if (!value) return fallbackEmail;
+
+  const angleMatch = value.match(/<([^>]+)>/);
+  if (angleMatch?.[1]) return angleMatch[1].trim().replace(/^["']|["']$/g, '');
+  return value.replace(/^["']|["']$/g, '');
+};
+
 export const getTransporter = () => {
   if (transporter) return transporter;
   return createTransporter();
@@ -44,13 +53,13 @@ export const sendEmail = async ({ to, subject, text, html, from, companyId, req 
       const companyResult = await query('SELECT company_name, phone FROM companies WHERE id = $1', [effectiveCompanyId]);
       if (companyResult.rows.length > 0) {
         const company = companyResult.rows[0];
-        // Dynamic FROM: "Company Name <email@domain>"
-        const emailAddr = config.email.from || config.email.authUser;
-        emailFrom = from || `"${company.company_name} <${emailAddr}>`;
+        // Dynamic FROM: "Company Name" <email@domain>
+        const emailAddr = normalizeSenderEmail(config.email.from, config.email.authUser);
+        emailFrom = from || `"${company.company_name}" <${emailAddr}>`;
         
         // Footer
-        finalText = `${text}\n\nRegards\n${company.company_name}\n${company.phone || 'N/A'}`;
-        finalHtml = `${html}<br><br><div style="margin-top:20px; padding-top:20px; border-top:1px solid #e5e7eb; font-size:14px; color:#6b7280;">
+        finalText = `${text || ''}\n\nRegards\n${company.company_name}\n${company.phone || 'N/A'}`;
+        finalHtml = `${html || ''}<br><br><div style="margin-top:20px; padding-top:20px; border-top:1px solid #e5e7eb; font-size:14px; color:#6b7280;">
           <strong>Regards</strong><br>
           ${company.company_name}<br>
           ${company.phone || 'N/A'}

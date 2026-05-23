@@ -79,6 +79,7 @@ export default function LeaveManagement() {
   const [editingType, setEditingType] = useState(null);
   const [deleteTypeConfirm, setDeleteTypeConfirm] = useState(null);
   const [cancellingLeaveId, setCancellingLeaveId] = useState(null);
+  const [isSubmittingLeave, setIsSubmittingLeave] = useState(false);
 
   const loadData = async () => {
     try {
@@ -124,6 +125,7 @@ export default function LeaveManagement() {
   );
 
   const handleApplyLeave = async () => {
+    setIsSubmittingLeave(true);
     try {
       if (isEmployee) {
         await apiRequest('/leave/requests', { method: 'POST', body: requestForm });
@@ -137,6 +139,8 @@ export default function LeaveManagement() {
       loadData();
     } catch (error) {
       setMessage({ type: 'error', text: error.message });
+    } finally {
+      setIsSubmittingLeave(false);
     }
   };
 
@@ -617,7 +621,14 @@ export default function LeaveManagement() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenRequestDialog(false)}>Cancel</Button>
-          <Button onClick={handleApplyLeave} variant="contained">Submit</Button>
+          <Button
+            onClick={handleApplyLeave}
+            variant="contained"
+            disabled={isSubmittingLeave}
+            startIcon={isSubmittingLeave ? <CircularProgress size={16} color="inherit" /> : null}
+          >
+            {isSubmittingLeave ? 'Submitting...' : 'Submit'}
+          </Button>
         </DialogActions>
       </Dialog>
 

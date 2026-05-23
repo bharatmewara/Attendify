@@ -264,18 +264,30 @@ router.post('/requests', authenticate, tenantIsolation, async (req, res) => {
       const subject = `Leave Request Submitted: ${result.rows[0].total_days} day(s)`;
       const body = `Hi ${employee.first_name},\n\nYour leave request from ${start_date} to ${end_date} has been submitted and is pending approval.\n\nReason: ${reason || 'No reason provided'}\n\nThanks,\nAttendify`; 
 
-      await sendEmail({
-        to: employee.email,
-        subject,
-        text: body,
-      });
+      const emailJobs = [
+        sendEmail({
+          to: employee.email,
+          subject,
+          text: body,
+          req,
+        }),
+      ];
 
       if (adminEmails) {
-        await sendEmail({
-          to: adminEmails,
-          subject: `Leave request pending approval: ${employee.first_name} ${employee.last_name}`,
-          text: `A leave request has been submitted by ${employee.first_name} ${employee.last_name} (${employee.email}).\n\nFrom: ${start_date}\nTo: ${end_date}\nTotal Days: ${result.rows[0].total_days}\nReason: ${reason || 'No reason provided'}`,
-        });
+        emailJobs.push(
+          sendEmail({
+            to: adminEmails,
+            subject: `Leave request pending approval: ${employee.first_name} ${employee.last_name}`,
+            text: `A leave request has been submitted by ${employee.first_name} ${employee.last_name} (${employee.email}).\n\nFrom: ${start_date}\nTo: ${end_date}\nTotal Days: ${result.rows[0].total_days}\nReason: ${reason || 'No reason provided'}`,
+            req,
+          }),
+        );
+      }
+
+      const emailResults = await Promise.allSettled(emailJobs);
+      const failed = emailResults.find((item) => item.status === 'rejected');
+      if (failed) {
+        console.error('One or more leave apply emails failed', failed.reason);
       }
     } catch (emailError) {
       console.error('Leave application email send failed', emailError);
