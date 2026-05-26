@@ -9,6 +9,39 @@ import { sendEmail } from '../utils/email.js';
 const router = express.Router();
 const ATTENDANCE_TZ_OFFSET = process.env.ATTENDANCE_TZ_OFFSET || '+05:30';
 
+const normalizeRecipients = (raw) =>
+  String(raw || '')
+    .split(/[,\n;]+/)
+    .map((v) => v.trim().toLowerCase())
+    .filter(Boolean);
+
+const getCompanyAdminEmails = async (companyId) => {
+  const recipients = new Set();
+
+  const companyResult = await query(
+    `SELECT email, notification_emails
+     FROM companies
+     WHERE id = $1::int
+     LIMIT 1`,
+    [companyId],
+  );
+  const company = companyResult.rows[0] || {};
+  normalizeRecipients(company.email).forEach((email) => recipients.add(email));
+  normalizeRecipients(company.notification_emails).forEach((email) => recipients.add(email));
+
+  const adminResult = await query(
+    `SELECT email
+     FROM users
+     WHERE company_id = $1
+       AND role IN ('company_admin', 'super_admin')
+       AND is_active = true`,
+    [companyId],
+  );
+  adminResult.rows.forEach((row) => normalizeRecipients(row.email).forEach((email) => recipients.add(email)));
+
+  return Array.from(recipients).join(',');
+};
+
 const getDateKeyInOffset = (date = new Date(), offset = ATTENDANCE_TZ_OFFSET) => {
   const match = String(offset).trim().match(/^([+-])(\d{2}):(\d{2})$/);
   if (!match) {
@@ -563,21 +596,23 @@ router.post('/regularization-requests', authenticate, authorize('employee'), ten
       );
       const employee = employeeProfile.rows[0];
 
-      const adminResult = await query(
-        `SELECT email
-         FROM users
-         WHERE company_id = $1
-           AND role IN ('company_admin', 'super_admin')
-           AND is_active = true`,
-        [req.companyId],
-      );
-      const adminEmails = adminResult.rows.map((row) => row.email).filter(Boolean).join(',');
+      const adminEmails = await getCompanyAdminEmails(req.companyId);
+
+      if (employee?.email) {
+        await sendEmail({
+          to: employee.email,
+          subject: `ER request submitted for ${work_date}`,
+          text: `Hi ${employee.first_name},\n\nYour attendance regularization request has been submitted.\n\nWork Date: ${work_date}\nPunch In: ${punch_in_time || 'Not provided'}\nPunch Out: ${punch_out_time || 'Not provided'}\nReason: ${reason}\nStatus: Pending`,
+          companyId: req.companyId,
+        });
+      }
 
       if (adminEmails && employee) {
         await sendEmail({
           to: adminEmails,
           subject: `ER request submitted: ${employee.first_name} ${employee.last_name}`,
           text: `An attendance regularization request has been submitted.\n\nEmployee: ${employee.first_name} ${employee.last_name} (${employee.email})\nWork Date: ${work_date}\nPunch In: ${punch_in_time || 'Not provided'}\nPunch Out: ${punch_out_time || 'Not provided'}\nReason: ${reason}`,
+          companyId: req.companyId,
         });
       }
     } catch (emailError) {
@@ -682,6 +717,48 @@ router.put('/regularization-requests/:id', authenticate, authorize('company_admi
       newValues: updateResult.rows[0],
       ipAddress: req.ip,
     });
+
+    try {
+      const employeeResult = await query(
+        `SELECT e.first_name, e.last_name, u.email
+         FROM employees e
+         JOIN users u ON u.id = e.user_id
+         WHERE e.id = $1 AND e.company_id = $2`,
+        [regularization.employee_id, req.companyId],
+      );
+      const employee = employeeResult.rows[0];
+      const adminEmails = await getCompanyAdminEmails(req.companyId);
+      const emailSubject = `ER request ${status}: ${employee?.first_name || ''} ${employee?.last_name || ''}`.trim();
+      const employeeMessage = `Hi ${employee?.first_name || 'Employee'},\n\nYour attendance regularization request for ${normalizedWorkDate} has been ${status}.${status === 'rejected' ? `\nReason: ${rejection_reason}` : ''}\n\nPunch In: ${regularization.punch_in_time || 'Not provided'}\nPunch Out: ${regularization.punch_out_time || 'Not provided'}\nRequest Reason: ${regularization.reason}`;
+      const adminMessage = `Attendance regularization request has been ${status}.\n\nEmployee: ${employee?.first_name || 'N/A'} ${employee?.last_name || ''} (${employee?.email || 'N/A'})\nWork Date: ${normalizedWorkDate}\nPunch In: ${regularization.punch_in_time || 'Not provided'}\nPunch Out: ${regularization.punch_out_time || 'Not provided'}\nRequest Reason: ${regularization.reason}${status === 'rejected' ? `\nRejection Reason: ${rejection_reason}` : ''}`;
+
+      const mailJobs = [];
+      if (employee?.email) {
+        mailJobs.push(sendEmail({
+          to: employee.email,
+          subject: emailSubject,
+          text: employeeMessage,
+          companyId: req.companyId,
+        }));
+      }
+      if (adminEmails) {
+        mailJobs.push(sendEmail({
+          to: adminEmails,
+          subject: emailSubject,
+          text: adminMessage,
+          companyId: req.companyId,
+        }));
+      }
+      if (mailJobs.length) {
+        const results = await Promise.allSettled(mailJobs);
+        const failed = results.find((r) => r.status === 'rejected');
+        if (failed) {
+          console.error('ER status email send failed', failed.reason);
+        }
+      }
+    } catch (emailError) {
+      console.error('ER approval/rejection email send failed', emailError);
+    }
 
     res.json(updateResult.rows[0]);
   } catch (error) {
