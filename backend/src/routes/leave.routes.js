@@ -6,7 +6,27 @@ import { sendEmail } from '../utils/email.js';
 
 const router = express.Router();
 
+const normalizeRecipients = (raw) =>
+  String(raw || '')
+    .split(/[,\n;]+/)
+    .map((v) => v.trim().toLowerCase())
+    .filter(Boolean);
+
 const getCompanyAdminEmails = async (companyId) => {
+  const recipients = new Set();
+
+  const companyResult = await query(
+    `SELECT email, notification_emails
+     FROM companies
+     WHERE id = $1::int
+     LIMIT 1`,
+    [companyId],
+  );
+  const companyRow = companyResult.rows[0] || {};
+
+  normalizeRecipients(companyRow.email).forEach((email) => recipients.add(email));
+  normalizeRecipients(companyRow.notification_emails).forEach((email) => recipients.add(email));
+
   const adminResult = await query(
     `SELECT u.email
      FROM users u
@@ -15,7 +35,11 @@ const getCompanyAdminEmails = async (companyId) => {
        AND u.is_active = true`,
     [companyId],
   );
-  return adminResult.rows.map((row) => row.email).filter(Boolean).join(',');
+  adminResult.rows.forEach((row) => {
+    normalizeRecipients(row.email).forEach((email) => recipients.add(email));
+  });
+
+  return Array.from(recipients).join(',');
 };
 
 const applyApprovedLeaveEffects = async ({ leave, companyId }) => {
@@ -269,7 +293,7 @@ router.post('/requests', authenticate, tenantIsolation, async (req, res) => {
           to: employee.email,
           subject,
           text: body,
-          req,
+          companyId: req.companyId,
         }),
       ];
 
@@ -279,7 +303,7 @@ router.post('/requests', authenticate, tenantIsolation, async (req, res) => {
             to: adminEmails,
             subject: `Leave request pending approval: ${employee.first_name} ${employee.last_name}`,
             text: `A leave request has been submitted by ${employee.first_name} ${employee.last_name} (${employee.email}).\n\nFrom: ${start_date}\nTo: ${end_date}\nTotal Days: ${result.rows[0].total_days}\nReason: ${reason || 'No reason provided'}`,
-            req,
+            companyId: req.companyId,
           }),
         );
       }
@@ -409,6 +433,7 @@ router.put('/requests/:id', authenticate, authorize('company_admin', 'super_admi
           to: employee.email,
           subject,
           text,
+          companyId: req.companyId,
         });
       }
     } catch (emailError) {
@@ -478,6 +503,7 @@ router.put('/requests/:id/cancel', authenticate, authorize('employee'), tenantIs
           to: adminEmails,
           subject: `Leave request cancelled: ${employee.first_name} ${employee.last_name}`,
           text: `${employee.first_name} ${employee.last_name} (${userResult.rows[0]?.email || 'N/A'}) cancelled a leave request.\n\nLeave Type: ${leave.leave_type_name}\nFrom: ${new Date(leave.start_date).toISOString().split('T')[0]}\nTo: ${new Date(leave.end_date).toISOString().split('T')[0]}\nTotal Days: ${leave.total_days}\nReason: ${leave.reason || 'No reason provided'}`,
+          companyId: req.companyId,
         });
       }
     } catch (emailError) {

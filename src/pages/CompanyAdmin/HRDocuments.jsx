@@ -527,7 +527,7 @@ useEffect(() => {
                   label="Notification Emails (comma separated)"
                   value={companyForm.notification_emails}
                   onChange={(e) => setCompanyForm({ ...companyForm, notification_emails: e.target.value })}
-                  helperText="Receive updates on employee/admin activities."
+                  helperText="Used for leave/incentive/attendance alerts. Separate with comma, semicolon, or new line."
                 />
               </Grid>
               <Grid item xs={12}>

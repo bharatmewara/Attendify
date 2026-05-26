@@ -42,7 +42,7 @@ export const sendEmail = async ({ to, subject, text, html, from, companyId, req 
     throw new Error('Email \"to\" address is required');
   }
 
-  let finalText = text;
+  let finalText = text || '';
   let finalHtml = html;
   let emailFrom = from || config.email.from;
 
@@ -58,7 +58,7 @@ export const sendEmail = async ({ to, subject, text, html, from, companyId, req 
         emailFrom = from || `"${company.company_name}" <${emailAddr}>`;
         
         // Footer
-        finalText = `${text || ''}\n\nRegards\n${company.company_name}\n${company.phone || 'N/A'}`;
+        finalText = `${finalText}\n\nRegards\n${company.company_name}\n${company.phone || 'N/A'}`;
         finalHtml = `${html || ''}<br><br><div style="margin-top:20px; padding-top:20px; border-top:1px solid #e5e7eb; font-size:14px; color:#6b7280;">
           <strong>Regards</strong><br>
           ${company.company_name}<br>
@@ -68,6 +68,19 @@ export const sendEmail = async ({ to, subject, text, html, from, companyId, req 
     } catch (dbError) {
       console.error('Company lookup failed for email:', dbError);
     }
+  }
+
+  if (!finalHtml && finalText) {
+    finalHtml = `<div style="font-family:Arial,Helvetica,sans-serif; white-space:pre-line; color:#111827;">${finalText
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')}</div>`;
+  } else if (finalHtml && finalText && !html) {
+    // If caller only provided text, include it before auto footer HTML.
+    finalHtml = `<div style="font-family:Arial,Helvetica,sans-serif; white-space:pre-line; color:#111827;">${finalText
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')}</div>`;
   }
 
   const transport = getTransporter();

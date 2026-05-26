@@ -13,12 +13,12 @@ export const config = {
   jwtSecret: process.env.JWT_SECRET || 'unsafe-dev-secret',
   clientOrigin: process.env.CLIENT_ORIGIN || 'http://localhost:5173',
   email: {
-    host: process.env.EMAIL_HOST,
-    port: Number(process.env.EMAIL_PORT || 587),
-    secure: process.env.EMAIL_SECURE === 'true',
-    authUser: process.env.EMAIL_USER,
-    authPass: process.env.EMAIL_PASS,
-    from: process.env.EMAIL_FROM || '"PrimeClick IT" <primeclickit@gmail.com>',
+    host: process.env.EMAIL_HOST || process.env.SMTP_HOST,
+    port: Number(process.env.EMAIL_PORT || process.env.SMTP_PORT || 587),
+    secure: (process.env.EMAIL_SECURE || process.env.SMTP_SECURE || '').toLowerCase() === 'true',
+    authUser: process.env.EMAIL_USER || process.env.SMTP_USER,
+    authPass: process.env.EMAIL_PASS || process.env.SMTP_PASS,
+    from: process.env.EMAIL_FROM || process.env.SMTP_FROM || '"PrimeClick IT" <primeclickit@gmail.com>',
   },
 };
 
