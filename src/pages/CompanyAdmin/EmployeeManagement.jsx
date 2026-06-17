@@ -816,19 +816,25 @@ export default function EmployeeManagement() {
         </DialogActions>
       </Dialog>
 
-      <Dialog open={openDeleteDialog} onClose={() => setOpenDeleteDialog(false)} maxWidth="sm">
-        <DialogTitle>Confirm Delete</DialogTitle>
+      <Dialog open={openDeleteDialog} onClose={() => setOpenDeleteDialog(false)} maxWidth="sm" PaperProps={{ sx: { borderRadius: 3 } }}>
+        <DialogTitle sx={{ fontWeight: 700, color: 'error.main' }}>Remove Employee</DialogTitle>
         <DialogContent>
-          <Typography>
-            Are you sure you want to delete employee <strong>{selectedEmployee ? `${selectedEmployee.first_name} ${selectedEmployee.last_name}` : ''}</strong>?
-            This action cannot be undone and will also delete their user account.
+          <Typography sx={{ mb: 2 }}>
+            Are you sure you want to remove <strong>{selectedEmployee ? `${selectedEmployee.first_name} ${selectedEmployee.last_name}` : ''}</strong>?
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            ✅ Their <strong>email address will be freed</strong> — you can create a new employee with the same email immediately.
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            📋 Historical records (attendance, payroll, incentives) will be preserved for reporting purposes.
           </Typography>
         </DialogContent>
         <DialogActions sx={{ p: 3 }}>
           <Button onClick={() => setOpenDeleteDialog(false)}>Cancel</Button>
-          <Button onClick={handleDelete} variant="contained" color="error">Delete Employee</Button>
+          <Button onClick={handleDelete} variant="contained" color="error" startIcon={<Delete />}>Remove Employee</Button>
         </DialogActions>
       </Dialog>
+
       {/* View Employee Details Dialog */}
       <Dialog open={openViewDialog} onClose={() => setOpenViewDialog(false)} maxWidth="md" fullWidth>
         <DialogTitle sx={{ p: 0 }}>

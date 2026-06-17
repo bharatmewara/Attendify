@@ -392,6 +392,8 @@ router.post(
     }
   },
 );
+
+// GET all submissions (admin sees all, employee sees own)
 router.get('/submissions', authenticate, tenantIsolation, enforceOfficePunchIpForEmployee, async (req, res) => {
   try {
     let employeeId = null;
@@ -424,6 +426,63 @@ router.get('/submissions', authenticate, tenantIsolation, enforceOfficePunchIpFo
     return res.json(result.rows);
   } catch (error) {
     console.error('GET submissions failed:', error.message);
+    return res.status(500).json({ message: error.message });
+  }
+});
+
+// GET my-clients — Employee self-service: view only their own clients
+router.get('/my-clients', authenticate, tenantIsolation, async (req, res) => {
+  try {
+    const month = req.query.month ? Number(req.query.month) : null;
+    const year  = req.query.year  ? Number(req.query.year)  : null;
+    const status = req.query.status || null;
+    const search = req.query.search || null;
+
+    if (req.user.role !== 'employee') {
+      // Admins/HR: optionally filter by employee
+      const employeeFilter = req.query.employee_id ? Number(req.query.employee_id) : null;
+      const result = await query(
+        `SELECT sub.*, e.first_name, e.last_name, e.employee_code
+         FROM incentive_submissions sub
+         JOIN employees e ON e.id = sub.employee_id
+         WHERE ($1::int IS NULL OR sub.company_id = $1)
+           AND ($2::int IS NULL OR sub.employee_id = $2)
+           AND ($3::int IS NULL OR EXTRACT(MONTH FROM sub.submitted_at) = $3)
+           AND ($4::int IS NULL OR EXTRACT(YEAR  FROM sub.submitted_at) = $4)
+           AND ($5::text IS NULL OR sub.status = $5)
+           AND ($6::text IS NULL OR sub.client_name ILIKE '%' || $6 || '%' OR sub.product_name ILIKE '%' || $6 || '%')
+         ORDER BY sub.submitted_at DESC`,
+        [req.companyId, employeeFilter, month, year, status, search],
+      );
+      return res.json(result.rows);
+    }
+
+    // Employee: only their own records, password fields stripped
+    const employeeId = await resolveEmployeeIdForUser(req.user.id);
+    if (!employeeId) return res.json([]);
+
+    const result = await query(
+      `SELECT
+         sub.id, sub.submitted_at, sub.status, sub.notes,
+         sub.client_name, sub.client_mobile_1, sub.client_mobile_2,
+         sub.client_email, sub.client_username, sub.client_location,
+         sub.product_name, sub.package_type, sub.price, sub.price_gross, sub.gst_applied,
+         sub.incentive_amount, sub.company_id, sub.employee_id,
+         e.first_name, e.last_name, e.employee_code
+       FROM incentive_submissions sub
+       JOIN employees e ON e.id = sub.employee_id
+       WHERE sub.employee_id = $1
+         AND ($2::int IS NULL OR sub.company_id = $2)
+         AND ($3::int IS NULL OR EXTRACT(MONTH FROM sub.submitted_at) = $3)
+         AND ($4::int IS NULL OR EXTRACT(YEAR  FROM sub.submitted_at) = $4)
+         AND ($5::text IS NULL OR sub.status = $5)
+         AND ($6::text IS NULL OR sub.client_name ILIKE '%' || $6 || '%' OR sub.product_name ILIKE '%' || $6 || '%')
+       ORDER BY sub.submitted_at DESC`,
+      [employeeId, req.companyId, month, year, status, search],
+    );
+    return res.json(result.rows);
+  } catch (error) {
+    console.error('GET my-clients failed:', error.message);
     return res.status(500).json({ message: error.message });
   }
 });
