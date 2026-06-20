@@ -20,6 +20,8 @@ import { fileURLToPath } from 'url';
 import fs from 'fs';
 import { authenticate, authorize } from './middleware/auth.middleware.js';
 import { query } from './db.js';
+import { runMigrations } from './migrate.js';
+
 
 const app = express();
 
@@ -147,8 +149,20 @@ app.use((err, _req, res, _next) => {
   res.status(500).json({ message: 'Internal server error' });
 });
 
-app.listen(config.port, () => {
-  console.log(`Attendify backend running on http://localhost:${config.port}`);
-});
+// ─── Bootstrap: run migrations then start listening ──────────────────────────
+async function start() {
+  try {
+    await runMigrations();
+  } catch (err) {
+    console.error('\n\x1b[31m[server] Startup aborted — migration failed:\x1b[0m', err.message);
+    process.exit(1);
+  }
+
+  app.listen(config.port, () => {
+    console.log(`\x1b[32m[server]\x1b[0m Attendify backend running on http://localhost:${config.port}`);
+  });
+}
+
+start();
 
 
