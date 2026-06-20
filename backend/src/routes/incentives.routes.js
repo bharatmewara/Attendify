@@ -463,7 +463,7 @@ router.get('/my-clients', authenticate, tenantIsolation, async (req, res) => {
 
     const result = await query(
       `SELECT
-         sub.id, sub.submitted_at, sub.status, sub.notes,
+         sub.id, sub.submitted_at, sub.status,
          sub.client_name, sub.client_mobile_1, sub.client_mobile_2,
          sub.client_email, sub.client_username, sub.client_location,
          sub.product_name, sub.package_type, sub.price, sub.price_gross, sub.gst_applied,
