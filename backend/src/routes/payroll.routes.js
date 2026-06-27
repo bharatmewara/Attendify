@@ -156,8 +156,8 @@ router.post('/components', authenticate, authorize('company_admin', 'super_admin
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
        RETURNING *`,
       [req.companyId, component_name, component_code.toUpperCase(), component_type,
-       calculation_type, default_value ?? 0, percentage_of ?? null, percentage_value ?? null,
-       formula_expression ?? null, is_taxable ?? false, is_mandatory, display_order],
+       calculation_type, default_value === '' ? 0 : (default_value ?? 0), percentage_of === '' ? null : (percentage_of ?? null), percentage_value === '' ? null : (percentage_value ?? null),
+       formula_expression === '' ? null : (formula_expression ?? null), is_taxable ?? false, is_mandatory, display_order === '' ? 0 : (display_order ?? 0)],
     );
 
     await writePayrollAudit({
@@ -208,9 +208,9 @@ router.put('/components/:id', authenticate, authorize('company_admin', 'super_ad
          updated_at         = now()
        WHERE id = $12 AND company_id = $13
        RETURNING *`,
-      [component_name, component_type, calculation_type, default_value,
-       percentage_of, percentage_value, formula_expression, is_taxable,
-       is_mandatory, is_active, display_order, id, req.companyId],
+      [component_name, component_type, calculation_type, default_value === '' ? 0 : default_value,
+       percentage_of === '' ? null : percentage_of, percentage_value === '' ? null : percentage_value, formula_expression === '' ? null : formula_expression, is_taxable,
+       is_mandatory, is_active, display_order === '' ? 0 : display_order, id, req.companyId],
     );
 
     await writePayrollAudit({
