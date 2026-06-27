@@ -87,10 +87,10 @@ function resolveAllComponents(components, context = {}) {
  *
  * @param {number} employeeId
  * @param {number} companyId
- * @param {string} periodStart  - ISO date string
+ * @param {string} periodEnd  - ISO date string
  * @returns {Object|null}
  */
-export async function getEmployeeSalaryAssignment(employeeId, companyId, periodStart) {
+export async function getEmployeeSalaryAssignment(employeeId, companyId, periodEnd) {
   const result = await query(
     `SELECT esa.*, sst.template_name
      FROM employee_salary_assignments esa
@@ -102,7 +102,7 @@ export async function getEmployeeSalaryAssignment(employeeId, companyId, periodS
        AND (esa.effective_to IS NULL OR esa.effective_to >= $3)
      ORDER BY esa.effective_from DESC
      LIMIT 1`,
-    [employeeId, companyId, periodStart],
+    [employeeId, companyId, periodEnd],
   );
   return result.rows[0] ?? null;
 }
@@ -193,7 +193,7 @@ async function getApprovedIncentives(employeeId, companyId, periodStart, periodE
        AND (
          (approved_at::date BETWEEN $3 AND $4)
          OR
-         (created_at::date BETWEEN $3 AND $4 AND status = 'approved')
+         (submitted_at::date BETWEEN $3 AND $4 AND status = 'approved')
        )`,
     [employeeId, companyId, periodStart, periodEnd],
   );
@@ -264,7 +264,7 @@ export async function calculateEmployeePayroll({
   overtimeRate = 1.5,
 }) {
   // 1. Get salary assignment
-  const assignment = await getEmployeeSalaryAssignment(employeeId, companyId, periodStart);
+  const assignment = await getEmployeeSalaryAssignment(employeeId, companyId, periodEnd);
   if (!assignment) {
     return {
       success: false,

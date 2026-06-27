@@ -494,9 +494,25 @@ router.put('/:id', authenticate, authorize('company_admin', 'super_admin'), tena
       );
       if (empUser.rows.length > 0) {
         const normalizedEmail = email.toLowerCase().trim();
-        const existing = await query('SELECT id FROM users WHERE email = $1 AND id != $2 LIMIT 1', [normalizedEmail, empUser.rows[0].id]);
+        const existing = await query('SELECT id, role, company_id FROM users WHERE email = $1 AND id != $2 LIMIT 1', [normalizedEmail, empUser.rows[0].id]);
         if (existing.rows.length > 0) {
-          return res.status(409).json({ message: 'Email already in use by another account' });
+          const conflictingUser = existing.rows[0];
+          
+          // Safety check: Only auto-delete if it's an employee in the same company
+          if (conflictingUser.role === 'employee' && conflictingUser.company_id === req.companyId) {
+            const timestamp = Date.now();
+            const anonymizedEmail = `deleted_${timestamp}_${normalizedEmail}`;
+            
+            // 1. Anonymize and deactivate the conflicting user
+            await query('UPDATE users SET email = $1, is_active = false, updated_at = NOW() WHERE id = $2', [anonymizedEmail, conflictingUser.id]);
+            
+            // 2. Soft-delete the conflicting employee record
+            await query("UPDATE employees SET deleted_at = NOW(), status = 'terminated', updated_at = NOW() WHERE user_id = $1", [conflictingUser.id]);
+            
+            // Note: Now the email is free, so the UPDATE below will succeed.
+          } else {
+             return res.status(409).json({ message: 'Email already in use by another account (cannot be auto-deleted)' });
+          }
         }
         await query('UPDATE users SET email = $1, updated_at = NOW() WHERE id = $2', [normalizedEmail, empUser.rows[0].id]);
       }
