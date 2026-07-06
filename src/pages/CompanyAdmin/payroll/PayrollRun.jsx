@@ -5,14 +5,15 @@ import {
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Paper, Chip, Divider, CircularProgress, Skeleton, Avatar, IconButton,
   Dialog, DialogTitle, DialogContent, DialogActions, TextField, MenuItem,
-  LinearProgress, Stepper, Step, StepLabel, Tooltip,
+  Stepper, Step, StepLabel, Tooltip,
 } from '@mui/material';
 import {
-  PlayArrow, CheckCircle, MonetizationOn, Cancel,
-  Refresh, ArrowBack, Add, RemoveCircle, Visibility,
-  Send, Warning, Print,
+  PlayArrow, CheckCircle, MonetizationOn,
+  Refresh, ArrowBack, Add, Visibility,
+  Send, Print, BarChart,
 } from '@mui/icons-material';
 import { apiRequest } from '../../../lib/api';
+import PayrollPreviewDialog from './PayrollPreviewDialog';
 
 const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const currency = (v) => `₹${Number(v || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
@@ -51,6 +52,9 @@ export default function PayrollRun() {
   const [adjForm,     setAdjForm]     = useState({ adjustment_type: 'earning', label: '', reason: '', amount: '' });
   const [savingAdj,   setSavingAdj]   = useState(false);
   const [snack,       setSnack]       = useState({ open: false, msg: '', sev: 'success' });
+
+  // ── Preview dialog state ──────────────────────────────────────────────────
+  const [preview, setPreview] = useState({ open: false, itemId: null });
 
   const loadCycle = useCallback(async () => {
     setLoading(true);
@@ -268,7 +272,14 @@ export default function PayrollRun() {
       {/* Employee Payroll Table */}
       <Card sx={{ borderRadius: 3 }}>
         <CardContent sx={{ p: 3 }}>
-          <Typography variant="h6" fontWeight={700} sx={{ mb: 2 }}>Employee Payroll Details</Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+            <Typography variant="h6" fontWeight={700}>Employee Payroll Details</Typography>
+            {items.length > 0 && (
+              <Typography variant="caption" color="text.secondary">
+                Click <BarChart sx={{ fontSize: 13, verticalAlign: 'middle' }} /> to preview & edit salary breakdown
+              </Typography>
+            )}
+          </Box>
           <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2 }}>
             <Table size="small">
               <TableHead>
@@ -278,7 +289,6 @@ export default function PayrollRun() {
                   <TableCell align="right">Earnings</TableCell>
                   <TableCell align="right">Incentives</TableCell>
                   <TableCell align="right">Deductions</TableCell>
-                  <TableCell align="right">Gross</TableCell>
                   <TableCell align="right">Net Salary</TableCell>
                   <TableCell>Status</TableCell>
                   <TableCell>Actions</TableCell>
@@ -287,7 +297,7 @@ export default function PayrollRun() {
               <TableBody>
                 {items.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} align="center" sx={{ py: 6 }}>
+                    <TableCell colSpan={8} align="center" sx={{ py: 6 }}>
                       <Box sx={{ color: 'text.secondary' }}>
                         <PlayArrow sx={{ fontSize: 48, mb: 1, opacity: 0.3 }} />
                         <Typography>Click "Run Payroll" to calculate employee salaries</Typography>
@@ -318,9 +328,14 @@ export default function PayrollRun() {
                       )}
                     </TableCell>
                     <TableCell align="right">{currency(item.total_earnings)}</TableCell>
-                    <TableCell align="right">{currency(item.incentive_total)}</TableCell>
+                    <TableCell align="right">
+                      <Box>
+                        <Typography variant="body2" fontWeight={600} sx={{ color: '#F59E0B' }}>
+                          {currency(item.incentive_total)}
+                        </Typography>
+                      </Box>
+                    </TableCell>
                     <TableCell align="right" sx={{ color: '#DC2626' }}>{currency(item.total_deductions)}</TableCell>
-                    <TableCell align="right">{currency(item.gross_salary)}</TableCell>
                     <TableCell align="right"><strong style={{ color: '#059669' }}>{currency(item.net_salary)}</strong></TableCell>
                     <TableCell>
                       <StatusBadge status={item.status} />
@@ -328,8 +343,19 @@ export default function PayrollRun() {
                     </TableCell>
                     <TableCell>
                       <Box sx={{ display: 'flex', gap: 0.5 }}>
+                        {/* ── Preview / Edit Breakdown ── */}
+                        <Tooltip title="Preview & Edit Salary Breakdown">
+                          <IconButton
+                            size="small"
+                            onClick={() => setPreview({ open: true, itemId: item.id })}
+                            sx={{ color: '#6366F1', bgcolor: '#EEF2FF', '&:hover': { bgcolor: '#E0E7FF' } }}
+                          >
+                            <BarChart fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+
                         {!frozen && (
-                          <Tooltip title="Add Adjustment">
+                          <Tooltip title="Add Manual Adjustment">
                             <IconButton size="small" onClick={() => { setAdjDialog({ open: true, item }); setAdjForm({ adjustment_type: 'earning', label: '', reason: '', amount: '' }); }}>
                               <Add fontSize="small" />
                             </IconButton>
@@ -349,6 +375,18 @@ export default function PayrollRun() {
           </TableContainer>
         </CardContent>
       </Card>
+
+      {/* ── Salary Preview Dialog ── */}
+      <PayrollPreviewDialog
+        open={preview.open}
+        itemId={preview.itemId}
+        frozen={frozen}
+        onClose={() => setPreview({ open: false, itemId: null })}
+        onSaved={() => {
+          setSnack({ open: true, msg: 'Salary components saved!', sev: 'success' });
+          loadCycle();
+        }}
+      />
 
       {/* Adjustment Dialog */}
       <Dialog open={adjDialog.open} onClose={() => setAdjDialog({ open: false, item: null })} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>

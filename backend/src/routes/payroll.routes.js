@@ -974,6 +974,83 @@ router.put('/run-items/:id/adjust', authenticate, authorize('company_admin', 'su
   }
 });
 
+// ─── PATCH individual component amount in snapshot ────────────────────────────
+// Body: { earnings_snapshot?: [...], deductions_snapshot?: [...] }
+// Allows the preview dialog to save edited component amounts.
+router.put('/run-items/:id/snapshot', authenticate, authorize('company_admin', 'super_admin'), tenantIsolation, requireCompanyContext, async (req, res) => {
+  const { earnings_snapshot, deductions_snapshot } = req.body;
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const itemRes = await client.query(
+      'SELECT * FROM payroll_run_items WHERE id = $1 AND company_id = $2 FOR UPDATE',
+      [req.params.id, req.companyId],
+    );
+    if (itemRes.rows.length === 0) { await client.query('ROLLBACK'); return res.status(404).json({ message: 'Run item not found' }); }
+    if (itemRes.rows[0].frozen_at)  { await client.query('ROLLBACK'); return res.status(409).json({ message: 'Cannot edit a frozen payroll item' }); }
+
+    const item = itemRes.rows[0];
+
+    // Use provided snapshots or fall back to existing ones
+    const newEarnings   = earnings_snapshot   ?? item.earnings_snapshot   ?? [];
+    const newDeductions = deductions_snapshot ?? item.deductions_snapshot ?? [];
+
+    // Recalculate totals from updated snapshots
+    const totalEarnings   = newEarnings.reduce((s, c)   => s + Number(c.amount ?? 0), 0);
+    const totalDeductions = newDeductions.reduce((s, c) => s + Number(c.amount ?? 0), 0);
+    const incentiveTotal  = newEarnings.filter(c => c.calculation_type === 'dynamic' || c.component_code?.toLowerCase() === 'incentive').reduce((s, c) => s + Number(c.amount ?? 0), 0);
+
+    // Fetch existing adjustments to include in net
+    const adjRes = await client.query(
+      "SELECT adjustment_type, amount FROM payroll_adjustments WHERE run_item_id = $1",
+      [req.params.id],
+    );
+    const adjNet = adjRes.rows.reduce((s, a) => s + (a.adjustment_type === 'earning' ? 1 : -1) * Number(a.amount), 0);
+
+    const newNet = totalEarnings - totalDeductions + adjNet;
+
+    await client.query(
+      `UPDATE payroll_run_items SET
+         earnings_snapshot   = $1,
+         deductions_snapshot = $2,
+         total_earnings      = $3,
+         total_deductions    = $4,
+         incentive_total     = $5,
+         net_salary          = $6,
+         updated_at          = now()
+       WHERE id = $7`,
+      [
+        JSON.stringify(newEarnings),
+        JSON.stringify(newDeductions),
+        totalEarnings,
+        totalDeductions,
+        incentiveTotal,
+        newNet,
+        req.params.id,
+      ],
+    );
+
+    await client.query('COMMIT');
+
+    await writePayrollAudit({
+      companyId: req.companyId, userId: req.user.id,
+      action: 'run_item_snapshot_edited', entityType: 'payroll_run_item', entityId: Number(req.params.id),
+      oldValues: { total_earnings: item.total_earnings, total_deductions: item.total_deductions, net_salary: item.net_salary },
+      newValues: { total_earnings: totalEarnings, total_deductions: totalDeductions, net_salary: newNet },
+      ...getRequestMeta(req),
+    });
+
+    res.json({ message: 'Snapshot updated', total_earnings: totalEarnings, total_deductions: totalDeductions, net_salary: newNet });
+  } catch (err) {
+    try { await client.query('ROLLBACK'); } catch {}
+    res.status(500).json({ message: err.message });
+  } finally {
+    client.release();
+  }
+});
+
 // Recalculate single employee
 router.post('/run-items/:id/recalculate', authenticate, authorize('company_admin', 'super_admin'), tenantIsolation, requireCompanyContext, async (req, res) => {
   const client = await pool.connect();
@@ -981,7 +1058,7 @@ router.post('/run-items/:id/recalculate', authenticate, authorize('company_admin
     await client.query('BEGIN');
 
     const itemResult = await client.query(
-      `SELECT pri.*, pc.period_start, pc.period_end, pc.cycle_id
+      `SELECT pri.*, pc.period_start, pc.period_end
        FROM payroll_run_items pri
        JOIN payroll_cycles pc ON pri.cycle_id = pc.id
        WHERE pri.id = $1 AND pri.company_id = $2 FOR UPDATE`,
