@@ -33,6 +33,8 @@ import {
   Tab,
   Stack,
   Badge,
+  Switch,
+  CircularProgress,
 } from '@mui/material';
 import { 
   Add, 
@@ -75,6 +77,7 @@ export default function EmployeeManagement() {
   const [viewProfile, setViewProfile] = useState(null);
   const [activeTab, setActiveTab] = useState(0);
   const [message, setMessage] = useState('');
+  const [toggleLoading, setToggleLoading] = useState({});
   const [errors, setErrors] = useState({});
   const [openResetPasswordDialog, setOpenResetPasswordDialog] = useState(false);
   const [newPassword, setNewPassword] = useState('');
@@ -498,6 +501,22 @@ export default function EmployeeManagement() {
     }
   };
 
+  const handleToggleActive = async (emp) => {
+    setToggleLoading(prev => ({ ...prev, [emp.id]: true }));
+    try {
+      const result = await apiRequest(`/employees/${emp.id}/toggle-active`, { method: 'PATCH' });
+      setMessage(result.message);
+      // Optimistically update list without full reload
+      setEmployees(prev =>
+        prev.map(e => e.id === emp.id ? { ...e, is_active: result.is_active } : e)
+      );
+    } catch (error) {
+      setMessage(`error:${error.message}`);
+    } finally {
+      setToggleLoading(prev => ({ ...prev, [emp.id]: false }));
+    }
+  };
+
   return (
     <Box sx={{ p: 3 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
@@ -548,11 +567,29 @@ export default function EmployeeManagement() {
                       <Chip label={emp.employment_type} size="small" sx={{ textTransform: 'capitalize' }} />
                     </TableCell>
                     <TableCell>
-                      <Chip
-                        label={emp.is_active ? 'Active' : 'Inactive'}
-                        color={emp.is_active ? 'success' : 'default'}
-                        size="small"
-                      />
+                      <Tooltip title={emp.is_active
+                        ? 'Active — click to deactivate (removes login access, keeps all data)'
+                        : 'Inactive — click to reactivate (restores login access)'}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                          {toggleLoading[emp.id] ? (
+                            <CircularProgress size={20} />
+                          ) : (
+                            <Switch
+                              checked={!!emp.is_active}
+                              onChange={() => handleToggleActive(emp)}
+                              size="small"
+                              sx={{
+                                '& .MuiSwitch-switchBase.Mui-checked': { color: '#059669' },
+                                '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { bgcolor: '#22c55e' },
+                              }}
+                            />
+                          )}
+                          <Typography variant="caption" fontWeight={600}
+                            sx={{ color: emp.is_active ? '#059669' : '#9CA3AF', minWidth: 46 }}>
+                            {emp.is_active ? 'Active' : 'Inactive'}
+                          </Typography>
+                        </Box>
+                      </Tooltip>
                     </TableCell>
                     <TableCell>
                       <Tooltip title="Performance Dashboard">

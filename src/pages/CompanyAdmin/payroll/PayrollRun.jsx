@@ -48,6 +48,7 @@ export default function PayrollRun() {
   const [running,     setRunning]     = useState(false);
   const [approving,   setApproving]   = useState(false);
   const [paying,      setPaying]      = useState(false);
+  const [reverting,   setReverting]   = useState(false);
   const [adjDialog,   setAdjDialog]   = useState({ open: false, item: null });
   const [adjForm,     setAdjForm]     = useState({ adjustment_type: 'earning', label: '', reason: '', amount: '' });
   const [savingAdj,   setSavingAdj]   = useState(false);
@@ -113,6 +114,20 @@ export default function PayrollRun() {
       setSnack({ open: true, msg: e.message, sev: 'error' });
     } finally {
       setPaying(false);
+    }
+  };
+
+  const handleRevert = async () => {
+    if (!window.confirm('Revert this payroll back to draft? This will unfreeze all records and allow recalculation.')) return;
+    setReverting(true);
+    try {
+      await apiRequest(`/payroll/cycles/${id}/revert`, { method: 'POST' });
+      setSnack({ open: true, msg: 'Payroll reverted successfully!', sev: 'success' });
+      loadCycle();
+    } catch (e) {
+      setSnack({ open: true, msg: e.message, sev: 'error' });
+    } finally {
+      setReverting(false);
     }
   };
 
@@ -230,6 +245,15 @@ export default function PayrollRun() {
                     sx={{ bgcolor: '#0D9488', '&:hover': { bgcolor: '#0F766E' }, borderRadius: 2, fontWeight: 700 }}
                   >
                     {paying ? 'Processing…' : 'Mark as Paid'}
+                  </Button>
+                )}
+                {cycle.status === 'paid' && (
+                  <Button
+                    variant="outlined"
+                    onClick={handleRevert} disabled={reverting}
+                    sx={{ color: '#EF4444', borderColor: '#EF4444', '&:hover': { bgcolor: 'rgba(239, 68, 68, 0.1)' }, borderRadius: 2, fontWeight: 700 }}
+                  >
+                    {reverting ? 'Reverting…' : 'Revert to Draft'}
                   </Button>
                 )}
                 <Tooltip title="Refresh data">

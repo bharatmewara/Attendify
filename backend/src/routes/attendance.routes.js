@@ -2,7 +2,7 @@ import express from 'express';
 import { query } from '../db.js';
 import { authenticate, authorize, tenantIsolation } from '../middleware/auth.middleware.js';
 import { logAudit } from '../utils/audit.js';
-import { enforcePunchIp } from '../middleware/networkPolicy.js';
+import { enforceOfficePunchIpForEmployee } from '../middleware/networkPolicy.js';
 import { autoMarkAbsent } from '../utils/attendanceHelper.js';
 import { sendEmail } from '../utils/email.js';
 
@@ -213,7 +213,7 @@ const syncApprovedRegularizations = async (companyId, employeeId, startDate, end
 };
 
 // Punch in
-router.post('/punch-in', authenticate, tenantIsolation, enforcePunchIp, async (req, res) => {
+router.post('/punch-in', authenticate, tenantIsolation, enforceOfficePunchIpForEmployee, async (req, res) => {
   const { location } = req.body;
   
   try {
@@ -286,7 +286,7 @@ router.post('/punch-in', authenticate, tenantIsolation, enforcePunchIp, async (r
 });
 
 // Punch out
-router.post('/punch-out', authenticate, tenantIsolation, async (req, res) => {
+router.post('/punch-out', authenticate, tenantIsolation, enforceOfficePunchIpForEmployee, async (req, res) => {
   const { location } = req.body;
   
   try {

@@ -2,23 +2,36 @@ import { useEffect, useState, useCallback } from 'react';
 import {
   Box, Card, CardContent, Typography, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, Paper, Chip, TextField,
-  MenuItem, Grid, Alert, CircularProgress, Skeleton, InputAdornment,
+  MenuItem, Grid, Alert, Skeleton, InputAdornment,
   Dialog, DialogTitle, DialogContent, DialogActions, Button, Divider,
-  Avatar,
+  Avatar, IconButton, Tooltip,
 } from '@mui/material';
-import { Search, People, FilterList, Phone, Email, LocationOn, Close } from '@mui/icons-material';
-import { apiRequest } from '../../lib/api';
+import {
+  Search, People, Phone, Email, LocationOn, Close,
+  AccountCircle, Lock, ContentCopy, Visibility, VisibilityOff,
+  InsertDriveFile,
+} from '@mui/icons-material';
+import { apiRequest, API_BASE_URL } from '../../lib/api';
+
+const uploadsBaseUrl = API_BASE_URL.replace(/\/api\/?$/, '');
+const toUrl = (p) => {
+  if (!p) return '';
+  const n = String(p).replace(/\\/g, '/');
+  const idx = n.indexOf('uploads/');
+  return `${uploadsBaseUrl}/${(idx >= 0 ? n.slice(idx) : n).replace(/^\/+/, '')}`;
+};
 
 const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const STATUS_CFG = {
-  pending:   { color: '#D97706', bg: '#FEF3C7', label: 'Pending' },
-  approved:  { color: '#059669', bg: '#ECFDF5', label: 'Approved' },
-  rejected:  { color: '#DC2626', bg: '#FEF2F2', label: 'Rejected' },
-  paid:      { color: '#0D9488', bg: '#F0FDFA', label: 'Paid' },
+  pending:  { color: '#D97706', bg: '#FEF3C7', label: 'Pending' },
+  approved: { color: '#059669', bg: '#ECFDF5', label: 'Approved' },
+  rejected: { color: '#DC2626', bg: '#FEF2F2', label: 'Rejected' },
+  paid:     { color: '#0D9488', bg: '#F0FDFA', label: 'Paid' },
+  refunded: { color: '#7C3AED', bg: '#EDE9FE', label: 'Refunded' },
 };
 
 const money = (v) => v != null && v !== '' ? `₹${Number(v).toLocaleString('en-IN', { minimumFractionDigits: 2 })}` : '—';
-const fmt = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+const fmt   = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
 
 function StatusBadge({ status }) {
   const cfg = STATUS_CFG[status] ?? { color: '#6B7280', bg: '#F3F4F6', label: status };
@@ -30,20 +43,68 @@ function StatusBadge({ status }) {
   );
 }
 
+// ── Copy-to-clipboard button ───────────────────────────────────────────────
+function CopyBtn({ text }) {
+  const [copied, setCopied] = useState(false);
+  const copy = () => {
+    navigator.clipboard.writeText(text || '').then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); });
+  };
+  return (
+    <Tooltip title={copied ? 'Copied!' : 'Copy'}>
+      <IconButton size="small" onClick={copy} sx={{ ml: 0.5 }}>
+        <ContentCopy sx={{ fontSize: 13, color: copied ? '#059669' : '#94A3B8' }} />
+      </IconButton>
+    </Tooltip>
+  );
+}
+
+// ── Masked password field with show/hide toggle ────────────────────────────
+function PasswordField({ value }) {
+  const [show, setShow] = useState(false);
+  if (!value) return <Typography variant="body2" color="text.secondary">—</Typography>;
+  return (
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+      <Typography variant="body2" fontWeight={600} fontFamily="monospace" letterSpacing={1}>
+        {show ? value : '••••••••'}
+      </Typography>
+      <Tooltip title={show ? 'Hide' : 'Show'}>
+        <IconButton size="small" onClick={() => setShow(!show)}>
+          {show ? <VisibilityOff sx={{ fontSize: 14 }} /> : <Visibility sx={{ fontSize: 14 }} />}
+        </IconButton>
+      </Tooltip>
+      <CopyBtn text={value} />
+    </Box>
+  );
+}
+
+// ── Detail info row ────────────────────────────────────────────────────────
+function InfoRow({ label, value, icon, highlight }) {
+  return (
+    <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'flex-start', py: 0.75 }}>
+      {icon && <Box sx={{ mt: 0.2, color: '#94A3B8', flexShrink: 0 }}>{icon}</Box>}
+      <Box sx={{ flex: 1 }}>
+        <Typography variant="caption" color="text.secondary" display="block" lineHeight={1.2}>{label}</Typography>
+        {typeof value === 'string' || typeof value === 'number'
+          ? <Typography variant="body2" fontWeight={highlight ? 700 : 500} color={highlight ? '#059669' : 'text.primary'}>{value || '—'}</Typography>
+          : value}
+      </Box>
+    </Box>
+  );
+}
+
 export default function MyClients() {
   const now = new Date();
-  const [clients,   setClients]   = useState([]);
-  const [loading,   setLoading]   = useState(true);
-  const [error,     setError]     = useState('');
-  const [search,    setSearch]    = useState('');
-  const [month,     setMonth]     = useState('');
-  const [year,      setYear]      = useState(now.getFullYear());
-  const [status,    setStatus]    = useState('');
-  const [selected,  setSelected]  = useState(null);
+  const [clients,  setClients]  = useState([]);
+  const [loading,  setLoading]  = useState(true);
+  const [error,    setError]    = useState('');
+  const [search,   setSearch]   = useState('');
+  const [month,    setMonth]    = useState('');
+  const [year,     setYear]     = useState(now.getFullYear());
+  const [status,   setStatus]   = useState('');
+  const [selected, setSelected] = useState(null);
 
   const load = useCallback(async () => {
-    setLoading(true);
-    setError('');
+    setLoading(true); setError('');
     try {
       const params = new URLSearchParams();
       if (month)  params.set('month', month);
@@ -61,7 +122,6 @@ export default function MyClients() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Summary stats
   const totalEarnings = clients.reduce((s, c) => s + Number(c.incentive_amount || 0), 0);
   const approvedCount = clients.filter(c => c.status === 'approved' || c.status === 'paid').length;
   const pendingCount  = clients.filter(c => c.status === 'pending').length;
@@ -70,17 +130,17 @@ export default function MyClients() {
     <Box sx={{ p: { xs: 2, md: 4 }, bgcolor: '#F8FAFC', minHeight: '100vh' }}>
       <Box sx={{ mb: 4 }}>
         <Typography variant="h4" fontWeight={800} sx={{ color: '#0F172A', mb: 0.5 }}>My Clients</Typography>
-        <Typography color="text.secondary">View all the clients you have submitted</Typography>
+        <Typography color="text.secondary">All clients you have submitted — including panel credentials</Typography>
       </Box>
 
       {error && <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }}>{error}</Alert>}
 
-      {/* Summary Cards */}
+      {/* ── Summary Cards ── */}
       <Grid container spacing={2} sx={{ mb: 3 }}>
         {[
-          { label: 'Total Clients',    value: clients.length,     color: '#6366F1' },
-          { label: 'Approved / Paid',  value: approvedCount,      color: '#059669' },
-          { label: 'Pending Review',   value: pendingCount,       color: '#D97706' },
+          { label: 'Total Clients',    value: clients.length,       color: '#6366F1' },
+          { label: 'Approved / Paid',  value: approvedCount,        color: '#059669' },
+          { label: 'Pending Review',   value: pendingCount,         color: '#D97706' },
           { label: 'Total Incentives', value: money(totalEarnings), color: '#3B82F6' },
         ].map(({ label, value, color }) => (
           <Grid item xs={6} sm={3} key={label}>
@@ -94,13 +154,13 @@ export default function MyClients() {
         ))}
       </Grid>
 
-      {/* Filters */}
+      {/* ── Filters ── */}
       <Card sx={{ borderRadius: 3, mb: 3 }}>
         <CardContent sx={{ p: 2.5 }}>
           <Grid container spacing={2} alignItems="center">
             <Grid item xs={12} sm={5}>
               <TextField
-                fullWidth size="small" placeholder="Search client name or product…"
+                fullWidth size="small" placeholder="Search client name, mobile, email or product…"
                 value={search} onChange={e => setSearch(e.target.value)}
                 InputProps={{ startAdornment: <InputAdornment position="start"><Search fontSize="small" /></InputAdornment> }}
               />
@@ -126,7 +186,7 @@ export default function MyClients() {
         </CardContent>
       </Card>
 
-      {/* Clients Table */}
+      {/* ── Clients Table ── */}
       <Card sx={{ borderRadius: 3 }}>
         <CardContent sx={{ p: 3 }}>
           {loading ? (
@@ -138,11 +198,21 @@ export default function MyClients() {
               <Typography>Submit a new client from the Today Status page to see it here.</Typography>
             </Box>
           ) : (
-            <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2 }}>
-              <Table size="small">
+            <TableContainer component={Paper} variant="outlined" sx={{
+              borderRadius: 2,
+              overflowX: 'auto',
+              '& .MuiTableHead-root .MuiTableCell-root': {
+                position: 'sticky', top: 0, bgcolor: '#F8FAFC', zIndex: 2,
+                boxShadow: 'inset 0 -2px 0 #E2E8F0',
+              },
+            }}>
+              <Table size="small" sx={{ minWidth: 900 }}>
                 <TableHead>
-                  <TableRow sx={{ '& th': { fontWeight: 700, bgcolor: '#F8FAFC', fontSize: '0.78rem' } }}>
+                  <TableRow sx={{ '& th': { fontWeight: 700, fontSize: '0.78rem', whiteSpace: 'nowrap' } }}>
                     <TableCell>Client</TableCell>
+                    <TableCell>Contact</TableCell>
+                    <TableCell>Panel Username</TableCell>
+                    <TableCell>Panel Password</TableCell>
                     <TableCell>Product</TableCell>
                     <TableCell>Package</TableCell>
                     <TableCell align="right">Amount</TableCell>
@@ -166,6 +236,19 @@ export default function MyClients() {
                           </Box>
                         </Box>
                       </TableCell>
+                      <TableCell>
+                        <Typography variant="caption" display="block">{c.client_mobile_1 || '—'}</Typography>
+                        <Typography variant="caption" color="text.secondary">{c.client_email || ''}</Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }} onClick={e => e.stopPropagation()}>
+                          <Typography variant="body2" fontFamily="monospace">{c.client_panel_username || '—'}</Typography>
+                          {c.client_panel_username && <CopyBtn text={c.client_panel_username} />}
+                        </Box>
+                      </TableCell>
+                      <TableCell onClick={e => e.stopPropagation()}>
+                        <PasswordField value={c.client_panel_password} />
+                      </TableCell>
                       <TableCell><Typography variant="body2">{c.product_name}</Typography></TableCell>
                       <TableCell>
                         <Chip label={c.package_type} size="small" variant="outlined" sx={{ fontSize: '0.7rem' }} />
@@ -186,98 +269,117 @@ export default function MyClients() {
         </CardContent>
       </Card>
 
-      {/* Client Detail Dialog */}
+      {/* ── Client Detail Dialog ── */}
       <Dialog open={!!selected} onClose={() => setSelected(null)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
         {selected && (
           <>
-            <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontWeight: 700 }}>
-              Client Details
-              <Button size="small" onClick={() => setSelected(null)}><Close fontSize="small" /></Button>
-            </DialogTitle>
-            <Divider />
-            <DialogContent sx={{ pt: 3 }}>
-              <Grid container spacing={2}>
-                <Grid item xs={12}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 2, bgcolor: '#F8FAFC', borderRadius: 2, mb: 1 }}>
-                    <Avatar sx={{ width: 48, height: 48, bgcolor: '#6366F120', color: '#6366F1', fontWeight: 800, fontSize: 20 }}>
-                      {selected.client_name?.[0]?.toUpperCase()}
-                    </Avatar>
-                    <Box>
-                      <Typography fontWeight={700}>{selected.client_name}</Typography>
-                      <StatusBadge status={selected.status} />
-                    </Box>
+            <DialogTitle sx={{ p: 0 }}>
+              <Box sx={{ background: 'linear-gradient(135deg, #1E293B 0%, #0F172A 100%)', px: 3, py: 2.5, color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                  <Avatar sx={{ width: 44, height: 44, bgcolor: '#6366F130', color: '#A5B4FC', fontWeight: 800, fontSize: 18 }}>
+                    {selected.client_name?.[0]?.toUpperCase()}
+                  </Avatar>
+                  <Box>
+                    <Typography fontWeight={800} fontSize="1.05rem">{selected.client_name}</Typography>
+                    <StatusBadge status={selected.status} />
                   </Box>
-                </Grid>
+                </Box>
+                <IconButton size="small" onClick={() => setSelected(null)} sx={{ color: '#fff' }}><Close /></IconButton>
+              </Box>
+            </DialogTitle>
 
-                {[
-                  { label: 'Product', value: selected.product_name },
-                  { label: 'Package Type', value: selected.package_type },
-                  { label: 'Amount', value: money(selected.price_gross ?? selected.price) },
-                  { label: 'Incentive Earned', value: money(selected.incentive_amount), highlight: true },
-                  { label: 'Submitted On', value: fmt(selected.submitted_at) },
-                ].map(({ label, value, highlight }) => (
-                  <Grid item xs={6} key={label}>
-                    <Typography variant="caption" color="text.secondary" display="block">{label}</Typography>
-                    <Typography fontWeight={highlight ? 700 : 500} color={highlight ? '#059669' : 'text.primary'}>{value}</Typography>
-                  </Grid>
-                ))}
-
-                <Grid item xs={12}><Divider><Typography variant="caption" color="text.secondary">Contact</Typography></Divider></Grid>
-
-                {selected.client_mobile_1 && (
-                  <Grid item xs={12} sm={6}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Phone fontSize="small" color="action" />
-                      <Box>
-                        <Typography variant="caption" color="text.secondary">Mobile</Typography>
-                        <Typography variant="body2" fontWeight={600}>{selected.client_mobile_1}</Typography>
-                        {selected.client_mobile_2 && <Typography variant="caption" color="text.secondary">{selected.client_mobile_2}</Typography>}
+            <DialogContent sx={{ pt: 3 }}>
+              {/* ── Panel Credentials (highlighted) ── */}
+              {(selected.client_panel_username || selected.client_panel_password) && (
+                <Box sx={{ mb: 3, p: 2, bgcolor: '#EEF2FF', borderRadius: 2, border: '1px solid #C7D2FE' }}>
+                  <Typography variant="subtitle2" fontWeight={700} color="#3730A3" sx={{ mb: 1.5, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <Lock fontSize="small" /> Panel Credentials
+                  </Typography>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} sm={6}>
+                      <Typography variant="caption" color="text.secondary" display="block">Username</Typography>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        <Typography variant="body2" fontWeight={700} fontFamily="monospace">{selected.client_panel_username || '—'}</Typography>
+                        {selected.client_panel_username && <CopyBtn text={selected.client_panel_username} />}
                       </Box>
-                    </Box>
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <Typography variant="caption" color="text.secondary" display="block">Password</Typography>
+                      <PasswordField value={selected.client_panel_password} />
+                    </Grid>
                   </Grid>
-                )}
+                </Box>
+              )}
+
+              <Divider sx={{ mb: 2 }}><Typography variant="caption" color="text.secondary">Contact Info</Typography></Divider>
+              <Grid container spacing={1.5} sx={{ mb: 2 }}>
+                <Grid item xs={12} sm={6}>
+                  <InfoRow label="Mobile" value={selected.client_mobile_1} icon={<Phone fontSize="small" />} />
+                  {selected.client_mobile_2 && <InfoRow label="Mobile 2" value={selected.client_mobile_2} icon={<Phone fontSize="small" />} />}
+                </Grid>
                 {selected.client_email && (
                   <Grid item xs={12} sm={6}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Email fontSize="small" color="action" />
-                      <Box>
-                        <Typography variant="caption" color="text.secondary">Email</Typography>
-                        <Typography variant="body2" fontWeight={600}>{selected.client_email}</Typography>
-                      </Box>
-                    </Box>
-                  </Grid>
-                )}
-                {selected.client_username && (
-                  <Grid item xs={12} sm={6}>
-                    <Typography variant="caption" color="text.secondary">Username</Typography>
-                    <Typography variant="body2" fontWeight={600}>{selected.client_username}</Typography>
+                    <InfoRow label="Email" value={selected.client_email} icon={<Email fontSize="small" />} />
                   </Grid>
                 )}
                 {selected.client_location && (
                   <Grid item xs={12} sm={6}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <LocationOn fontSize="small" color="action" />
-                      <Box>
-                        <Typography variant="caption" color="text.secondary">Location</Typography>
-                        <Typography variant="body2" fontWeight={600}>{selected.client_location}</Typography>
-                      </Box>
-                    </Box>
+                    <InfoRow label="Location" value={selected.client_location} icon={<LocationOn fontSize="small" />} />
                   </Grid>
                 )}
-
-                {selected.notes && (
-                  <>
-                    <Grid item xs={12}><Divider /></Grid>
-                    <Grid item xs={12}>
-                      <Typography variant="caption" color="text.secondary">Notes / Reason</Typography>
-                      <Typography variant="body2" sx={{ mt: 0.5, p: 1.5, bgcolor: '#F8FAFC', borderRadius: 1 }}>{selected.notes}</Typography>
-                    </Grid>
-                  </>
-                )}
               </Grid>
+
+              <Divider sx={{ mb: 2 }}><Typography variant="caption" color="text.secondary">Sale Details</Typography></Divider>
+              <Grid container spacing={1.5} sx={{ mb: 2 }}>
+                {[
+                  { label: 'Product',         value: selected.product_name },
+                  { label: 'Package Type',     value: selected.package_type },
+                  { label: 'Amount',           value: money(selected.price_gross ?? selected.price) },
+                  { label: 'Incentive Earned', value: money(selected.incentive_amount), highlight: true },
+                  { label: 'SMS Quantity',     value: selected.sms_quantity ?? '—' },
+                  { label: 'Rate',             value: selected.rate != null ? `₹${selected.rate}` : '—' },
+                  { label: 'Payment Mode',     value: selected.payment_mode || '—' },
+                  { label: 'Submitted On',     value: fmt(selected.submitted_at) },
+                ].map(({ label, value, highlight }) => (
+                  <Grid item xs={6} key={label}>
+                    <Typography variant="caption" color="text.secondary" display="block">{label}</Typography>
+                    <Typography fontWeight={highlight ? 700 : 500} color={highlight ? '#059669' : 'text.primary'} variant="body2">{value}</Typography>
+                  </Grid>
+                ))}
+              </Grid>
+
+              {/* KYC / Screenshot */}
+              {(selected.kyc_path || selected.screenshot_path) && (
+                <>
+                  <Divider sx={{ mb: 2 }}><Typography variant="caption" color="text.secondary">Documents</Typography></Divider>
+                  <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', mb: 2 }}>
+                    {selected.kyc_path && (
+                      <Button size="small" variant="outlined" startIcon={<InsertDriveFile />} onClick={() => window.open(toUrl(selected.kyc_path), '_blank')}>
+                        View KYC
+                      </Button>
+                    )}
+                    {selected.screenshot_path && (
+                      <Button size="small" variant="outlined" startIcon={<InsertDriveFile />} onClick={() => window.open(toUrl(selected.screenshot_path), '_blank')}>
+                        View Screenshot
+                      </Button>
+                    )}
+                  </Box>
+                </>
+              )}
+
+              {selected.notes && (
+                <>
+                  <Divider sx={{ mb: 1.5 }} />
+                  <Typography variant="caption" color="text.secondary">Notes / Reason</Typography>
+                  <Box sx={{ mt: 0.5, p: 1.5, bgcolor: '#F8FAFC', borderRadius: 1 }}>
+                    <Typography variant="body2">{selected.notes}</Typography>
+                  </Box>
+                </>
+              )}
             </DialogContent>
+
             <DialogActions sx={{ px: 3, pb: 3 }}>
-              <Button onClick={() => setSelected(null)} variant="outlined">Close</Button>
+              <Button onClick={() => setSelected(null)} variant="outlined" sx={{ borderRadius: 2 }}>Close</Button>
             </DialogActions>
           </>
         )}

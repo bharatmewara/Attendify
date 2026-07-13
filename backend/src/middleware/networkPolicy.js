@@ -16,8 +16,8 @@ export const isCompanyIpAllowedByPolicy = async (companyId, ip, policyField) => 
     // Normalize the IP
     const normalizedIp = ip ? ip.replace(/^::ffff:/, '') : '';
 
-    // Always allow loopback (server-side internal calls, Postman localhost testing)
-    if (normalizedIp === '127.0.0.1' || normalizedIp === '::1' || normalizedIp === 'localhost') {
+    // Only allow loopback in non-production environments (prevents bypass on VPS behind proxy)
+    if (process.env.NODE_ENV !== 'production' && (normalizedIp === '127.0.0.1' || normalizedIp === '::1' || normalizedIp === 'localhost')) {
       return true;
     }
 

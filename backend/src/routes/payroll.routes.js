@@ -859,6 +859,52 @@ router.post('/cycles/:id/cancel', authenticate, authorize('company_admin', 'supe
   }
 });
 
+router.post('/cycles/:id/revert', authenticate, authorize('company_admin', 'super_admin'), tenantIsolation, requireCompanyContext, async (req, res) => {
+  const cycleId = Number(req.params.id);
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    
+    const cycleRes = await client.query('SELECT status FROM payroll_cycles WHERE id = $1 AND company_id = $2 FOR UPDATE', [cycleId, req.companyId]);
+    if (cycleRes.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ message: 'Cycle not found' });
+    }
+    const cycle = cycleRes.rows[0];
+    if (cycle.status !== 'paid' && cycle.status !== 'approved') {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ message: `Cannot revert a ${cycle.status} cycle` });
+    }
+
+    // Revert cycle status back to draft, unfreeze items, and remove paid_at date
+    const updated = await client.query(
+      "UPDATE payroll_cycles SET status = 'draft', paid_at = NULL, approved_at = NULL, updated_at = now() WHERE id = $1 RETURNING *",
+      [cycleId]
+    );
+    
+    // Unfreeze run items
+    await client.query(
+      "UPDATE payroll_run_items SET frozen_at = NULL, updated_at = now() WHERE cycle_id = $1",
+      [cycleId]
+    );
+
+    await client.query('COMMIT');
+
+    await writePayrollAudit({
+      companyId: req.companyId, userId: req.user.id,
+      action: 'payroll_reverted', entityType: 'payroll_cycle', entityId: cycleId,
+      newValues: { status: 'draft' }, ...getRequestMeta(req),
+    });
+
+    res.json({ message: 'Payroll reverted to draft', cycle: updated.rows[0] });
+  } catch (err) {
+    try { await client.query('ROLLBACK'); } catch {}
+    res.status(500).json({ message: err.message });
+  } finally {
+    client.release();
+  }
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // RUN ITEMS
 // ─────────────────────────────────────────────────────────────────────────────

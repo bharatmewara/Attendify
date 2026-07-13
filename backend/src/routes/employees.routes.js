@@ -552,7 +552,59 @@ router.put('/:id', authenticate, authorize('company_admin', 'super_admin'), tena
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DELETE EMPLOYEE (Soft-delete + email anonymization)
+// TOGGLE EMPLOYEE ACTIVE / INACTIVE
+// Blocks or restores login without deleting any data.
+// Only flips is_active on the users table — all historical records are intact.
+// ─────────────────────────────────────────────────────────────────────────────
+router.patch('/:id/toggle-active', authenticate, authorize('company_admin', 'super_admin'), tenantIsolation, async (req, res) => {
+  const { id } = req.params;
+  try {
+    // Get the employee's linked user_id, scoped to this company
+    const empResult = await query(
+      `SELECT e.id, e.user_id, e.first_name, e.last_name, u.is_active
+       FROM employees e
+       JOIN users u ON u.id = e.user_id
+       WHERE e.id = $1
+         AND ($2::int IS NULL OR e.company_id = $2)
+         AND e.deleted_at IS NULL`,
+      [id, req.companyId],
+    );
+
+    if (empResult.rows.length === 0) {
+      return res.status(404).json({ message: 'Employee not found' });
+    }
+
+    const emp = empResult.rows[0];
+    const newActive = !emp.is_active;
+
+    // Flip is_active on the users table
+    await query(
+      'UPDATE users SET is_active = $1, updated_at = NOW() WHERE id = $2',
+      [newActive, emp.user_id],
+    );
+
+    await logAudit({
+      companyId: req.companyId,
+      userId: req.user.id,
+      action: newActive ? 'EMPLOYEE_ACTIVATED' : 'EMPLOYEE_DEACTIVATED',
+      entityType: 'employee',
+      entityId: Number(id),
+      oldValues: { is_active: emp.is_active },
+      newValues: { is_active: newActive },
+      ipAddress: req.ip,
+    });
+
+    res.json({
+      message: `${emp.first_name} ${emp.last_name} has been ${newActive ? 'activated' : 'deactivated'}.`,
+      is_active: newActive,
+    });
+  } catch (error) {
+    console.error('Toggle active error:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+
 // This frees the email so a new employee can be created with the same email.
 // Historical records (attendance, payroll) are preserved.
 // ─────────────────────────────────────────────────────────────────────────────

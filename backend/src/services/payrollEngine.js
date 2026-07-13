@@ -337,12 +337,27 @@ export async function calculateEmployeePayroll({
 
   // Prorate all earning components (except dynamic like incentives)
   const proratedEarnings = earningComponents.map(c => {
-    if (c.calculation_type === 'dynamic') {
-      return { ...c, amount: incentiveTotal };
+    if (c.calculation_type === 'dynamic' || c.component_code?.toLowerCase() === 'incentive' || c.component_name?.toLowerCase().includes('incentive')) {
+      return { ...c, amount: incentiveTotal, calculation_type: 'dynamic' };
     }
     const proratedAmount = (c.amount / workingDays) * paidDays;
     return { ...c, amount: Math.round(proratedAmount * 100) / 100 };
   });
+
+  // Auto-inject incentive component if it was missing from the template but a balance exists
+  const hasIncentiveComp = proratedEarnings.some(c => c.calculation_type === 'dynamic' || c.component_code?.toLowerCase() === 'incentive');
+  if (!hasIncentiveComp && incentiveTotal > 0) {
+    proratedEarnings.push({
+      component_id: 'auto_inc',
+      component_name: 'Performance Incentive',
+      component_code: 'INCENTIVE',
+      component_type: 'earning',
+      calculation_type: 'dynamic',
+      is_taxable: true,
+      amount: incentiveTotal,
+      sort_order: 99
+    });
+  }
 
   // 10. Calculate penalties and leave deductions
   const latePenalty       = Number(shiftPenalties.late_penalty_per_minute)       * lateMinutes;

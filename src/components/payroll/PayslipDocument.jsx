@@ -73,14 +73,18 @@ function injectPrintStyles() {
       #payslip-printable-root,
       #payslip-printable-root * { visibility: visible !important; }
       #payslip-printable-root {
-        position: fixed !important;
-        inset: 0 !important;
+        position: absolute !important;
+        left: 0 !important;
+        top: 0 !important;
         width: 100% !important;
-        padding: 24px !important;
+        padding: 0 !important;
+        margin: 0 !important;
         background: #fff !important;
         box-shadow: none !important;
         border: none !important;
         z-index: 99999 !important;
+        page-break-after: avoid !important;
+        page-break-before: avoid !important;
       }
       .payslip-no-print { display: none !important; }
       @page {
