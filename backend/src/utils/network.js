@@ -1,4 +1,9 @@
 export const getClientIp = (req) => {
+  // In dev mode, allow frontend to spoof real IP for testing
+  if (process.env.NODE_ENV !== 'production' && req.headers['x-dev-client-ip']) {
+    return normalizeIp(req.headers['x-dev-client-ip'].trim());
+  }
+
   // Production reverse proxy headers (trusted server-side only)
   const realIp = req.headers['x-real-ip'];
   if (realIp) return normalizeIp(realIp.split(',')[0].trim());

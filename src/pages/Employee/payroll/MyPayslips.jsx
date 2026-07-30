@@ -54,10 +54,11 @@ export default function MyPayslips() {
               {[
                 { label: 'Net Salary',   value: currency(latest.net_salary),   color: '#34D399' },
                 { label: 'Days Worked',  value: `${latest.present_days}/${latest.working_days}`, color: '#93C5FD' },
+                { label: 'Hours Logged', value: `${latest.attendance_snapshot?.total_completed_hours || 0}/${latest.attendance_snapshot?.total_expected_hours || 0}h`, color: '#A78BFA' },
                 { label: 'Incentives',   value: currency(latest.incentive_total), color: '#FCD34D' },
                 { label: 'Deductions',   value: currency(latest.total_deductions), color: '#F87171' },
               ].map(({ label, value, color }) => (
-                <Grid item xs={6} sm={3} key={label}>
+                <Grid item xs={6} sm={2.4} key={label}>
                   <Typography variant="caption" sx={{ opacity: 0.7 }}>{label}</Typography>
                   <Typography variant="h6" fontWeight={700} sx={{ color }}>{value}</Typography>
                 </Grid>
@@ -96,6 +97,7 @@ export default function MyPayslips() {
                   <TableRow sx={{ '& th': { fontWeight: 700, bgcolor: '#F8FAFC' } }}>
                     <TableCell>Pay Period</TableCell>
                     <TableCell align="right">Days</TableCell>
+                    <TableCell align="right">Hours</TableCell>
                     <TableCell align="right">Net Salary</TableCell>
                     <TableCell align="right">Incentives</TableCell>
                     <TableCell>Status</TableCell>
@@ -118,6 +120,7 @@ export default function MyPayslips() {
                           </Typography>
                         </TableCell>
                         <TableCell align="right">{ps.present_days}/{ps.working_days}</TableCell>
+                        <TableCell align="right">{ps.attendance_snapshot?.total_completed_hours || 0}/{ps.attendance_snapshot?.total_expected_hours || 0}h</TableCell>
                         <TableCell align="right"><strong style={{ color: '#059669' }}>{currency(ps.net_salary)}</strong></TableCell>
                         <TableCell align="right" sx={{ color: '#F59E0B' }}>{currency(ps.incentive_total)}</TableCell>
                         <TableCell>

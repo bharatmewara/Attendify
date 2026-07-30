@@ -88,6 +88,11 @@ export const apiRequest = async (path, { method = 'GET', body, token, headers: c
     ...customHeaders,
   };
 
+  if (import.meta.env.MODE === 'development') {
+    const devIp = (typeof localStorage !== 'undefined' ? localStorage.getItem('dev_detected_ip') : null) || '220.227.2.199';
+    headers['x-dev-client-ip'] = devIp;
+  }
+
   if (body !== undefined && !isFormData && !headers['Content-Type']) {
     headers['Content-Type'] = 'application/json';
   }

@@ -304,7 +304,7 @@ export default function PayrollPreviewDialog({ open, itemId, frozen, onClose, on
                             <EditableAmountCell
                               value={comp.amount}
                               onSave={val => updateEarning(idx, val)}
-                              disabled={isLocked}
+                              disabled={isLocked || isIncentive}
                             />
                           </TableCell>
                         </TableRow>

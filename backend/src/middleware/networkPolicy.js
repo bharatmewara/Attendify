@@ -16,10 +16,10 @@ export const isCompanyIpAllowedByPolicy = async (companyId, ip, policyField) => 
     // Normalize the IP
     const normalizedIp = ip ? ip.replace(/^::ffff:/, '') : '';
 
-    // Only allow loopback in non-production environments (prevents bypass on VPS behind proxy)
-    if (process.env.NODE_ENV !== 'production' && (normalizedIp === '127.0.0.1' || normalizedIp === '::1' || normalizedIp === 'localhost')) {
-      return true;
-    }
+    // In development we might want to test the policies strictly, so we don't automatically return true for loopback.
+    // if (process.env.NODE_ENV !== 'production' && (normalizedIp === '127.0.0.1' || normalizedIp === '::1' || normalizedIp === 'localhost')) {
+    //   return true;
+    // }
 
     if (!normalizedIp) {
       console.warn('[NetworkPolicy] Could not determine client IP — allowing by default');

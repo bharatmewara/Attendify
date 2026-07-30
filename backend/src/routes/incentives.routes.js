@@ -1383,7 +1383,7 @@ router.get(
 router.get(
   '/clients',
   authenticate,
-  authorize('company_admin', 'super_admin'),
+  authorize('company_admin', 'super_admin', 'employee'),
   tenantIsolation,
   requireCompanyContext,
   async (req, res) => {
@@ -1402,6 +1402,12 @@ router.get(
         return res.status(400).json({ message: 'date_to must be in YYYY-MM-DD format.' });
       }
 
+      let employeeId = null;
+      if (req.user.role === 'employee') {
+        employeeId = await resolveEmployeeIdForUser(req.user.id);
+        if (!employeeId) return res.status(404).json({ message: 'Employee profile not found' });
+      }
+
       const result = await query(
         `WITH base AS (
           SELECT
@@ -1411,6 +1417,7 @@ router.get(
           WHERE company_id = $1::int
             AND ($3::date IS NULL OR COALESCE(approved_at::date, submitted_at::date) >= $3::date)
             AND ($4::date IS NULL OR COALESCE(approved_at::date, submitted_at::date) <= $4::date)
+            AND ($5::int IS NULL OR employee_id = $5::int)
         ),
         ranked AS (
           SELECT
@@ -1508,7 +1515,7 @@ router.get(
           )
         ORDER BY COALESCE(r.approved_at, r.submitted_at) DESC
         LIMIT 500`,
-        [req.companyId, q, date_from || null, date_to || null],
+        [req.companyId, q, date_from || null, date_to || null, employeeId || null],
       );
 
       return res.json(result.rows);

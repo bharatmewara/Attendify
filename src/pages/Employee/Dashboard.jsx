@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Alert,
@@ -277,18 +277,31 @@ export default function EmployeeDashboard() {
           <Paper sx={{ p: 3, minWidth: 200, borderRadius: 3, bgcolor: todayAttendance?.punch_in_time ? 'grey.100' : 'success.50' }}>
             <Typography variant="h6" sx={{ mb: 1 }}>Punch In</Typography>
             <Typography sx={{ mb: 2 }}>{todayAttendance?.punch_in_time ? new Date(todayAttendance.punch_in_time).toLocaleTimeString() : 'Pending'}</Typography>
-            <Button fullWidth variant="contained" color="success" disabled={Boolean(todayAttendance?.punch_in_time)} onClick={handlePunchIn}>
+            <Button fullWidth variant="contained" color="success" disabled={todayAttendance?.is_punch_allowed === false || Boolean(todayAttendance?.punch_in_time)} onClick={handlePunchIn}>
               Punch In Now
             </Button>
           </Paper>
           <Paper sx={{ p: 3, minWidth: 200, borderRadius: 3, bgcolor: todayAttendance?.punch_out_time ? 'grey.100' : 'error.50' }}>
             <Typography variant="h6" sx={{ mb: 1 }}>Punch Out</Typography>
             <Typography sx={{ mb: 2 }}>{todayAttendance?.punch_out_time ? new Date(todayAttendance.punch_out_time).toLocaleTimeString() : 'Pending'}</Typography>
-            <Button fullWidth variant="contained" color="error" disabled={!todayAttendance?.punch_in_time || Boolean(todayAttendance?.punch_out_time)} onClick={handlePunchOut}>
+            <Button fullWidth variant="contained" color="error" disabled={todayAttendance?.is_punch_allowed === false || !todayAttendance?.punch_in_time || Boolean(todayAttendance?.punch_out_time)} onClick={handlePunchOut}>
               Punch Out Now
             </Button>
           </Paper>
+          <Paper sx={{ p: 3, minWidth: 200, borderRadius: 3, bgcolor: 'info.50' }}>
+            <Typography variant="h6" sx={{ mb: 1 }}>Hours Today</Typography>
+            <Typography variant="body2" sx={{ mb: 0.5, color: 'text.secondary' }}>Expected: <strong>{todayAttendance?.expected_hours ? Number(todayAttendance.expected_hours).toFixed(2) : '—'}h</strong></Typography>
+            <Typography variant="body2" sx={{ mb: 2, color: 'text.secondary' }}>Logged: <strong>{todayAttendance?.total_hours ? Number(todayAttendance.total_hours).toFixed(2) : '—'}h</strong></Typography>
+            <Box sx={{ height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Chip label={todayAttendance?.total_hours ? 'Completed' : 'In Progress'} color={todayAttendance?.total_hours ? 'success' : 'primary'} size="small" />
+            </Box>
+          </Paper>
         </Stack>
+        {todayAttendance?.is_punch_allowed === false && (
+          <Alert severity="warning" sx={{ mt: 1.5, textAlign: 'left', borderRadius: 2 }}>
+            <strong>Punch Disabled:</strong> You can only punch in and out when connected to the office Wi-Fi network.
+          </Alert>
+        )}
         {upcomingHolidays.length > 0 ? (
           <Alert severity="info" sx={{ mt: 1.5, textAlign: 'left' }}>
             <strong>Upcoming Holidays:</strong>{' '}

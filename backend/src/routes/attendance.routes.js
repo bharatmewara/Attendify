@@ -2,7 +2,8 @@ import express from 'express';
 import { query } from '../db.js';
 import { authenticate, authorize, tenantIsolation } from '../middleware/auth.middleware.js';
 import { logAudit } from '../utils/audit.js';
-import { enforceOfficePunchIpForEmployee } from '../middleware/networkPolicy.js';
+import { enforceOfficePunchIpForEmployee, isCompanyIpAllowedByPolicy } from '../middleware/networkPolicy.js';
+import { getClientIp } from '../utils/network.js';
 import { autoMarkAbsent } from '../utils/attendanceHelper.js';
 import { sendEmail } from '../utils/email.js';
 
@@ -366,8 +367,32 @@ const getTodayAttendanceStatus = async (req, res) => {
       'SELECT * FROM attendance_records WHERE employee_id = $1 AND work_date = $2',
       [empResult.rows[0].id, today]
     );
+    
+    const record = result.rows[0] || null;
+    let is_punch_allowed = true;
+    if (req.user.role === 'employee') {
+      const ip = getClientIp(req);
+      is_punch_allowed = await isCompanyIpAllowedByPolicy(req.companyId, ip, 'punch_allowed');
+    }
 
-    res.json(result.rows[0] || null);
+    const shift = await getShiftForWorkDate(empResult.rows[0].id, today, req.companyId);
+    let expected_hours = 9;
+    if (shift && shift.start_time && shift.end_time) {
+      const [sh, sm] = shift.start_time.split(':');
+      const [eh, em] = shift.end_time.split(':');
+      const startMinutes = parseInt(sh) * 60 + parseInt(sm);
+      const endMinutes = parseInt(eh) * 60 + parseInt(em);
+      let diff = endMinutes - startMinutes;
+      if (diff < 0) diff += 24 * 60; // handle overnight shifts
+      expected_hours = diff / 60;
+    }
+
+    res.json({
+      ...record,
+      shift,
+      expected_hours,
+      is_punch_allowed
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

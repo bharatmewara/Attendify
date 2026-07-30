@@ -22,8 +22,7 @@ import {
 import { ChevronLeft, ChevronRight, Download, BeachAccess } from '@mui/icons-material';
 import { apiRequest } from '../../lib/api';
 
-const EXPECTED_HOURS = 9;
-
+// Dynamic expected hours will be fetched
 const shellCardSx = {
   borderRadius: 3,
   boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
@@ -62,6 +61,7 @@ export default function EmployeeAttendance() {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [records, setRecords] = useState([]);
   const [holidays, setHolidays] = useState([]);
+  const [expectedHours, setExpectedHours] = useState(9);
   const [selectedDate, setSelectedDate] = useState(toDateKey(new Date()));
 
   const loadData = async () => {
@@ -71,12 +71,14 @@ export default function EmployeeAttendance() {
       const startRecord = toDateKey(new Date(year, month - 1, 1));
       const endRecord = toDateKey(new Date(year, month, 0));
 
-      const [res, holidayRes] = await Promise.all([
+      const [res, holidayRes, todayRes] = await Promise.all([
         apiRequest(`/attendance/records?start_date=${startRecord}&end_date=${endRecord}`),
         apiRequest(`/holidays?year=${year}`),
+        apiRequest('/attendance/today').catch(() => null),
       ]);
       setRecords(res || []);
       setHolidays(holidayRes || []);
+      if (todayRes?.expected_hours) setExpectedHours(Number(todayRes.expected_hours));
     } catch (error) {
       console.error(error);
     }
@@ -126,7 +128,7 @@ export default function EmployeeAttendance() {
         const punchIn = r.punch_in_time ? new Date(r.punch_in_time).toLocaleTimeString() : '-';
         const punchOut = r.punch_out_time ? new Date(r.punch_out_time).toLocaleTimeString() : '-';
         const total = r.total_hours ? Number(r.total_hours).toFixed(2) : '0.00';
-        const diff = r.total_hours ? (Number(r.total_hours) - EXPECTED_HOURS).toFixed(2) : '-';
+        const diff = r.total_hours ? (Number(r.total_hours) - expectedHours).toFixed(2) : '-';
         return `${new Date(r.work_date).toLocaleDateString()},${r.status},${punchIn},${punchOut},${total},${diff}`;
       }),
     ].join('\n');
@@ -400,8 +402,8 @@ export default function EmployeeAttendance() {
                   <Grid item xs={1} sm={1} md={2}>
                     <Box sx={{ p: 1.5, bgcolor: '#fff', borderRadius: 2, height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
                       <Typography color="text.secondary" variant="body2" sx={{ mb: 0.5 }}>Plus/Minus</Typography>
-                      <Typography sx={{ fontWeight: 800, color: selectedRecord.total_hours && (Number(selectedRecord.total_hours) - EXPECTED_HOURS) < 0 ? 'error.main' : 'success.main' }}>
-                        {selectedRecord.total_hours ? (Number(selectedRecord.total_hours) - EXPECTED_HOURS > 0 ? '+' : '') + (Number(selectedRecord.total_hours) - EXPECTED_HOURS).toFixed(2) : '-'} hrs
+                      <Typography sx={{ fontWeight: 800, color: selectedRecord.total_hours && (Number(selectedRecord.total_hours) - expectedHours) < 0 ? 'error.main' : 'success.main' }}>
+                        {selectedRecord.total_hours ? (Number(selectedRecord.total_hours) - expectedHours > 0 ? '+' : '') + (Number(selectedRecord.total_hours) - expectedHours).toFixed(2) : '-'} hrs
                       </Typography>
                     </Box>
                   </Grid>
@@ -431,7 +433,7 @@ export default function EmployeeAttendance() {
                   <TableBody>
                     {records.length > 0 ? records.map((record) => {
                       const dateKey = toDateKey(record.work_date);
-                      const isMinus = record.total_hours && (Number(record.total_hours) - EXPECTED_HOURS) < 0;
+                      const isMinus = record.total_hours && (Number(record.total_hours) - expectedHours) < 0;
                       return (
                         <TableRow key={record.id} hover onClick={() => setSelectedDate(dateKey)} sx={{ cursor: 'pointer' }}>
                           <TableCell sx={{ fontWeight: 500 }}>{formatDateKey(dateKey, { day: '2-digit', month: '2-digit', year: 'numeric' })}</TableCell>
@@ -442,7 +444,7 @@ export default function EmployeeAttendance() {
                           <TableCell>{record.punch_out_time ? new Date(record.punch_out_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-'}</TableCell>
                           <TableCell sx={{ fontWeight: 600 }}>{record.total_hours ? `${Number(record.total_hours).toFixed(2)}` : '-'}</TableCell>
                           <TableCell sx={{ fontWeight: 700, color: isMinus ? 'error.main' : 'success.main' }}>
-                            {record.total_hours ? `${(Number(record.total_hours) - EXPECTED_HOURS > 0 ? '+' : '')}${(Number(record.total_hours) - EXPECTED_HOURS).toFixed(2)}` : '-'}
+                            {record.total_hours ? `${(Number(record.total_hours) - expectedHours > 0 ? '+' : '')}${(Number(record.total_hours) - expectedHours).toFixed(2)}` : '-'}
                           </TableCell>
                         </TableRow>
                       );

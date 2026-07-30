@@ -505,21 +505,23 @@ router.post('/assignments', authenticate, authorize('company_admin', 'super_admi
 });
 
 router.put('/assignments/:id', authenticate, authorize('company_admin', 'super_admin'), tenantIsolation, requireCompanyContext, async (req, res) => {
-  const { ctc, gross_salary, payment_type, bank_account, bank_ifsc, bank_name, notes } = req.body;
+  const { template_id, effective_from, ctc, gross_salary, payment_type, bank_account, bank_ifsc, bank_name, notes } = req.body;
   try {
     const result = await query(
       `UPDATE employee_salary_assignments SET
-         ctc          = COALESCE($1, ctc),
-         gross_salary = COALESCE($2, gross_salary),
-         payment_type = COALESCE($3, payment_type),
-         bank_account = COALESCE($4, bank_account),
-         bank_ifsc    = COALESCE($5, bank_ifsc),
-         bank_name    = COALESCE($6, bank_name),
-         notes        = COALESCE($7, notes),
+         template_id    = COALESCE($1, template_id),
+         effective_from = COALESCE($2, effective_from),
+         ctc          = COALESCE($3, ctc),
+         gross_salary = COALESCE($4, gross_salary),
+         payment_type = COALESCE($5, payment_type),
+         bank_account = COALESCE($6, bank_account),
+         bank_ifsc    = COALESCE($7, bank_ifsc),
+         bank_name    = COALESCE($8, bank_name),
+         notes        = COALESCE($9, notes),
          updated_at   = now()
-       WHERE id = $8 AND company_id = $9
+       WHERE id = $10 AND company_id = $11
        RETURNING *`,
-      [ctc, gross_salary, payment_type, bank_account, bank_ifsc, bank_name, notes, req.params.id, req.companyId],
+      [template_id, effective_from, ctc, gross_salary, payment_type, bank_account, bank_ifsc, bank_name, notes, req.params.id, req.companyId],
     );
     if (result.rows.length === 0) return res.status(404).json({ message: 'Assignment not found' });
     res.json(result.rows[0]);
@@ -1233,7 +1235,7 @@ router.get('/my-payslips', authenticate, tenantIsolation, async (req, res) => {
     const result = await query(
       `SELECT pri.id, pri.cycle_id, pri.gross_salary, pri.net_salary, pri.status, pri.frozen_at,
          pc.cycle_month, pc.cycle_year, pc.period_start, pc.period_end, pc.payout_date,
-         pri.present_days, pri.working_days, pri.total_deductions, pri.incentive_total
+         pri.present_days, pri.working_days, pri.total_deductions, pri.incentive_total, pri.attendance_snapshot
        FROM payroll_run_items pri
        JOIN payroll_cycles pc ON pri.cycle_id = pc.id
        WHERE pri.employee_id = $1 AND pri.company_id = $2

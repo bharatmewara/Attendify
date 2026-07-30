@@ -164,7 +164,8 @@ async function getAttendanceSummary(employeeId, periodStart, periodEnd) {
        COUNT(*)                               FILTER (WHERE status = 'on_leave')  AS leave_days,
        COUNT(*)                               FILTER (WHERE status = 'half_day')  AS half_days,
        COALESCE(SUM(late_minutes),        0)                                       AS total_late_minutes,
-       COALESCE(SUM(early_leave_minutes), 0)                                       AS total_early_leave_minutes
+       COALESCE(SUM(early_leave_minutes), 0)                                       AS total_early_leave_minutes,
+       COALESCE(SUM(total_hours),         0)                                       AS total_completed_hours
      FROM attendance_records
      WHERE employee_id = $1
        AND work_date   BETWEEN $2 AND $3`,
@@ -208,7 +209,7 @@ async function getApprovedIncentives(employeeId, companyId, periodStart, periodE
  */
 async function getShiftPenaltyRates(employeeId) {
   const result = await query(
-    `SELECT s.late_penalty_per_minute, s.early_leave_penalty_per_minute
+    `SELECT s.late_penalty_per_minute, s.early_leave_penalty_per_minute, s.start_time, s.end_time
      FROM employee_shifts es
      JOIN shifts s ON es.shift_id = s.id
      WHERE es.employee_id = $1
@@ -298,13 +299,23 @@ export async function calculateEmployeePayroll({
   // 5. Get approved incentives
   const incentiveTotal = await getApprovedIncentives(employeeId, companyId, periodStart, periodEnd);
 
-  // 6. Get shift penalties
+  // 6. Get shift penalties and calculate expected hours
   const shiftPenalties = await getShiftPenaltyRates(employeeId);
+  let expectedDailyHours = 9;
+  if (shiftPenalties.start_time && shiftPenalties.end_time) {
+    const [sh, sm] = shiftPenalties.start_time.split(':');
+    const [eh, em] = shiftPenalties.end_time.split(':');
+    let diff = (parseInt(eh) * 60 + parseInt(em)) - (parseInt(sh) * 60 + parseInt(sm));
+    if (diff < 0) diff += 24 * 60;
+    expectedDailyHours = diff / 60;
+  }
+  const totalExpectedHours = workingDays * expectedDailyHours;
 
   // 7. Build context for formula resolution
   const ctc = Number(assignment.ctc ?? 0);
   const grossSalary = Number(assignment.gross_salary ?? ctc);
-  const paidDays = presentDays + leaveDays + (halfDays * 0.5);
+  // A half day is counted as 1 paid day for basic salary to avoid silent prorating
+  const paidDays = presentDays + leaveDays + halfDays;
   const dailyRate = grossSalary / workingDays;
 
   // Context passed to formula parser
@@ -360,9 +371,23 @@ export async function calculateEmployeePayroll({
   }
 
   // 10. Calculate penalties and leave deductions
-  const latePenalty       = Number(shiftPenalties.late_penalty_per_minute)       * lateMinutes;
-  const earlyLeavePenalty = Number(shiftPenalties.early_leave_penalty_per_minute) * earlyLeaveMin;
+  const latePenalty       = Number(shiftPenalties.late_penalty_per_minute || 0) * lateMinutes;
+  const earlyLeavePenalty = Number(shiftPenalties.early_leave_penalty_per_minute || 0) * earlyLeaveMin;
   const leaveDeduction    = unpaidLeaveDays * dailyRate;
+  
+  const halfDayDeductionAmount = halfDays * 0.5 * dailyRate;
+  if (halfDayDeductionAmount > 0) {
+    deductionComponents.push({
+      component_id: 'auto_half_day',
+      component_name: 'Half Day Deduction',
+      component_code: 'HALF_DAY',
+      component_type: 'deduction',
+      calculation_type: 'fixed',
+      is_taxable: false,
+      amount: Math.round(halfDayDeductionAmount * 100) / 100,
+      sort_order: 98
+    });
+  }
 
   // 11. Overtime
   const overtimeHours  = Math.floor((attendance.total_overtime_minutes ?? 0) / 60);
@@ -411,6 +436,8 @@ export async function calculateEmployeePayroll({
       late_minutes: lateMinutes,
       late_penalty: Math.round(latePenalty * 100) / 100,
       early_leave_penalty: Math.round(earlyLeavePenalty * 100) / 100,
+      total_completed_hours: Number(attendance.total_completed_hours ?? 0),
+      total_expected_hours: totalExpectedHours
     },
   };
 }

@@ -1,388 +1,460 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import {
-  Box, Card, CardContent, Typography, Table, TableBody, TableCell,
-  TableContainer, TableHead, TableRow, Paper, Chip, TextField,
-  MenuItem, Grid, Alert, Skeleton, InputAdornment,
-  Dialog, DialogTitle, DialogContent, DialogActions, Button, Divider,
-  Avatar, IconButton, Tooltip,
+  Alert,
+  Box,
+  Button,
+  Card,
+  CardContent,
+  Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  IconButton,
+  ListItemIcon,
+  Menu,
+  MenuItem,
+  Paper,
+  Stack,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  TextField,
+  Typography,
 } from '@mui/material';
 import {
-  Search, People, Phone, Email, LocationOn, Close,
-  AccountCircle, Lock, ContentCopy, Visibility, VisibilityOff,
-  InsertDriveFile,
+  Close, Visibility, Download, InsertDriveFile, MoreVert,
 } from '@mui/icons-material';
-import { apiRequest, API_BASE_URL } from '../../lib/api';
+import { API_BASE_URL, apiRequest } from '../../lib/api';
+import { exportRowsToCsv } from '../../utils/fileExports';
 
 const uploadsBaseUrl = API_BASE_URL.replace(/\/api\/?$/, '');
-const toUrl = (p) => {
-  if (!p) return '';
-  const n = String(p).replace(/\\/g, '/');
-  const idx = n.indexOf('uploads/');
-  return `${uploadsBaseUrl}/${(idx >= 0 ? n.slice(idx) : n).replace(/^\/+/, '')}`;
+
+const toScreenshotUrl = (screenshotPath) => {
+  if (!screenshotPath) return '';
+  const normalized = String(screenshotPath).replace(/\\/g, '/');
+  const idx = normalized.indexOf('uploads/');
+  const relative = (idx >= 0 ? normalized.slice(idx) : normalized).replace(/^\/+/, '');
+  return `${uploadsBaseUrl}/${relative}`;
 };
 
-const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-const STATUS_CFG = {
-  pending:  { color: '#D97706', bg: '#FEF3C7', label: 'Pending' },
-  approved: { color: '#059669', bg: '#ECFDF5', label: 'Approved' },
-  rejected: { color: '#DC2626', bg: '#FEF2F2', label: 'Rejected' },
-  paid:     { color: '#0D9488', bg: '#F0FDFA', label: 'Paid' },
-  refunded: { color: '#7C3AED', bg: '#EDE9FE', label: 'Refunded' },
+const RUPEE = '\u20B9';
+const GST_RATE = 0.18;
+const roundMoney = (value) => Math.round(Number(value) * 100) / 100;
+const formatMoney = (value) => {
+  if (value === null || value === undefined || value === '') return 'N/A';
+  const num = Number(value);
+  if (!Number.isFinite(num)) return 'N/A';
+  return num.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
 
-const money = (v) => v != null && v !== '' ? `₹${Number(v).toLocaleString('en-IN', { minimumFractionDigits: 2 })}` : '—';
-const fmt   = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+const resolveGstFields = (row) => {
+  const gstApplied = Boolean(row?.last_gst_applied);
+  const rawEx = row?.last_price_ex_gst;
+  const rawInc = row?.last_amount_received ?? row?.last_price_inc_gst;
+  const rawGst = row?.last_gst_amount;
 
-function StatusBadge({ status }) {
-  const cfg = STATUS_CFG[status] ?? { color: '#6B7280', bg: '#F3F4F6', label: status };
-  return (
-    <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, px: 1.5, py: 0.4, borderRadius: 99, fontSize: '0.7rem', fontWeight: 700, color: cfg.color, bgcolor: cfg.bg }}>
-      <Box sx={{ width: 5, height: 5, borderRadius: '50%', bgcolor: cfg.color }} />
-      {cfg.label}
-    </Box>
-  );
-}
+  const exNum = rawEx !== null && rawEx !== undefined && rawEx !== '' ? Number(rawEx) : null;
+  const incNum = rawInc !== null && rawInc !== undefined && rawInc !== '' ? Number(rawInc) : null;
+  const gstNum = rawGst !== null && rawGst !== undefined && rawGst !== '' ? Number(rawGst) : null;
 
-// ── Copy-to-clipboard button ───────────────────────────────────────────────
-function CopyBtn({ text }) {
-  const [copied, setCopied] = useState(false);
-  const copy = () => {
-    navigator.clipboard.writeText(text || '').then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); });
-  };
+  const excl = Number.isFinite(exNum)
+    ? exNum
+    : (gstApplied && Number.isFinite(incNum) ? roundMoney(incNum / (1 + GST_RATE)) : null);
+
+  const incl = Number.isFinite(incNum)
+    ? incNum
+    : (gstApplied && Number.isFinite(excl) ? roundMoney(excl * (1 + GST_RATE)) : excl);
+
+  const gst = Number.isFinite(gstNum)
+    ? gstNum
+    : (gstApplied && Number.isFinite(incl) && Number.isFinite(excl) ? roundMoney(incl - excl) : 0);
+
+  return { excl, gst, incl };
+};
+
+// ── Row-level 3-dot action menu ─────────────────────────────────────────────
+function RowActions({ row, onView }) {
+  const [anchor, setAnchor] = useState(null);
+  const open = Boolean(anchor);
+
   return (
-    <Tooltip title={copied ? 'Copied!' : 'Copy'}>
-      <IconButton size="small" onClick={copy} sx={{ ml: 0.5 }}>
-        <ContentCopy sx={{ fontSize: 13, color: copied ? '#059669' : '#94A3B8' }} />
+    <>
+      <IconButton size="small" onClick={e => { e.stopPropagation(); setAnchor(e.currentTarget); }}>
+        <MoreVert fontSize="small" />
       </IconButton>
-    </Tooltip>
+      <Menu
+        anchorEl={anchor}
+        open={open}
+        onClose={() => setAnchor(null)}
+        onClick={() => setAnchor(null)}
+        PaperProps={{ elevation: 3, sx: { borderRadius: 2, minWidth: 160 } }}
+        transformOrigin={{ horizontal: 'right', vertical: 'top' }}
+        anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
+      >
+        <MenuItem onClick={() => onView(row)}>
+          <ListItemIcon><Visibility fontSize="small" /></ListItemIcon>
+          View Details
+        </MenuItem>
+        {row.last_kyc_path && (
+          <MenuItem onClick={() => window.open(toScreenshotUrl(row.last_kyc_path), '_blank')}>
+            <ListItemIcon><InsertDriveFile fontSize="small" /></ListItemIcon>
+            View KYC
+          </MenuItem>
+        )}
+      </Menu>
+    </>
   );
 }
 
-// ── Masked password field with show/hide toggle ────────────────────────────
-function PasswordField({ value }) {
-  const [show, setShow] = useState(false);
-  if (!value) return <Typography variant="body2" color="text.secondary">—</Typography>;
-  return (
-    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-      <Typography variant="body2" fontWeight={600} fontFamily="monospace" letterSpacing={1}>
-        {show ? value : '••••••••'}
-      </Typography>
-      <Tooltip title={show ? 'Hide' : 'Show'}>
-        <IconButton size="small" onClick={() => setShow(!show)}>
-          {show ? <VisibilityOff sx={{ fontSize: 14 }} /> : <Visibility sx={{ fontSize: 14 }} />}
-        </IconButton>
-      </Tooltip>
-      <CopyBtn text={value} />
-    </Box>
-  );
-}
+// ── Dual-scrollbar wrapper — shows scrollbar on TOP and BOTTOM ───────────────
+function TopScrollTableContainer({ children }) {
+  const topRef  = useRef(null);
+  const bodyRef = useRef(null);
 
-// ── Detail info row ────────────────────────────────────────────────────────
-function InfoRow({ label, value, icon, highlight }) {
+  const syncFromTop  = () => { if (bodyRef.current) bodyRef.current.scrollLeft = topRef.current.scrollLeft; };
+  const syncFromBody = () => { if (topRef.current)  topRef.current.scrollLeft  = bodyRef.current.scrollLeft; };
+
   return (
-    <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'flex-start', py: 0.75 }}>
-      {icon && <Box sx={{ mt: 0.2, color: '#94A3B8', flexShrink: 0 }}>{icon}</Box>}
-      <Box sx={{ flex: 1 }}>
-        <Typography variant="caption" color="text.secondary" display="block" lineHeight={1.2}>{label}</Typography>
-        {typeof value === 'string' || typeof value === 'number'
-          ? <Typography variant="body2" fontWeight={highlight ? 700 : 500} color={highlight ? '#059669' : 'text.primary'}>{value || '—'}</Typography>
-          : value}
+    <Box sx={{ position: 'relative' }}>
+      {/* ── Top phantom scrollbar ── */}
+      <Box
+        ref={topRef}
+        onScroll={syncFromTop}
+        sx={{
+          overflowX: 'auto',
+          overflowY: 'hidden',
+          height: 12,
+          mb: '-1px',
+          '&::-webkit-scrollbar': { height: 8 },
+          '&::-webkit-scrollbar-track': { bgcolor: '#F1F5F9', borderRadius: 4 },
+          '&::-webkit-scrollbar-thumb': { bgcolor: '#94A3B8', borderRadius: 4, '&:hover': { bgcolor: '#64748B' } },
+        }}
+      >
+        {/* A spacer div that matches the actual table width */}
+        <Box sx={{ height: 1, minWidth: 1600 }} />
       </Box>
+
+      {/* ── Actual table with sticky header ── */}
+      <TableContainer
+        component={Paper}
+        variant="outlined"
+        ref={bodyRef}
+        onScroll={syncFromBody}
+        sx={{
+          borderRadius: 0,
+          overflowX: 'auto',
+          '& .MuiTableHead-root .MuiTableRow-root': {
+            position: 'sticky',
+            top: 0,
+            zIndex: 2,
+          },
+          '& .MuiTableHead-root .MuiTableCell-root': {
+            position: 'sticky',
+            top: 0,
+            bgcolor: '#F8FAFC',
+            zIndex: 2,
+            boxShadow: 'inset 0 -2px 0 #E2E8F0',
+          },
+          '&::-webkit-scrollbar': { height: 8 },
+          '&::-webkit-scrollbar-track': { bgcolor: '#F1F5F9' },
+          '&::-webkit-scrollbar-thumb': { bgcolor: '#94A3B8', borderRadius: 4, '&:hover': { bgcolor: '#64748B' } },
+        }}
+      >
+        {children}
+      </TableContainer>
     </Box>
   );
 }
 
-export default function MyClients() {
-  const now = new Date();
-  const [clients,  setClients]  = useState([]);
-  const [loading,  setLoading]  = useState(true);
-  const [error,    setError]    = useState('');
-  const [search,   setSearch]   = useState('');
-  const [month,    setMonth]    = useState('');
-  const [year,     setYear]     = useState(now.getFullYear());
-  const [status,   setStatus]   = useState('');
-  const [selected, setSelected] = useState(null);
+export default function EmployeeClients() {
+  const [clients,           setClients]           = useState([]);
+  const [clientsLoading,    setClientsLoading]    = useState(false);
+  const [clientQuery,       setClientQuery]       = useState('');
+  const [dateFrom,          setDateFrom]          = useState('');
+  const [dateTo,            setDateTo]            = useState('');
+  const [message,           setMessage]           = useState({ type: '', text: '' });
+  const [clientDialogOpen,  setClientDialogOpen]  = useState(false);
+  const [selectedClient,    setSelectedClient]    = useState(null);
 
-  const load = useCallback(async () => {
-    setLoading(true); setError('');
+  const loadClients = async (q = clientQuery, from = dateFrom, to = dateTo) => {
     try {
-      const params = new URLSearchParams();
-      if (month)  params.set('month', month);
-      if (year)   params.set('year', year);
-      if (status) params.set('status', status);
-      if (search) params.set('search', search);
-      const data = await apiRequest(`/incentives/my-clients?${params}`);
-      setClients(Array.isArray(data) ? data : []);
-    } catch (e) {
-      setError(e.message || 'Failed to load clients');
+      setClientsLoading(true);
+      const qs = new URLSearchParams();
+      if (q)    qs.set('q', q);
+      if (from) qs.set('date_from', from);
+      if (to)   qs.set('date_to', to);
+      const rows = await apiRequest(`/incentives/clients?${qs.toString()}`);
+      setClients(rows || []);
+    } catch (error) {
+      setMessage({ type: 'error', text: error.message });
     } finally {
-      setLoading(false);
+      setClientsLoading(false);
     }
-  }, [month, year, status, search]);
+  };
 
-  useEffect(() => { load(); }, [load]);
+  const applyQuickRange = (range) => {
+    const today = new Date();
+    const fmt = (d) => d.toISOString().split('T')[0];
+    let from = '', to = fmt(today);
+    if (range === 'today')      { from = fmt(today); }
+    else if (range === 'week')  { const d = new Date(today); d.setDate(d.getDate() - 6); from = fmt(d); }
+    else if (range === 'month') { from = fmt(new Date(today.getFullYear(), today.getMonth(), 1)); }
+    else if (range === 'last_month') {
+      from = fmt(new Date(today.getFullYear(), today.getMonth() - 1, 1));
+      to   = fmt(new Date(today.getFullYear(), today.getMonth(), 0));
+    }
+    else if (range === 'quarter') { const q = Math.floor(today.getMonth() / 3); from = fmt(new Date(today.getFullYear(), q * 3, 1)); }
+    else if (range === 'year')    { from = fmt(new Date(today.getFullYear(), 0, 1)); }
+    setDateFrom(from); setDateTo(to);
+    loadClients(clientQuery, from, to);
+  };
 
-  const totalEarnings = clients.reduce((s, c) => s + Number(c.incentive_amount || 0), 0);
-  const approvedCount = clients.filter(c => c.status === 'approved' || c.status === 'paid').length;
-  const pendingCount  = clients.filter(c => c.status === 'pending').length;
+  const handleReset = () => { setClientQuery(''); setDateFrom(''); setDateTo(''); loadClients('', '', ''); };
+
+  useEffect(() => { loadClients('', '', ''); }, []);
+
+  const handleExportCsv = () => {
+    const filename = `my_clients${dateFrom ? `_${dateFrom}` : ''}${dateTo ? `_to_${dateTo}` : ''}.csv`;
+    exportRowsToCsv(clients, [
+      { label: 'Name',                    value: 'client_name' },
+      { label: 'Mobile no',               value: 'client_mobile_1' },
+      { label: 'Mobile no 2',             value: 'client_mobile_2' },
+      { label: 'Email',                   value: 'client_email' },
+      { label: 'Product',                 value: (r) => r.last_product || r.product_name || '' },
+      { label: 'SMS Qty',                 value: (r) => r.last_sms_quantity ?? r.sms_quantity ?? '' },
+      { label: 'Price (excl GST)',        value: (r) => resolveGstFields(r).excl ?? '' },
+      { label: 'GST Amount',              value: (r) => resolveGstFields(r).gst ?? '' },
+      { label: 'Price (incl GST)',        value: (r) => resolveGstFields(r).incl ?? '' },
+      { label: 'Rate',                    value: (r) => r.last_rate != null ? r.last_rate : '—' },
+      { label: 'Sales Date',              value: (r) => r.last_approved_at || r.last_submitted_at || '' },
+      { label: 'Employee By',             value: (r) => r.first_name ? `${r.first_name} ${r.last_name}` : '' },
+      { label: 'Panel Username',          value: 'client_panel_username' },
+      { label: 'Panel Password',          value: 'client_panel_password' },
+      { label: 'Payment Mode',            value: (r) => r.last_payment_mode || '' },
+      { label: 'Type',                    value: (r) => r.last_package_type ? r.last_package_type.charAt(0).toUpperCase() + r.last_package_type.slice(1) : '' },
+      { label: 'KYC Document',            value: (r) => r.last_kyc_path ? toScreenshotUrl(r.last_kyc_path) : '' },
+      { label: 'Employee Client Count',   value: (r) => r.submissions_count || '' },
+      { label: 'City',                    value: (r) => r.last_location || '' },
+    ], filename);
+  };
+
+  const openClient  = (client) => { setSelectedClient(client); setClientDialogOpen(true); };
+  const closeDialog = ()       => { setClientDialogOpen(false); setSelectedClient(null); };
 
   return (
-    <Box sx={{ p: { xs: 2, md: 4 }, bgcolor: '#F8FAFC', minHeight: '100vh' }}>
-      <Box sx={{ mb: 4 }}>
-        <Typography variant="h4" fontWeight={800} sx={{ color: '#0F172A', mb: 0.5 }}>My Clients</Typography>
-        <Typography color="text.secondary">All clients you have submitted — including panel credentials</Typography>
-      </Box>
+    <Box>
+      <Typography variant="h4" fontWeight={800} mb={3}>My Clients</Typography>
 
-      {error && <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }}>{error}</Alert>}
+      {message.text && (
+        <Alert severity={message.type} sx={{ mb: 2 }} onClose={() => setMessage({ type: '', text: '' })}>
+          {message.text}
+        </Alert>
+      )}
 
-      {/* ── Summary Cards ── */}
-      <Grid container spacing={2} sx={{ mb: 3 }}>
-        {[
-          { label: 'Total Clients',    value: clients.length,       color: '#6366F1' },
-          { label: 'Approved / Paid',  value: approvedCount,        color: '#059669' },
-          { label: 'Pending Review',   value: pendingCount,         color: '#D97706' },
-          { label: 'Total Incentives', value: money(totalEarnings), color: '#3B82F6' },
-        ].map(({ label, value, color }) => (
-          <Grid item xs={6} sm={3} key={label}>
-            <Card sx={{ borderRadius: 2, borderLeft: `4px solid ${color}`, height: '100%' }}>
-              <CardContent sx={{ py: 2, px: 2.5 }}>
-                <Typography variant="caption" color="text.secondary" fontWeight={600} textTransform="uppercase" display="block">{label}</Typography>
-                <Typography variant="h5" fontWeight={800} sx={{ color, mt: 0.5 }}>{value}</Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-        ))}
-      </Grid>
-
-      {/* ── Filters ── */}
-      <Card sx={{ borderRadius: 3, mb: 3 }}>
-        <CardContent sx={{ p: 2.5 }}>
-          <Grid container spacing={2} alignItems="center">
-            <Grid item xs={12} sm={5}>
-              <TextField
-                fullWidth size="small" placeholder="Search client name, mobile, email or product…"
-                value={search} onChange={e => setSearch(e.target.value)}
-                InputProps={{ startAdornment: <InputAdornment position="start"><Search fontSize="small" /></InputAdornment> }}
-              />
-            </Grid>
-            <Grid item xs={6} sm={2}>
-              <TextField fullWidth select label="Month" size="small" value={month} onChange={e => setMonth(e.target.value)}>
-                <MenuItem value="">All</MenuItem>
-                {MONTH_NAMES.map((m, i) => <MenuItem key={i} value={i + 1}>{m}</MenuItem>)}
-              </TextField>
-            </Grid>
-            <Grid item xs={6} sm={2}>
-              <TextField fullWidth select label="Year" size="small" value={year} onChange={e => setYear(e.target.value)}>
-                {[2024, 2025, 2026, 2027].map(y => <MenuItem key={y} value={y}>{y}</MenuItem>)}
-              </TextField>
-            </Grid>
-            <Grid item xs={12} sm={3}>
-              <TextField fullWidth select label="Status" size="small" value={status} onChange={e => setStatus(e.target.value)}>
-                <MenuItem value="">All Status</MenuItem>
-                {Object.entries(STATUS_CFG).map(([k, v]) => <MenuItem key={k} value={k}>{v.label}</MenuItem>)}
-              </TextField>
-            </Grid>
-          </Grid>
-        </CardContent>
-      </Card>
-
-      {/* ── Clients Table ── */}
-      <Card sx={{ borderRadius: 3 }}>
-        <CardContent sx={{ p: 3 }}>
-          {loading ? (
-            [1,2,3,4].map(i => <Skeleton key={i} height={56} sx={{ mb: 1 }} />)
-          ) : clients.length === 0 ? (
-            <Box sx={{ textAlign: 'center', py: 8, color: 'text.secondary' }}>
-              <People sx={{ fontSize: 64, mb: 2, opacity: 0.3 }} />
-              <Typography variant="h6" fontWeight={600}>No clients found</Typography>
-              <Typography>Submit a new client from the Today Status page to see it here.</Typography>
+      <Card>
+        <CardContent>
+          {/* ── Header ── */}
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between" alignItems={{ xs: 'stretch', md: 'flex-start' }}>
+            <Box>
+              <Typography variant="h6" fontWeight={800}>My Clients</Typography>
+              <Typography color="text.secondary">Clients secured through your incentive submissions.</Typography>
             </Box>
-          ) : (
-            <TableContainer component={Paper} variant="outlined" sx={{
-              borderRadius: 2,
-              overflowX: 'auto',
-              '& .MuiTableHead-root .MuiTableCell-root': {
-                position: 'sticky', top: 0, bgcolor: '#F8FAFC', zIndex: 2,
-                boxShadow: 'inset 0 -2px 0 #E2E8F0',
-              },
-            }}>
-              <Table size="small" sx={{ minWidth: 900 }}>
+            <Button variant="outlined" color="success" startIcon={<Download />} onClick={handleExportCsv} disabled={clients.length === 0} sx={{ whiteSpace: 'nowrap', alignSelf: 'center' }}>
+              Export CSV
+            </Button>
+          </Stack>
+
+          {/* ── Filters ── */}
+          <Stack spacing={1.25} sx={{ mt: 2 }}>
+            <Stack direction="row" spacing={1} flexWrap="wrap">
+              {['today','week','month','last_month','quarter','year'].map((v) => (
+                <Chip key={v} label={{ today:'Today', week:'This Week', month:'This Month', last_month:'Last Month', quarter:'This Quarter', year:'This Year' }[v]}
+                  onClick={() => applyQuickRange(v)} color="primary" variant="outlined" size="small" sx={{ cursor: 'pointer' }} />
+              ))}
+            </Stack>
+            <Stack direction="row" spacing={1.25} alignItems="center" flexWrap="wrap" useFlexGap>
+              <TextField size="small" label="From Date" type="date" InputLabelProps={{ shrink: true }} value={dateFrom} onChange={e => setDateFrom(e.target.value)} sx={{ width: 160 }} />
+              <TextField size="small" label="To Date"   type="date" InputLabelProps={{ shrink: true }} value={dateTo}   onChange={e => setDateTo(e.target.value)}   sx={{ width: 160 }} />
+              <TextField size="small" label="Search (name/mobile/email)" value={clientQuery} onChange={e => setClientQuery(e.target.value)} onKeyDown={e => e.key === 'Enter' && loadClients()} sx={{ width: 240 }} />
+              <Button variant="contained" onClick={() => loadClients()} disabled={clientsLoading} sx={{ whiteSpace: 'nowrap' }}>Search</Button>
+              <Button variant="outlined"  onClick={handleReset}         disabled={clientsLoading}>Reset</Button>
+            </Stack>
+            {(dateFrom || dateTo) && (
+              <Typography variant="caption" color="text.secondary">
+                Showing: {dateFrom || '...'} {'→'} {dateTo || '...'}&nbsp;({clients.length} result{clients.length !== 1 ? 's' : ''})
+              </Typography>
+            )}
+          </Stack>
+
+          {/* ── Table with top scrollbar + sticky header ── */}
+          <Box sx={{ mt: 2, borderRadius: 2, overflow: 'hidden', border: '1px solid #E2E8F0' }}>
+            <TopScrollTableContainer>
+              <Table size="small" sx={{ minWidth: 1400 }}>
                 <TableHead>
                   <TableRow sx={{ '& th': { fontWeight: 700, fontSize: '0.78rem', whiteSpace: 'nowrap' } }}>
                     <TableCell>Client</TableCell>
-                    <TableCell>Contact</TableCell>
-                    <TableCell>Panel Username</TableCell>
-                    <TableCell>Panel Password</TableCell>
                     <TableCell>Product</TableCell>
-                    <TableCell>Package</TableCell>
-                    <TableCell align="right">Amount</TableCell>
-                    <TableCell align="right">Incentive</TableCell>
-                    <TableCell>Date</TableCell>
-                    <TableCell>Status</TableCell>
-                    <TableCell>Details</TableCell>
+                    <TableCell align="right">SMS Qty</TableCell>
+                    <TableCell align="right">Rate</TableCell>
+                    <TableCell align="right">Received (incl GST)</TableCell>
+                    <TableCell>Mobile</TableCell>
+                    <TableCell>Email</TableCell>
+                    <TableCell>Panel User</TableCell>
+                    <TableCell>Password</TableCell>
+                    <TableCell>Employee</TableCell>
+                    <TableCell align="right">Total Received</TableCell>
+                    <TableCell>Approved</TableCell>
+                    <TableCell>Type</TableCell>
+                    <TableCell>KYC</TableCell>
+                    <TableCell align="center">Actions</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {clients.map(c => (
-                    <TableRow key={c.id} hover sx={{ cursor: 'pointer' }} onClick={() => setSelected(c)}>
+                  {clients.map((row) => (
+                    <TableRow key={row.client_key} hover>
+                      <TableCell sx={{ whiteSpace: 'nowrap', fontWeight: 600 }}>{row.client_name || 'N/A'}</TableCell>
+                      <TableCell sx={{ whiteSpace: 'nowrap' }}>{row.last_product || row.product_name || 'N/A'}</TableCell>
+                      <TableCell align="right">{row.last_sms_quantity ?? row.sms_quantity ?? 'N/A'}</TableCell>
+                      <TableCell align="right">{row.last_rate != null ? row.last_rate : '—'}</TableCell>
+                      <TableCell align="right">
+                        {row.last_amount_received != null ? `${RUPEE}${formatMoney(row.last_amount_received)}` : 'N/A'}
+                      </TableCell>
+                      <TableCell sx={{ whiteSpace: 'nowrap' }}>{row.client_mobile_1 || 'N/A'}</TableCell>
+                      <TableCell sx={{ whiteSpace: 'nowrap' }}>{row.client_email || 'N/A'}</TableCell>
+                      <TableCell sx={{ whiteSpace: 'nowrap' }}>{row.client_panel_username || 'N/A'}</TableCell>
+                      <TableCell>{row.client_panel_password || 'N/A'}</TableCell>
+                      <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                        {row.first_name ? `${row.first_name} ${row.last_name} (${row.employee_code || 'N/A'})` : 'N/A'}
+                      </TableCell>
+                      <TableCell align="right">{`${RUPEE}${formatMoney(row.total_received ?? row.total_sales ?? 0)}`}</TableCell>
                       <TableCell>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                          <Avatar sx={{ width: 32, height: 32, bgcolor: '#6366F115', color: '#6366F1', fontSize: 13, fontWeight: 700 }}>
-                            {c.client_name?.[0]?.toUpperCase()}
-                          </Avatar>
-                          <Box>
-                            <Typography variant="body2" fontWeight={600} lineHeight={1.2}>{c.client_name}</Typography>
-                            {c.client_location && <Typography variant="caption" color="text.secondary">{c.client_location}</Typography>}
-                          </Box>
-                        </Box>
+                        <Chip
+                          label={`${Number(row.approved_count || 0)}/${Number(row.submissions_count || 0)}`}
+                          color={Number(row.approved_count || 0) === Number(row.submissions_count || 0) ? 'success' : 'warning'}
+                          size="small"
+                        />
                       </TableCell>
                       <TableCell>
-                        <Typography variant="caption" display="block">{c.client_mobile_1 || '—'}</Typography>
-                        <Typography variant="caption" color="text.secondary">{c.client_email || ''}</Typography>
+                        {row.last_package_type
+                          ? <Chip size="small" label={row.last_package_type.charAt(0).toUpperCase() + row.last_package_type.slice(1)} color={row.last_package_type === 'new' ? 'success' : 'default'} variant="outlined" />
+                          : '—'}
                       </TableCell>
                       <TableCell>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }} onClick={e => e.stopPropagation()}>
-                          <Typography variant="body2" fontFamily="monospace">{c.client_panel_username || '—'}</Typography>
-                          {c.client_panel_username && <CopyBtn text={c.client_panel_username} />}
-                        </Box>
+                        {row.last_kyc_path
+                          ? <Chip size="small" label="KYC ✓" color="info" variant="outlined" onClick={() => window.open(toScreenshotUrl(row.last_kyc_path), '_blank')} sx={{ cursor: 'pointer' }} />
+                          : <Typography variant="caption" color="text.secondary">—</Typography>}
                       </TableCell>
-                      <TableCell onClick={e => e.stopPropagation()}>
-                        <PasswordField value={c.client_panel_password} />
-                      </TableCell>
-                      <TableCell><Typography variant="body2">{c.product_name}</Typography></TableCell>
-                      <TableCell>
-                        <Chip label={c.package_type} size="small" variant="outlined" sx={{ fontSize: '0.7rem' }} />
-                      </TableCell>
-                      <TableCell align="right">{money(c.price_gross ?? c.price)}</TableCell>
-                      <TableCell align="right" sx={{ color: '#059669', fontWeight: 600 }}>{money(c.incentive_amount)}</TableCell>
-                      <TableCell><Typography variant="caption">{fmt(c.submitted_at)}</Typography></TableCell>
-                      <TableCell><StatusBadge status={c.status} /></TableCell>
-                      <TableCell>
-                        <Button size="small" onClick={e => { e.stopPropagation(); setSelected(c); }}>View</Button>
+                      <TableCell align="center">
+                        <RowActions
+                          row={row}
+                          onView={openClient}
+                        />
                       </TableCell>
                     </TableRow>
                   ))}
+                  {clients.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={15}>
+                        <Typography variant="body2" color="text.secondary" sx={{ py: 3, textAlign: 'center' }}>
+                          {clientsLoading ? 'Loading clients…' : 'No clients found.'}
+                        </Typography>
+                      </TableCell>
+                    </TableRow>
+                  )}
                 </TableBody>
               </Table>
-            </TableContainer>
-          )}
+            </TopScrollTableContainer>
+          </Box>
         </CardContent>
       </Card>
 
-      {/* ── Client Detail Dialog ── */}
-      <Dialog open={!!selected} onClose={() => setSelected(null)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
-        {selected && (
-          <>
-            <DialogTitle sx={{ p: 0 }}>
-              <Box sx={{ background: 'linear-gradient(135deg, #1E293B 0%, #0F172A 100%)', px: 3, py: 2.5, color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                  <Avatar sx={{ width: 44, height: 44, bgcolor: '#6366F130', color: '#A5B4FC', fontWeight: 800, fontSize: 18 }}>
-                    {selected.client_name?.[0]?.toUpperCase()}
-                  </Avatar>
-                  <Box>
-                    <Typography fontWeight={800} fontSize="1.05rem">{selected.client_name}</Typography>
-                    <StatusBadge status={selected.status} />
-                  </Box>
-                </Box>
-                <IconButton size="small" onClick={() => setSelected(null)} sx={{ color: '#fff' }}><Close /></IconButton>
+      {/* ── Client Details Dialog ── */}
+      <Dialog open={clientDialogOpen} onClose={closeDialog} maxWidth="md" fullWidth>
+        <DialogTitle>
+          <Stack direction="row" justifyContent="space-between" alignItems="center">
+            <Typography variant="h6">Client Details</Typography>
+            <IconButton onClick={closeDialog}><Close /></IconButton>
+          </Stack>
+        </DialogTitle>
+        <DialogContent>
+          {selectedClient && (
+            <Stack spacing={3}>
+              <Box>
+                <Typography variant="h6" gutterBottom>Client Information</Typography>
+                <Stack spacing={1}>
+                  <Typography><strong>Name:</strong> {selectedClient.client_name || 'N/A'}</Typography>
+                  <Typography><strong>Product:</strong> {selectedClient.last_product || 'N/A'}</Typography>
+                  <Typography><strong>SMS Qty:</strong> {selectedClient.last_sms_quantity ?? 'N/A'}</Typography>
+                  <Typography><strong>Last Price (excl GST):</strong> {selectedClient.last_price_ex_gst != null ? `${RUPEE}${formatMoney(selectedClient.last_price_ex_gst)}` : 'N/A'}</Typography>
+                  <Typography><strong>Last GST (18%):</strong> {selectedClient.last_gst_amount != null ? `${RUPEE}${formatMoney(selectedClient.last_gst_amount)}` : 'N/A'}</Typography>
+                  <Typography><strong>Last Amount Received (incl GST):</strong> {selectedClient.last_amount_received != null ? `${RUPEE}${formatMoney(selectedClient.last_amount_received)}` : 'N/A'}</Typography>
+                  <Typography><strong>Mobile:</strong> {selectedClient.client_mobile_1 || 'N/A'}</Typography>
+                  <Typography><strong>Email:</strong> {selectedClient.client_email || 'N/A'}</Typography>
+                  <Typography><strong>Panel Username:</strong> {selectedClient.client_panel_username || 'N/A'}</Typography>
+                  <Typography><strong>Panel Password:</strong> {selectedClient.client_panel_password || 'N/A'}</Typography>
+                </Stack>
               </Box>
-            </DialogTitle>
-
-            <DialogContent sx={{ pt: 3 }}>
-              {/* ── Panel Credentials (highlighted) ── */}
-              {(selected.client_panel_username || selected.client_panel_password) && (
-                <Box sx={{ mb: 3, p: 2, bgcolor: '#EEF2FF', borderRadius: 2, border: '1px solid #C7D2FE' }}>
-                  <Typography variant="subtitle2" fontWeight={700} color="#3730A3" sx={{ mb: 1.5, display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                    <Lock fontSize="small" /> Panel Credentials
-                  </Typography>
-                  <Grid container spacing={2}>
-                    <Grid item xs={12} sm={6}>
-                      <Typography variant="caption" color="text.secondary" display="block">Username</Typography>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                        <Typography variant="body2" fontWeight={700} fontFamily="monospace">{selected.client_panel_username || '—'}</Typography>
-                        {selected.client_panel_username && <CopyBtn text={selected.client_panel_username} />}
-                      </Box>
-                    </Grid>
-                    <Grid item xs={12} sm={6}>
-                      <Typography variant="caption" color="text.secondary" display="block">Password</Typography>
-                      <PasswordField value={selected.client_panel_password} />
-                    </Grid>
-                  </Grid>
+              <Box>
+                <Typography variant="h6" gutterBottom>KYC Documents</Typography>
+                <Stack direction="row" spacing={2} flexWrap="wrap">
+                  {selectedClient.last_kyc_path
+                    ? <Button variant="outlined" startIcon={<InsertDriveFile />} onClick={() => window.open(toScreenshotUrl(selectedClient.last_kyc_path), '_blank')}>View KYC Document</Button>
+                    : <Typography color="text.secondary">No KYC document uploaded.</Typography>}
+                  {selectedClient.last_screenshot_path && (
+                    <Button variant="outlined" startIcon={<Visibility />} onClick={() => window.open(toScreenshotUrl(selectedClient.last_screenshot_path), '_blank')}>View Screenshot</Button>
+                  )}
+                </Stack>
+              </Box>
+              <Box>
+                <Typography variant="h6" gutterBottom>Sales Summary</Typography>
+                <Stack spacing={1}>
+                  <Typography><strong>Total Received (incl GST):</strong> {`${RUPEE}${formatMoney(selectedClient.total_received ?? selectedClient.total_sales ?? 0)}`}</Typography>
+                  <Typography><strong>Total GST:</strong> {`${RUPEE}${formatMoney(selectedClient.total_gst_amount ?? 0)}`}</Typography>
+                  <Typography><strong>Approved Submissions:</strong> {Number(selectedClient.approved_count || 0)}</Typography>
+                  <Typography><strong>Total Submissions:</strong> {Number(selectedClient.submissions_count || 0)}</Typography>
+                </Stack>
+              </Box>
+              {selectedClient.submissions?.length > 0 && (
+                <Box>
+                  <Typography variant="h6" gutterBottom>Recent Submissions</Typography>
+                  <TableContainer component={Paper} variant="outlined">
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Product</TableCell>
+                          <TableCell>Price</TableCell>
+                          <TableCell>Incentive</TableCell>
+                          <TableCell>Status</TableCell>
+                          <TableCell>Date</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {selectedClient.submissions.slice(0, 5).map((sub) => (
+                          <TableRow key={sub.id}>
+                            <TableCell>{sub.product_name}</TableCell>
+                            <TableCell>{`${RUPEE}${Number(sub.price || 0).toLocaleString()}`}</TableCell>
+                            <TableCell>{`${RUPEE}${Number(sub.incentive_amount || 0).toLocaleString()}`}</TableCell>
+                            <TableCell>
+                              <Chip label={sub.status} color={sub.status === 'approved' ? 'success' : sub.status === 'pending' ? 'warning' : 'default'} size="small" />
+                            </TableCell>
+                            <TableCell>{new Date(sub.created_at).toLocaleDateString()}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
                 </Box>
               )}
-
-              <Divider sx={{ mb: 2 }}><Typography variant="caption" color="text.secondary">Contact Info</Typography></Divider>
-              <Grid container spacing={1.5} sx={{ mb: 2 }}>
-                <Grid item xs={12} sm={6}>
-                  <InfoRow label="Mobile" value={selected.client_mobile_1} icon={<Phone fontSize="small" />} />
-                  {selected.client_mobile_2 && <InfoRow label="Mobile 2" value={selected.client_mobile_2} icon={<Phone fontSize="small" />} />}
-                </Grid>
-                {selected.client_email && (
-                  <Grid item xs={12} sm={6}>
-                    <InfoRow label="Email" value={selected.client_email} icon={<Email fontSize="small" />} />
-                  </Grid>
-                )}
-                {selected.client_location && (
-                  <Grid item xs={12} sm={6}>
-                    <InfoRow label="Location" value={selected.client_location} icon={<LocationOn fontSize="small" />} />
-                  </Grid>
-                )}
-              </Grid>
-
-              <Divider sx={{ mb: 2 }}><Typography variant="caption" color="text.secondary">Sale Details</Typography></Divider>
-              <Grid container spacing={1.5} sx={{ mb: 2 }}>
-                {[
-                  { label: 'Product',         value: selected.product_name },
-                  { label: 'Package Type',     value: selected.package_type },
-                  { label: 'Amount',           value: money(selected.price_gross ?? selected.price) },
-                  { label: 'Incentive Earned', value: money(selected.incentive_amount), highlight: true },
-                  { label: 'SMS Quantity',     value: selected.sms_quantity ?? '—' },
-                  { label: 'Rate',             value: selected.rate != null ? `₹${selected.rate}` : '—' },
-                  { label: 'Payment Mode',     value: selected.payment_mode || '—' },
-                  { label: 'Submitted On',     value: fmt(selected.submitted_at) },
-                ].map(({ label, value, highlight }) => (
-                  <Grid item xs={6} key={label}>
-                    <Typography variant="caption" color="text.secondary" display="block">{label}</Typography>
-                    <Typography fontWeight={highlight ? 700 : 500} color={highlight ? '#059669' : 'text.primary'} variant="body2">{value}</Typography>
-                  </Grid>
-                ))}
-              </Grid>
-
-              {/* KYC / Screenshot */}
-              {(selected.kyc_path || selected.screenshot_path) && (
-                <>
-                  <Divider sx={{ mb: 2 }}><Typography variant="caption" color="text.secondary">Documents</Typography></Divider>
-                  <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', mb: 2 }}>
-                    {selected.kyc_path && (
-                      <Button size="small" variant="outlined" startIcon={<InsertDriveFile />} onClick={() => window.open(toUrl(selected.kyc_path), '_blank')}>
-                        View KYC
-                      </Button>
-                    )}
-                    {selected.screenshot_path && (
-                      <Button size="small" variant="outlined" startIcon={<InsertDriveFile />} onClick={() => window.open(toUrl(selected.screenshot_path), '_blank')}>
-                        View Screenshot
-                      </Button>
-                    )}
-                  </Box>
-                </>
-              )}
-
-              {selected.notes && (
-                <>
-                  <Divider sx={{ mb: 1.5 }} />
-                  <Typography variant="caption" color="text.secondary">Notes / Reason</Typography>
-                  <Box sx={{ mt: 0.5, p: 1.5, bgcolor: '#F8FAFC', borderRadius: 1 }}>
-                    <Typography variant="body2">{selected.notes}</Typography>
-                  </Box>
-                </>
-              )}
-            </DialogContent>
-
-            <DialogActions sx={{ px: 3, pb: 3 }}>
-              <Button onClick={() => setSelected(null)} variant="outlined" sx={{ borderRadius: 2 }}>Close</Button>
-            </DialogActions>
-          </>
-        )}
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeDialog}>Close</Button>
+        </DialogActions>
       </Dialog>
     </Box>
   );

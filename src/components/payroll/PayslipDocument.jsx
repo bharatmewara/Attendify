@@ -346,6 +346,7 @@ export default function PayslipDocument({ data = {} }) {
     present_days = 0,
     paid_leave_days = 0,
     unpaid_leave_days = 0,
+    attendance_snapshot = {},
 
     // Financials
     gross_salary = 0,
@@ -650,6 +651,8 @@ export default function PayslipDocument({ data = {} }) {
                 <InfoRow label="Period End" value={fmtDate(period_end)} />
                 <InfoRow label="Working Days" value={working_days} />
                 <InfoRow label="Days Present" value={present_days} />
+                <InfoRow label="Expected Hours" value={`${attendance_snapshot?.total_expected_hours || 0}h`} />
+                <InfoRow label="Completed Hours" value={`${attendance_snapshot?.total_completed_hours || 0}h`} />
                 <InfoRow label="Paid Leave Days" value={paid_leave_days} />
                 <InfoRow label="Unpaid Leave Days" value={unpaid_leave_days} />
               </Box>
