@@ -100,6 +100,7 @@ export const apiRequest = async (path, { method = 'GET', body, token, headers: c
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method,
     headers,
+    cache: 'no-store', // Prevent browser from aggressively caching GET requests (like /auth/me)
     body: body === undefined ? undefined : isFormData || typeof body === 'string' ? body : JSON.stringify(body),
   });
 
