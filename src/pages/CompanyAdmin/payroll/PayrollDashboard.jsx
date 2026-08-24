@@ -3,7 +3,8 @@ import {
   Box, Grid, Card, CardContent, Typography, Button, Chip,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Paper, IconButton, Tooltip, CircularProgress, Alert, Skeleton,
-  LinearProgress, Avatar, Divider,
+  LinearProgress, Avatar, Divider, Dialog, DialogTitle, DialogContent, 
+  DialogActions, FormControl, InputLabel, Select, MenuItem
 } from '@mui/material';
 import {
   PlayArrow, CheckCircle, AccountBalance, Schedule,
@@ -84,6 +85,10 @@ export default function PayrollDashboard() {
   const currentMonth = now.getMonth() + 1;
   const currentYear  = now.getFullYear();
 
+  const [openCreateDialog, setOpenCreateDialog] = useState(false);
+  const [selectedMonth, setSelectedMonth] = useState(currentMonth);
+  const [selectedYear, setSelectedYear] = useState(currentYear);
+
   const loadData = useCallback(async () => {
     setLoading(true);
     setError('');
@@ -108,7 +113,7 @@ export default function PayrollDashboard() {
     try {
       const cycle = await apiRequest('/payroll/cycles', {
         method: 'POST',
-        body: { cycle_month: currentMonth, cycle_year: currentYear },
+        body: { cycle_month: selectedMonth, cycle_year: selectedYear },
       });
       navigate(`/app/payroll/run/${cycle.id}`);
     } catch (e) {
@@ -138,17 +143,14 @@ export default function PayrollDashboard() {
         </Box>
         <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
           <Button variant="outlined" startIcon={<Refresh />} onClick={loadData}>Refresh</Button>
-          {!currentCycle && (
-            <Button
-              variant="contained"
-              startIcon={creating ? <CircularProgress size={16} color="inherit" /> : <Add />}
-              onClick={handleCreateCycle}
-              disabled={creating}
-              sx={{ borderRadius: 2, px: 3, fontWeight: 700 }}
-            >
-              New Cycle — {MONTH_NAMES[currentMonth - 1]} {currentYear}
-            </Button>
-          )}
+          <Button
+            variant="contained"
+            startIcon={<Add />}
+            onClick={() => setOpenCreateDialog(true)}
+            sx={{ borderRadius: 2, px: 3, fontWeight: 700 }}
+          >
+            New Cycle
+          </Button>
         </Box>
       </Box>
 
@@ -319,6 +321,53 @@ export default function PayrollDashboard() {
           )}
         </CardContent>
       </Card>
+
+      {/* Create Cycle Dialog */}
+      <Dialog open={openCreateDialog} onClose={() => setOpenCreateDialog(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Create Payroll Cycle</DialogTitle>
+        <DialogContent sx={{ pt: 2 }}>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+            Select the month and year to generate the payroll cycle for all active employees.
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 2, mt: 1 }}>
+            <FormControl fullWidth>
+              <InputLabel>Month</InputLabel>
+              <Select
+                value={selectedMonth}
+                label="Month"
+                onChange={(e) => setSelectedMonth(e.target.value)}
+              >
+                {MONTH_NAMES.map((name, idx) => (
+                  <MenuItem key={idx + 1} value={idx + 1}>{name}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <FormControl fullWidth>
+              <InputLabel>Year</InputLabel>
+              <Select
+                value={selectedYear}
+                label="Year"
+                onChange={(e) => setSelectedYear(e.target.value)}
+              >
+                {[currentYear - 1, currentYear, currentYear + 1].map(y => (
+                  <MenuItem key={y} value={y}>{y}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ p: 2, pt: 0 }}>
+          <Button onClick={() => setOpenCreateDialog(false)}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={handleCreateCycle}
+            disabled={creating}
+            startIcon={creating ? <CircularProgress size={16} /> : null}
+          >
+            Create
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
