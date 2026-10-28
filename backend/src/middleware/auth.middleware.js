@@ -13,9 +13,9 @@ export const authenticate = async (req, res, next) => {
     req.auth = decoded;
 
     const result = await query(
-      `SELECT u.*, COALESCE(e.company_id, u.company_id) AS company_id
+      `SELECT u.*, COALESCE(e.company_id, u.company_id) AS company_id, e.status AS employee_status, e.deleted_at AS employee_deleted_at
        FROM users u
-       LEFT JOIN employees e ON u.id = e.user_id
+       LEFT JOIN employees e ON u.id = e.user_id AND e.deleted_at IS NULL
        WHERE u.id = $1 AND u.is_active = true`,
       [decoded.userId]
     );
@@ -24,7 +24,12 @@ export const authenticate = async (req, res, next) => {
       return res.status(401).json({ message: 'Invalid token' });
     }
 
-    req.user = result.rows[0];
+    const user = result.rows[0];
+    if (user.role === 'employee' && (user.employee_deleted_at || (user.employee_status && user.employee_status !== 'active'))) {
+      return res.status(403).json({ message: 'Account is inactive. Access denied.' });
+    }
+
+    req.user = user;
     if (!req.user.company_id && decoded.companyId) {
       req.user.company_id = decoded.companyId;
     }

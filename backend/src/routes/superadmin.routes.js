@@ -37,6 +37,85 @@ const generateUniqueCompanyCode = async (client, companyName) => {
   }
 };
 
+router.get('/analytics', authenticate, authorize('super_admin'), async (_req, res) => {
+  try {
+    const compRes = await query(`
+      SELECT
+        COUNT(*)::int AS total_companies,
+        COUNT(*) FILTER (WHERE is_active = true)::int AS active_companies
+      FROM companies
+    `);
+    const empRes = await query(`
+      SELECT COUNT(*)::int AS total_employees
+      FROM employees
+      WHERE deleted_at IS NULL AND status = 'active'
+    `);
+    const userRes = await query(`
+      SELECT COUNT(*)::int AS active_users
+      FROM users
+      WHERE is_active = true
+    `);
+    const revRes = await query(`
+      SELECT COALESCE(SUM(cs.amount), 0)::decimal(12,2) AS monthly_revenue
+      FROM company_subscriptions cs
+      WHERE cs.status = 'active'
+    `);
+    const monthlyRevenue = Number(revRes.rows[0]?.monthly_revenue || 0);
+
+    res.json({
+      active_companies: compRes.rows[0]?.active_companies || 0,
+      total_companies: compRes.rows[0]?.total_companies || 0,
+      total_employees: empRes.rows[0]?.total_employees || 0,
+      active_users: userRes.rows[0]?.active_users || 0,
+      monthly_revenue: monthlyRevenue,
+    });
+  } catch (error) {
+    console.error('Superadmin analytics error:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.get('/expiring-subscriptions', authenticate, authorize('super_admin'), async (_req, res) => {
+  try {
+    const result = await query(`
+      SELECT cs.*, c.company_name, c.email, sp.name AS plan_name,
+             (cs.end_date - CURRENT_DATE)::int AS days_remaining
+      FROM company_subscriptions cs
+      JOIN companies c ON c.id = cs.company_id
+      JOIN subscription_plans sp ON sp.id = cs.plan_id
+      WHERE cs.status = 'active'
+        AND cs.end_date <= CURRENT_DATE + INTERVAL '30 days'
+        AND cs.end_date >= CURRENT_DATE
+      ORDER BY cs.end_date ASC
+      LIMIT 20
+    `);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Superadmin expiring subscriptions error:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.get('/pending-payments', authenticate, authorize('super_admin'), async (_req, res) => {
+  try {
+    const result = await query(`
+      SELECT cs.*, c.company_name, c.email, sp.name AS plan_name, cs.amount,
+             cs.end_date AS due_date,
+             GREATEST(0, (CURRENT_DATE - cs.end_date)::int) AS days_overdue
+      FROM company_subscriptions cs
+      JOIN companies c ON c.id = cs.company_id
+      JOIN subscription_plans sp ON sp.id = cs.plan_id
+      WHERE cs.status = 'pending'
+      ORDER BY cs.created_at DESC
+      LIMIT 20
+    `);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Superadmin pending payments error:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
 router.get('/settings', authenticate, authorize('super_admin'), async (req, res) => {
   try {
     const result = await query(

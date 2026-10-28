@@ -6,16 +6,20 @@ import {
   Card,
   CardContent,
   Chip,
+  Collapse,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
+  FormControlLabel,
+  Grid,
   IconButton,
   ListItemIcon,
   Menu,
   MenuItem,
   Paper,
   Stack,
+  Switch,
   Table,
   TableBody,
   TableCell,
@@ -23,10 +27,23 @@ import {
   TableHead,
   TableRow,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import {
-  Close, Visibility, Download, InsertDriveFile, Replay, Delete, MoreVert,
+  Close,
+  Visibility,
+  Download,
+  InsertDriveFile,
+  Replay,
+  Delete,
+  MoreVert,
+  KeyboardArrowDown,
+  KeyboardArrowUp,
+  Repeat,
+  ShoppingBag,
+  AccessTime,
+  CalendarToday,
 } from '@mui/icons-material';
 import { API_BASE_URL, apiRequest } from '../../lib/api';
 import { exportRowsToCsv } from '../../utils/fileExports';
@@ -76,7 +93,7 @@ const resolveGstFields = (row) => {
   return { excl, gst, incl };
 };
 
-// ── Row-level 3-dot action menu ─────────────────────────────────────────────
+// Row-level action menu
 function RowActions({ row, onView, onRefund, onDelete }) {
   const [anchor, setAnchor] = useState(null);
   const open = Boolean(anchor);
@@ -120,7 +137,7 @@ function RowActions({ row, onView, onRefund, onDelete }) {
   );
 }
 
-// ── Dual-scrollbar wrapper — shows scrollbar on TOP and BOTTOM ───────────────
+// Dual-scrollbar container
 function TopScrollTableContainer({ children }) {
   const topRef  = useRef(null);
   const bodyRef = useRef(null);
@@ -130,7 +147,6 @@ function TopScrollTableContainer({ children }) {
 
   return (
     <Box sx={{ position: 'relative' }}>
-      {/* ── Top phantom scrollbar ── */}
       <Box
         ref={topRef}
         onScroll={syncFromTop}
@@ -144,11 +160,9 @@ function TopScrollTableContainer({ children }) {
           '&::-webkit-scrollbar-thumb': { bgcolor: '#94A3B8', borderRadius: 4, '&:hover': { bgcolor: '#64748B' } },
         }}
       >
-        {/* A spacer div that matches the actual table width */}
         <Box sx={{ height: 1, minWidth: 1600 }} />
       </Box>
 
-      {/* ── Actual table with sticky header ── */}
       <TableContainer
         component={Paper}
         variant="outlined"
@@ -157,11 +171,7 @@ function TopScrollTableContainer({ children }) {
         sx={{
           borderRadius: 0,
           overflowX: 'auto',
-          '& .MuiTableHead-root .MuiTableRow-root': {
-            position: 'sticky',
-            top: 0,
-            zIndex: 2,
-          },
+          '& .MuiTableHead-root .MuiTableRow-root': { position: 'sticky', top: 0, zIndex: 2 },
           '& .MuiTableHead-root .MuiTableCell-root': {
             position: 'sticky',
             top: 0,
@@ -186,6 +196,8 @@ export default function ClientsManagement() {
   const [clientQuery,       setClientQuery]       = useState('');
   const [dateFrom,          setDateFrom]          = useState('');
   const [dateTo,            setDateTo]            = useState('');
+  const [repeatOnly,        setRepeatOnly]        = useState(false);
+  const [expandedRows,      setExpandedRows]      = useState({});
   const [message,           setMessage]           = useState({ type: '', text: '' });
   const [clientDialogOpen,  setClientDialogOpen]  = useState(false);
   const [selectedClient,    setSelectedClient]    = useState(null);
@@ -194,13 +206,15 @@ export default function ClientsManagement() {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleteTarget,      setDeleteTarget]      = useState(null);
 
-  const loadClients = async (q = clientQuery, from = dateFrom, to = dateTo) => {
+  const loadClients = async (q = clientQuery, from = dateFrom, to = dateTo, repeat = repeatOnly) => {
     try {
       setClientsLoading(true);
       const qs = new URLSearchParams();
-      if (q)    qs.set('q', q);
-      if (from) qs.set('date_from', from);
-      if (to)   qs.set('date_to', to);
+      if (q)      qs.set('q', q);
+      if (from)   qs.set('date_from', from);
+      if (to)     qs.set('date_to', to);
+      if (repeat) qs.set('repeat_only', 'true');
+
       const rows = await apiRequest(`/incentives/clients?${qs.toString()}`);
       setClients(rows || []);
     } catch (error) {
@@ -208,6 +222,13 @@ export default function ClientsManagement() {
     } finally {
       setClientsLoading(false);
     }
+  };
+
+  const toggleExpand = (clientKey) => {
+    setExpandedRows((prev) => ({
+      ...prev,
+      [clientKey]: !prev[clientKey],
+    }));
   };
 
   const applyQuickRange = (range) => {
@@ -224,34 +245,37 @@ export default function ClientsManagement() {
     else if (range === 'quarter') { const q = Math.floor(today.getMonth() / 3); from = fmt(new Date(today.getFullYear(), q * 3, 1)); }
     else if (range === 'year')    { from = fmt(new Date(today.getFullYear(), 0, 1)); }
     setDateFrom(from); setDateTo(to);
-    loadClients(clientQuery, from, to);
+    loadClients(clientQuery, from, to, repeatOnly);
   };
 
-  const handleReset = () => { setClientQuery(''); setDateFrom(''); setDateTo(''); loadClients('', '', ''); };
+  const handleReset = () => {
+    setClientQuery('');
+    setDateFrom('');
+    setDateTo('');
+    setRepeatOnly(false);
+    loadClients('', '', '', false);
+  };
 
-  useEffect(() => { loadClients('', '', ''); }, []);
+  useEffect(() => {
+    loadClients(clientQuery, dateFrom, dateTo, repeatOnly);
+  }, [repeatOnly]);
 
   const handleExportCsv = () => {
-    const filename = `clients${dateFrom ? `_${dateFrom}` : ''}${dateTo ? `_to_${dateTo}` : ''}.csv`;
+    const filename = `clients${dateFrom ? `_${dateFrom}` : ''}${dateTo ? `_to_${dateTo}` : ''}${repeatOnly ? '_repeat' : ''}.csv`;
     exportRowsToCsv(clients, [
       { label: 'Name',                    value: 'client_name' },
       { label: 'Mobile no',               value: 'client_mobile_1' },
       { label: 'Mobile no 2',             value: 'client_mobile_2' },
       { label: 'Email',                   value: 'client_email' },
+      { label: 'Is Repeat Client',        value: (r) => r.is_repeat_client ? 'Yes' : 'No' },
+      { label: 'Total Purchases',         value: (r) => r.total_purchases || r.submissions_count || 1 },
+      { label: 'Repeat Interval (days)',  value: (r) => r.repeat_interval_days != null ? r.repeat_interval_days : '—' },
+      { label: 'First Purchase Date',     value: 'first_purchase_date' },
+      { label: 'Latest Purchase Date',    value: 'latest_purchase_date' },
+      { label: 'Total Sales (excl GST)',  value: (r) => r.total_sales ?? 0 },
+      { label: 'Total Received (incl GST)',value: (r) => r.total_received ?? 0 },
       { label: 'Product',                 value: (r) => r.last_product || r.product_name || '' },
-      { label: 'SMS Qty',                 value: (r) => r.last_sms_quantity ?? r.sms_quantity ?? '' },
-      { label: 'Price (excl GST)',        value: (r) => resolveGstFields(r).excl ?? '' },
-      { label: 'GST Amount',              value: (r) => resolveGstFields(r).gst ?? '' },
-      { label: 'Price (incl GST)',        value: (r) => resolveGstFields(r).incl ?? '' },
-      { label: 'Rate',                    value: (r) => r.last_rate != null ? r.last_rate : '—' },
-      { label: 'Sales Date',              value: (r) => r.last_approved_at || r.last_submitted_at || '' },
       { label: 'Employee By',             value: (r) => r.first_name ? `${r.first_name} ${r.last_name}` : '' },
-      { label: 'Panel Username',          value: 'client_panel_username' },
-      { label: 'Panel Password',          value: 'client_panel_password' },
-      { label: 'Payment Mode',            value: (r) => r.last_payment_mode || '' },
-      { label: 'Type',                    value: (r) => r.last_package_type ? r.last_package_type.charAt(0).toUpperCase() + r.last_package_type.slice(1) : '' },
-      { label: 'KYC Document',            value: (r) => r.last_kyc_path ? toScreenshotUrl(r.last_kyc_path) : '' },
-      { label: 'Employee Client Count',   value: (r) => r.submissions_count || '' },
       { label: 'City',                    value: (r) => r.last_location || '' },
     ], filename);
   };
@@ -280,9 +304,14 @@ export default function ClientsManagement() {
   const openClient  = (client) => { setSelectedClient(client); setClientDialogOpen(true); };
   const closeDialog = ()       => { setClientDialogOpen(false); setSelectedClient(null); };
 
+  const repeatCount = clients.filter(c => c.is_repeat_client).length;
+
   return (
-    <Box>
-      <Typography variant="h4" fontWeight={800} mb={3}>Clients Database</Typography>
+    <Box sx={{ p: { xs: 2, md: 3 } }}>
+      <Typography variant="h4" fontWeight={800} mb={1}>Clients Database & Analytics</Typography>
+      <Typography color="text.secondary" mb={3}>
+        Hierarchical client purchase history, repetition interval tracking, and revenue attribution.
+      </Typography>
 
       {message.text && (
         <Alert severity={message.type} sx={{ mb: 2 }} onClose={() => setMessage({ type: '', text: '' })}>
@@ -290,114 +319,318 @@ export default function ClientsManagement() {
         </Alert>
       )}
 
-      <Card>
-        <CardContent>
-          {/* ── Header ── */}
-          <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between" alignItems={{ xs: 'stretch', md: 'flex-start' }}>
+      {/* KPI Cards */}
+      <Grid container spacing={2} sx={{ mb: 3 }}>
+        <Grid item xs={6} sm={3}>
+          <Card sx={{ borderRadius: 3, border: '1px solid #E2E8F0' }}>
+            <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+              <Typography variant="caption" color="text.secondary" fontWeight={600}>Total Unique Clients</Typography>
+              <Typography variant="h5" fontWeight={800} color="primary.main">{clients.length}</Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={6} sm={3}>
+          <Card sx={{ borderRadius: 3, border: '1px solid #E2E8F0' }}>
+            <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+              <Typography variant="caption" color="text.secondary" fontWeight={600}>Repeat Clients</Typography>
+              <Typography variant="h5" fontWeight={800} color="success.main">{repeatCount}</Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={6} sm={3}>
+          <Card sx={{ borderRadius: 3, border: '1px solid #E2E8F0' }}>
+            <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+              <Typography variant="caption" color="text.secondary" fontWeight={600}>Repeat Ratio</Typography>
+              <Typography variant="h5" fontWeight={800} color="info.main">
+                {clients.length > 0 ? `${Math.round((repeatCount / clients.length) * 100)}%` : '0%'}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={6} sm={3}>
+          <Card sx={{ borderRadius: 3, border: '1px solid #E2E8F0' }}>
+            <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+              <Typography variant="caption" color="text.secondary" fontWeight={600}>Total Revenue Received</Typography>
+              <Typography variant="h5" fontWeight={800} color="#7C3AED">
+                {RUPEE}{formatMoney(clients.reduce((sum, c) => sum + Number(c.total_received || 0), 0))}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+
+      <Card sx={{ borderRadius: 3, border: '1px solid #E2E8F0' }}>
+        <CardContent sx={{ p: 2.5 }}>
+          {/* Header & Export */}
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between" alignItems={{ xs: 'stretch', md: 'center' }}>
             <Box>
-              <Typography variant="h6" fontWeight={800}>All Clients</Typography>
-              <Typography color="text.secondary">Clients secured through incentive submissions.</Typography>
+              <Typography variant="h6" fontWeight={800}>All Client Records</Typography>
+              <Typography variant="body2" color="text.secondary">
+                Click any row chevron to expand the full chronological order history.
+              </Typography>
             </Box>
-            <Button variant="outlined" color="success" startIcon={<Download />} onClick={handleExportCsv} disabled={clients.length === 0} sx={{ whiteSpace: 'nowrap', alignSelf: 'center' }}>
+            <Button
+              variant="outlined"
+              color="success"
+              startIcon={<Download />}
+              onClick={handleExportCsv}
+              disabled={clients.length === 0}
+            >
               Export CSV
             </Button>
           </Stack>
 
-          {/* ── Filters ── */}
-          <Stack spacing={1.25} sx={{ mt: 2 }}>
-            <Stack direction="row" spacing={1} flexWrap="wrap">
-              {['today','week','month','last_month','quarter','year'].map((v) => (
-                <Chip key={v} label={{ today:'Today', week:'This Week', month:'This Month', last_month:'Last Month', quarter:'This Quarter', year:'This Year' }[v]}
-                  onClick={() => applyQuickRange(v)} color="primary" variant="outlined" size="small" sx={{ cursor: 'pointer' }} />
-              ))}
-            </Stack>
-            <Stack direction="row" spacing={1.25} alignItems="center" flexWrap="wrap" useFlexGap>
-              <TextField size="small" label="From Date" type="date" InputLabelProps={{ shrink: true }} value={dateFrom} onChange={e => setDateFrom(e.target.value)} sx={{ width: 160 }} />
-              <TextField size="small" label="To Date"   type="date" InputLabelProps={{ shrink: true }} value={dateTo}   onChange={e => setDateTo(e.target.value)}   sx={{ width: 160 }} />
-              <TextField size="small" label="Search (name/mobile/email)" value={clientQuery} onChange={e => setClientQuery(e.target.value)} onKeyDown={e => e.key === 'Enter' && loadClients()} sx={{ width: 240 }} />
-              <Button variant="contained" onClick={() => loadClients()} disabled={clientsLoading} sx={{ whiteSpace: 'nowrap' }}>Search</Button>
-              <Button variant="outlined"  onClick={handleReset}         disabled={clientsLoading}>Reset</Button>
-            </Stack>
-            {(dateFrom || dateTo) && (
-              <Typography variant="caption" color="text.secondary">
-                Showing: {dateFrom || '...'} {'→'} {dateTo || '...'}&nbsp;({clients.length} result{clients.length !== 1 ? 's' : ''})
-              </Typography>
-            )}
+          {/* Quick Date Presets */}
+          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mt: 2 }}>
+            {['today','week','month','last_month','quarter','year'].map((v) => (
+              <Chip
+                key={v}
+                label={{ today:'Today', week:'This Week', month:'This Month', last_month:'Last Month', quarter:'This Quarter', year:'This Year' }[v]}
+                onClick={() => applyQuickRange(v)}
+                color="primary"
+                variant="outlined"
+                size="small"
+                sx={{ cursor: 'pointer' }}
+              />
+            ))}
           </Stack>
 
-          {/* ── Table with top scrollbar + sticky header ── */}
+          {/* Filter Bar */}
+          <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap" useFlexGap sx={{ mt: 2 }}>
+            <TextField size="small" label="From Date" type="date" InputLabelProps={{ shrink: true }} value={dateFrom} onChange={e => setDateFrom(e.target.value)} sx={{ width: 150 }} />
+            <TextField size="small" label="To Date"   type="date" InputLabelProps={{ shrink: true }} value={dateTo}   onChange={e => setDateTo(e.target.value)}   sx={{ width: 150 }} />
+            <TextField size="small" label="Search (name/mobile/email)" value={clientQuery} onChange={e => setClientQuery(e.target.value)} onKeyDown={e => e.key === 'Enter' && loadClients()} sx={{ width: 230 }} />
+            <Button variant="contained" onClick={() => loadClients()} disabled={clientsLoading}>Search</Button>
+            <Button variant="outlined"  onClick={handleReset}         disabled={clientsLoading}>Reset</Button>
+
+            {/* Repeat Clients Only Toggle */}
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={repeatOnly}
+                  onChange={(e) => setRepeatOnly(e.target.checked)}
+                  color="secondary"
+                />
+              }
+              label={
+                <Stack direction="row" spacing={0.5} alignItems="center">
+                  <Repeat fontSize="small" color="secondary" />
+                  <Typography variant="body2" fontWeight={600}>Repeat Only</Typography>
+                </Stack>
+              }
+              sx={{ ml: 1 }}
+            />
+          </Stack>
+
+          {/* Table */}
           <Box sx={{ mt: 2, borderRadius: 2, overflow: 'hidden', border: '1px solid #E2E8F0' }}>
             <TopScrollTableContainer>
-              <Table size="small" sx={{ minWidth: 1400 }}>
+              <Table size="small" sx={{ minWidth: 1500 }}>
                 <TableHead>
                   <TableRow sx={{ '& th': { fontWeight: 700, fontSize: '0.78rem', whiteSpace: 'nowrap' } }}>
-                    <TableCell>Client</TableCell>
-                    <TableCell>Product</TableCell>
-                    <TableCell align="right">SMS Qty</TableCell>
-                    <TableCell align="right">Rate</TableCell>
-                    <TableCell align="right">Received (incl GST)</TableCell>
+                    <TableCell sx={{ width: 40 }} />
+                    <TableCell>Client Name</TableCell>
+                    <TableCell>Client Type</TableCell>
+                    <TableCell align="center">Purchases</TableCell>
+                    <TableCell align="right">Repeat Interval</TableCell>
+                    <TableCell>Latest Product</TableCell>
+                    <TableCell align="right">Latest Received</TableCell>
+                    <TableCell align="right">Total Received</TableCell>
                     <TableCell>Mobile</TableCell>
                     <TableCell>Email</TableCell>
-                    <TableCell>Panel User</TableCell>
-                    <TableCell>Password</TableCell>
-                    <TableCell>Employee</TableCell>
-                    <TableCell align="right">Total Received</TableCell>
-                    <TableCell>Approved</TableCell>
-                    <TableCell>Type</TableCell>
-                    <TableCell>KYC</TableCell>
+                    <TableCell>Handled By</TableCell>
+                    <TableCell>First Purchase</TableCell>
+                    <TableCell>Latest Purchase</TableCell>
                     <TableCell align="center">Actions</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {clients.map((row) => (
-                    <TableRow key={row.client_key} hover>
-                      <TableCell sx={{ whiteSpace: 'nowrap', fontWeight: 600 }}>{row.client_name || 'N/A'}</TableCell>
-                      <TableCell sx={{ whiteSpace: 'nowrap' }}>{row.last_product || row.product_name || 'N/A'}</TableCell>
-                      <TableCell align="right">{row.last_sms_quantity ?? row.sms_quantity ?? 'N/A'}</TableCell>
-                      <TableCell align="right">{row.last_rate != null ? row.last_rate : '—'}</TableCell>
-                      <TableCell align="right">
-                        {row.last_amount_received != null ? `${RUPEE}${formatMoney(row.last_amount_received)}` : 'N/A'}
-                      </TableCell>
-                      <TableCell sx={{ whiteSpace: 'nowrap' }}>{row.client_mobile_1 || 'N/A'}</TableCell>
-                      <TableCell sx={{ whiteSpace: 'nowrap' }}>{row.client_email || 'N/A'}</TableCell>
-                      <TableCell sx={{ whiteSpace: 'nowrap' }}>{row.client_panel_username || 'N/A'}</TableCell>
-                      <TableCell>{row.client_panel_password || 'N/A'}</TableCell>
-                      <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                        {row.first_name ? `${row.first_name} ${row.last_name} (${row.employee_code || 'N/A'})` : 'N/A'}
-                      </TableCell>
-                      <TableCell align="right">{`${RUPEE}${formatMoney(row.total_received ?? row.total_sales ?? 0)}`}</TableCell>
-                      <TableCell>
-                        <Chip
-                          label={`${Number(row.approved_count || 0)}/${Number(row.submissions_count || 0)}`}
-                          color={Number(row.approved_count || 0) === Number(row.submissions_count || 0) ? 'success' : 'warning'}
-                          size="small"
-                        />
-                      </TableCell>
-                      <TableCell>
-                        {row.last_package_type
-                          ? <Chip size="small" label={row.last_package_type.charAt(0).toUpperCase() + row.last_package_type.slice(1)} color={row.last_package_type === 'new' ? 'success' : 'default'} variant="outlined" />
-                          : '—'}
-                      </TableCell>
-                      <TableCell>
-                        {row.last_kyc_path
-                          ? <Chip size="small" label="KYC ✓" color="info" variant="outlined" onClick={() => window.open(toScreenshotUrl(row.last_kyc_path), '_blank')} sx={{ cursor: 'pointer' }} />
-                          : <Typography variant="caption" color="text.secondary">—</Typography>}
-                      </TableCell>
-                      <TableCell align="center">
-                        <RowActions
-                          row={row}
-                          onView={openClient}
-                          onRefund={handleInitiateRefund}
-                          onDelete={handleDeleteClient}
-                        />
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {clients.map((row) => {
+                    const isExpanded = Boolean(expandedRows[row.client_key]);
+                    return (
+                      <>
+                        <TableRow key={row.client_key} hover sx={{ '& > *': { borderBottom: isExpanded ? 'unset' : undefined } }}>
+                          <TableCell>
+                            <IconButton size="small" onClick={() => toggleExpand(row.client_key)}>
+                              {isExpanded ? <KeyboardArrowUp fontSize="small" /> : <KeyboardArrowDown fontSize="small" />}
+                            </IconButton>
+                          </TableCell>
+                          <TableCell sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
+                            {row.client_name || 'N/A'}
+                          </TableCell>
+                          <TableCell>
+                            {row.is_repeat_client ? (
+                              <Chip
+                                label={`Repeat (${row.total_purchases || row.submissions_count}x)`}
+                                color="success"
+                                size="small"
+                                sx={{ fontWeight: 700 }}
+                              />
+                            ) : (
+                              <Chip label="New" size="small" variant="outlined" />
+                            )}
+                          </TableCell>
+                          <TableCell align="center">
+                            <Typography variant="body2" fontWeight={600}>
+                              {row.total_purchases || row.submissions_count || 1}
+                            </Typography>
+                          </TableCell>
+                          <TableCell align="right">
+                            {row.repeat_interval_days != null ? (
+                              <Chip
+                                label={`${row.repeat_interval_days} days avg`}
+                                size="small"
+                                color="info"
+                                variant="outlined"
+                              />
+                            ) : (
+                              <Typography variant="caption" color="text.secondary">—</Typography>
+                            )}
+                          </TableCell>
+                          <TableCell sx={{ whiteSpace: 'nowrap' }}>{row.last_product || 'N/A'}</TableCell>
+                          <TableCell align="right" sx={{ fontWeight: 600 }}>
+                            {row.last_amount_received != null ? `${RUPEE}${formatMoney(row.last_amount_received)}` : 'N/A'}
+                          </TableCell>
+                          <TableCell align="right" sx={{ fontWeight: 700, color: '#15803D' }}>
+                            {`${RUPEE}${formatMoney(row.total_received ?? row.total_sales ?? 0)}`}
+                          </TableCell>
+                          <TableCell sx={{ whiteSpace: 'nowrap' }}>{row.client_mobile_1 || 'N/A'}</TableCell>
+                          <TableCell sx={{ whiteSpace: 'nowrap' }}>{row.client_email || 'N/A'}</TableCell>
+                          <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                            {row.first_name ? `${row.first_name} ${row.last_name}` : 'N/A'}
+                          </TableCell>
+                          <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                            {row.first_purchase_date ? new Date(row.first_purchase_date).toLocaleDateString('en-IN') : '—'}
+                          </TableCell>
+                          <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                            {row.latest_purchase_date ? new Date(row.latest_purchase_date).toLocaleDateString('en-IN') : '—'}
+                          </TableCell>
+                          <TableCell align="center">
+                            <RowActions
+                              row={row}
+                              onView={openClient}
+                              onRefund={handleInitiateRefund}
+                              onDelete={handleDeleteClient}
+                            />
+                          </TableCell>
+                        </TableRow>
+
+                        {/* Collapsible Hierarchical Order History */}
+                        <TableRow key={`${row.client_key}-details`}>
+                          <TableCell colSpan={14} sx={{ p: 0, bgcolor: '#F8FAFC' }}>
+                            <Collapse in={isExpanded} timeout="auto" unmountOnExit>
+                              <Box sx={{ p: 2.5, m: 1.5, bgcolor: '#FFFFFF', borderRadius: 2, border: '1px solid #E2E8F0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+                                <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between" alignItems={{ md: 'center' }} sx={{ mb: 2 }}>
+                                  <Box>
+                                    <Typography variant="subtitle2" fontWeight={800} color="primary">
+                                      Chronological Purchase History — {row.client_name}
+                                    </Typography>
+                                    <Typography variant="caption" color="text.secondary">
+                                      Stable Identifier: {row.client_key} • {row.purchases?.length || 0} order records logged
+                                    </Typography>
+                                  </Box>
+                                  <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                                    <Chip label={`Total Sales: ${RUPEE}${formatMoney(row.total_sales || 0)}`} size="small" variant="outlined" />
+                                    <Chip label={`Total Received: ${RUPEE}${formatMoney(row.total_received || 0)}`} size="small" color="success" sx={{ fontWeight: 600 }} />
+                                    {row.average_purchase_value > 0 && (
+                                      <Chip label={`Avg Order: ${RUPEE}${formatMoney(row.average_purchase_value)}`} size="small" color="primary" variant="outlined" />
+                                    )}
+                                    {row.repeat_interval_days != null && (
+                                      <Chip label={`Repeat Cadence: ${row.repeat_interval_days} days`} size="small" color="secondary" />
+                                    )}
+                                  </Stack>
+                                </Stack>
+
+                                <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 1.5 }}>
+                                  <Table size="small">
+                                    <TableHead sx={{ bgcolor: '#F1F5F9' }}>
+                                      <TableRow sx={{ '& th': { fontWeight: 700, fontSize: '0.72rem' } }}>
+                                        <TableCell>Order Ref</TableCell>
+                                        <TableCell>Date</TableCell>
+                                        <TableCell>Product</TableCell>
+                                        <TableCell>Package</TableCell>
+                                        <TableCell align="right">SMS Qty</TableCell>
+                                        <TableCell align="right">Rate</TableCell>
+                                        <TableCell align="right">Net Price</TableCell>
+                                        <TableCell align="right">Received (incl GST)</TableCell>
+                                        <TableCell align="right">Incentive</TableCell>
+                                        <TableCell>Payment Mode</TableCell>
+                                        <TableCell>Handled By</TableCell>
+                                        <TableCell>Status</TableCell>
+                                        <TableCell align="center">Proof</TableCell>
+                                      </TableRow>
+                                    </TableHead>
+                                    <TableBody>
+                                      {row.purchases?.map((order) => (
+                                        <TableRow key={order.id} hover>
+                                          <TableCell sx={{ fontWeight: 700, fontFamily: 'monospace' }}>
+                                            {order.order_reference}
+                                          </TableCell>
+                                          <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                                            {order.date ? new Date(order.date).toLocaleDateString('en-IN') : '—'}
+                                          </TableCell>
+                                          <TableCell sx={{ fontWeight: 600 }}>{order.product_name}</TableCell>
+                                          <TableCell>
+                                            <Chip size="small" label={order.package_type} variant="outlined" sx={{ textTransform: 'capitalize' }} />
+                                          </TableCell>
+                                          <TableCell align="right">{order.sms_quantity ?? '—'}</TableCell>
+                                          <TableCell align="right">{order.rate != null ? order.rate : '—'}</TableCell>
+                                          <TableCell align="right">{`${RUPEE}${formatMoney(order.price)}`}</TableCell>
+                                          <TableCell align="right" sx={{ fontWeight: 600 }}>
+                                            {`${RUPEE}${formatMoney(order.price_gross || order.price)}`}
+                                          </TableCell>
+                                          <TableCell align="right" sx={{ color: 'secondary.main', fontWeight: 600 }}>
+                                            {`${RUPEE}${formatMoney(order.incentive_amount)}`}
+                                          </TableCell>
+                                          <TableCell>{order.payment_mode || '—'}</TableCell>
+                                          <TableCell sx={{ whiteSpace: 'nowrap' }}>{order.employee_name || 'Staff'}</TableCell>
+                                          <TableCell>
+                                            <Chip
+                                              size="small"
+                                              label={order.status}
+                                              color={
+                                                order.status === 'approved' ? 'success' :
+                                                order.status === 'pending' ? 'warning' :
+                                                order.status === 'refunded' ? 'secondary' : 'error'
+                                              }
+                                            />
+                                          </TableCell>
+                                          <TableCell align="center">
+                                            <Stack direction="row" spacing={0.5} justifyContent="center">
+                                              {order.kyc_path && (
+                                                <Tooltip title="View KYC">
+                                                  <IconButton size="small" onClick={() => window.open(toScreenshotUrl(order.kyc_path), '_blank')}>
+                                                    <InsertDriveFile fontSize="small" color="primary" />
+                                                  </IconButton>
+                                                </Tooltip>
+                                              )}
+                                              {order.screenshot_path && (
+                                                <Tooltip title="View Payment Proof">
+                                                  <IconButton size="small" onClick={() => window.open(toScreenshotUrl(order.screenshot_path), '_blank')}>
+                                                    <Visibility fontSize="small" color="action" />
+                                                  </IconButton>
+                                                </Tooltip>
+                                              )}
+                                            </Stack>
+                                          </TableCell>
+                                        </TableRow>
+                                      ))}
+                                    </TableBody>
+                                  </Table>
+                                </TableContainer>
+                              </Box>
+                            </Collapse>
+                          </TableCell>
+                        </TableRow>
+                      </>
+                    );
+                  })}
+
                   {clients.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={15}>
-                        <Typography variant="body2" color="text.secondary" sx={{ py: 3, textAlign: 'center' }}>
-                          {clientsLoading ? 'Loading clients…' : 'No clients found.'}
+                      <TableCell colSpan={14} align="center" sx={{ py: 3 }}>
+                        <Typography variant="body2" color="text.secondary">
+                          {clientsLoading ? 'Loading clients…' : 'No clients found matching filters.'}
                         </Typography>
                       </TableCell>
                     </TableRow>
@@ -409,90 +642,76 @@ export default function ClientsManagement() {
         </CardContent>
       </Card>
 
-      {/* ── Client Details Dialog ── */}
+      {/* Client Details Dialog */}
       <Dialog open={clientDialogOpen} onClose={closeDialog} maxWidth="md" fullWidth>
-        <DialogTitle>
+        <DialogTitle sx={{ fontWeight: 700 }}>
           <Stack direction="row" justifyContent="space-between" alignItems="center">
-            <Typography variant="h6">Client Details</Typography>
+            <Typography variant="h6">Client Hierarchy & Profile</Typography>
             <IconButton onClick={closeDialog}><Close /></IconButton>
           </Stack>
         </DialogTitle>
         <DialogContent>
           {selectedClient && (
-            <Stack spacing={3}>
+            <Stack spacing={3} sx={{ mt: 1 }}>
+              <Grid container spacing={2}>
+                <Grid item xs={12} sm={6}>
+                  <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+                    <Typography variant="subtitle2" color="text.secondary" gutterBottom>Client Overview</Typography>
+                    <Typography><strong>Name:</strong> {selectedClient.client_name || 'N/A'}</Typography>
+                    <Typography><strong>Mobile 1:</strong> {selectedClient.client_mobile_1 || 'N/A'}</Typography>
+                    <Typography><strong>Mobile 2:</strong> {selectedClient.client_mobile_2 || 'N/A'}</Typography>
+                    <Typography><strong>Email:</strong> {selectedClient.client_email || 'N/A'}</Typography>
+                    <Typography><strong>Location:</strong> {selectedClient.last_location || 'N/A'}</Typography>
+                  </Paper>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+                    <Typography variant="subtitle2" color="text.secondary" gutterBottom>Repetition Metrics</Typography>
+                    <Typography><strong>Status:</strong> {selectedClient.is_repeat_client ? 'Repeat Client' : 'New Client'}</Typography>
+                    <Typography><strong>Total Orders:</strong> {selectedClient.total_purchases || selectedClient.submissions_count || 1}</Typography>
+                    <Typography><strong>Total Received:</strong> {`${RUPEE}${formatMoney(selectedClient.total_received ?? 0)}`}</Typography>
+                    <Typography><strong>Average Order:</strong> {`${RUPEE}${formatMoney(selectedClient.average_purchase_value ?? 0)}`}</Typography>
+                    <Typography>
+                      <strong>Repeat Interval:</strong> {selectedClient.repeat_interval_days != null ? `${selectedClient.repeat_interval_days} days` : 'N/A'}
+                    </Typography>
+                  </Paper>
+                </Grid>
+              </Grid>
+
+              {/* Order history table inside dialog */}
               <Box>
-                <Typography variant="h6" gutterBottom>Client Information</Typography>
-                <Stack spacing={1}>
-                  <Typography><strong>Name:</strong> {selectedClient.client_name || 'N/A'}</Typography>
-                  <Typography><strong>Product:</strong> {selectedClient.last_product || 'N/A'}</Typography>
-                  <Typography><strong>SMS Qty:</strong> {selectedClient.last_sms_quantity ?? 'N/A'}</Typography>
-                  <Typography><strong>Last Price (excl GST):</strong> {selectedClient.last_price_ex_gst != null ? `${RUPEE}${formatMoney(selectedClient.last_price_ex_gst)}` : 'N/A'}</Typography>
-                  <Typography><strong>Last GST (18%):</strong> {selectedClient.last_gst_amount != null ? `${RUPEE}${formatMoney(selectedClient.last_gst_amount)}` : 'N/A'}</Typography>
-                  <Typography><strong>Last Amount Received (incl GST):</strong> {selectedClient.last_amount_received != null ? `${RUPEE}${formatMoney(selectedClient.last_amount_received)}` : 'N/A'}</Typography>
-                  <Typography><strong>Mobile:</strong> {selectedClient.client_mobile_1 || 'N/A'}</Typography>
-                  <Typography><strong>Email:</strong> {selectedClient.client_email || 'N/A'}</Typography>
-                  <Typography><strong>Panel Username:</strong> {selectedClient.client_panel_username || 'N/A'}</Typography>
-                  <Typography><strong>Panel Password:</strong> {selectedClient.client_panel_password || 'N/A'}</Typography>
-                </Stack>
-              </Box>
-              <Box>
-                <Typography variant="h6" gutterBottom>KYC Documents</Typography>
-                <Stack direction="row" spacing={2} flexWrap="wrap">
-                  {selectedClient.last_kyc_path
-                    ? <Button variant="outlined" startIcon={<InsertDriveFile />} onClick={() => window.open(toScreenshotUrl(selectedClient.last_kyc_path), '_blank')}>View KYC Document</Button>
-                    : <Typography color="text.secondary">No KYC document uploaded.</Typography>}
-                  {selectedClient.last_screenshot_path && (
-                    <Button variant="outlined" startIcon={<Visibility />} onClick={() => window.open(toScreenshotUrl(selectedClient.last_screenshot_path), '_blank')}>View Screenshot</Button>
-                  )}
-                </Stack>
-              </Box>
-              <Box>
-                <Typography variant="h6" gutterBottom>Employee Information</Typography>
-                <Stack spacing={1}>
-                  <Typography><strong>Employee:</strong> {selectedClient.first_name ? `${selectedClient.first_name} ${selectedClient.last_name}` : 'N/A'}</Typography>
-                  <Typography><strong>Employee Code:</strong> {selectedClient.employee_code || 'N/A'}</Typography>
-                </Stack>
-              </Box>
-              <Box>
-                <Typography variant="h6" gutterBottom>Sales Summary</Typography>
-                <Stack spacing={1}>
-                  <Typography><strong>Total Received (incl GST):</strong> {`${RUPEE}${formatMoney(selectedClient.total_received ?? selectedClient.total_sales ?? 0)}`}</Typography>
-                  <Typography><strong>Total GST:</strong> {`${RUPEE}${formatMoney(selectedClient.total_gst_amount ?? 0)}`}</Typography>
-                  <Typography><strong>Approved Submissions:</strong> {Number(selectedClient.approved_count || 0)}</Typography>
-                  <Typography><strong>Total Submissions:</strong> {Number(selectedClient.submissions_count || 0)}</Typography>
-                </Stack>
-              </Box>
-              {selectedClient.submissions?.length > 0 && (
-                <Box>
-                  <Typography variant="h6" gutterBottom>Recent Submissions</Typography>
-                  <TableContainer component={Paper} variant="outlined">
-                    <Table size="small">
-                      <TableHead>
-                        <TableRow>
-                          <TableCell>Product</TableCell>
-                          <TableCell>Price</TableCell>
-                          <TableCell>Incentive</TableCell>
-                          <TableCell>Status</TableCell>
-                          <TableCell>Date</TableCell>
+                <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1 }}>Complete Order Hierarchy</Typography>
+                <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2 }}>
+                  <Table size="small">
+                    <TableHead sx={{ bgcolor: '#F8FAFC' }}>
+                      <TableRow>
+                        <TableCell>Order Ref</TableCell>
+                        <TableCell>Date</TableCell>
+                        <TableCell>Product</TableCell>
+                        <TableCell align="right">Amount</TableCell>
+                        <TableCell align="right">Incentive</TableCell>
+                        <TableCell>Status</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {selectedClient.purchases?.map((p) => (
+                        <TableRow key={p.id}>
+                          <TableCell sx={{ fontWeight: 700, fontFamily: 'monospace' }}>{p.order_reference}</TableCell>
+                          <TableCell>{p.date ? new Date(p.date).toLocaleDateString('en-IN') : '—'}</TableCell>
+                          <TableCell>{p.product_name}</TableCell>
+                          <TableCell align="right">{`${RUPEE}${formatMoney(p.price_gross || p.price)}`}</TableCell>
+                          <TableCell align="right" sx={{ color: 'secondary.main', fontWeight: 600 }}>
+                            {`${RUPEE}${formatMoney(p.incentive_amount)}`}
+                          </TableCell>
+                          <TableCell>
+                            <Chip size="small" label={p.status} color={p.status === 'approved' ? 'success' : 'default'} />
+                          </TableCell>
                         </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        {selectedClient.submissions.slice(0, 5).map((sub) => (
-                          <TableRow key={sub.id}>
-                            <TableCell>{sub.product_name}</TableCell>
-                            <TableCell>{`${RUPEE}${Number(sub.price || 0).toLocaleString()}`}</TableCell>
-                            <TableCell>{`${RUPEE}${Number(sub.incentive_amount || 0).toLocaleString()}`}</TableCell>
-                            <TableCell>
-                              <Chip label={sub.status} color={sub.status === 'approved' ? 'success' : sub.status === 'pending' ? 'warning' : 'default'} size="small" />
-                            </TableCell>
-                            <TableCell>{new Date(sub.created_at).toLocaleDateString()}</TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </TableContainer>
-                </Box>
-              )}
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </Box>
             </Stack>
           )}
         </DialogContent>
@@ -501,7 +720,7 @@ export default function ClientsManagement() {
         </DialogActions>
       </Dialog>
 
-      {/* ── Refund Confirmation ── */}
+      {/* Refund Confirmation */}
       <Dialog open={refundConfirmOpen} onClose={() => { setRefundConfirmOpen(false); setRefundTarget(null); }} maxWidth="xs" fullWidth>
         <DialogTitle>Initiate Refund</DialogTitle>
         <DialogContent>
@@ -516,7 +735,7 @@ export default function ClientsManagement() {
         </DialogActions>
       </Dialog>
 
-      {/* ── Delete Confirmation ── */}
+      {/* Delete Confirmation */}
       <Dialog open={deleteConfirmOpen} onClose={() => { setDeleteConfirmOpen(false); setDeleteTarget(null); }} maxWidth="xs" fullWidth>
         <DialogTitle>Delete Client</DialogTitle>
         <DialogContent>

@@ -81,21 +81,31 @@ export default function LeaveManagement() {
   const [cancellingLeaveId, setCancellingLeaveId] = useState(null);
   const [isSubmittingLeave, setIsSubmittingLeave] = useState(false);
 
+  const [leaveSummary, setLeaveSummary] = useState(null);
+
   const loadData = async () => {
     try {
+      const summaryUrl = isEmployee
+        ? '/leave/summary'
+        : selectedEmployeeId
+          ? `/leave/summary?employee_id=${selectedEmployeeId}`
+          : '/leave/summary';
+      const summaryPromise = apiRequest(summaryUrl);
       const requestsPromise = apiRequest('/leave/requests');
       const typesPromise = apiRequest('/leave/types');
       const employeePromise = isEmployee ? Promise.resolve([]) : apiRequest('/employees');
       const balancePromise =
         isEmployee ? apiRequest('/leave/balance') : selectedEmployeeId ? apiRequest(`/leave/balance/${selectedEmployeeId}`) : Promise.resolve([]);
 
-      const [requestsData, typesData, employeesData, balanceData] = await Promise.all([
+      const [summaryData, requestsData, typesData, employeesData, balanceData] = await Promise.all([
+        summaryPromise,
         requestsPromise,
         typesPromise,
         employeePromise,
         balancePromise,
       ]);
 
+      setLeaveSummary(summaryData);
       setLeaveRequests(requestsData);
       setLeaveTypes(typesData);
       setEmployees(employeesData);
@@ -116,12 +126,12 @@ export default function LeaveManagement() {
 
   const stats = useMemo(
     () => [
-      { label: 'Pending', value: pendingRequests.length },
-      { label: 'Approved', value: approvedRequests.length },
-      { label: 'Rejected', value: rejectedRequests.length },
+      { label: 'Pending', value: leaveSummary ? leaveSummary.pending_count : pendingRequests.length },
+      { label: 'Approved', value: leaveSummary ? leaveSummary.approved_count : approvedRequests.length },
+      { label: 'Rejected', value: leaveSummary ? (Number(leaveSummary.rejected_count || 0) + Number(leaveSummary.cancelled_count || 0)) : rejectedRequests.length },
       { label: 'Policies', value: leaveTypes.length },
     ],
-    [pendingRequests.length, approvedRequests.length, rejectedRequests.length, leaveTypes.length],
+    [leaveSummary, pendingRequests.length, approvedRequests.length, rejectedRequests.length, leaveTypes.length],
   );
 
   const handleApplyLeave = async () => {

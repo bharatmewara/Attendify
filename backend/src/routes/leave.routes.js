@@ -190,6 +190,49 @@ router.delete('/types/:id', authenticate, authorize('company_admin', 'super_admi
     return res.status(500).json({ message: error.message });
   }
 });
+// ─────────────────────────────────────────────────────────────────────────────
+// GET LEAVE SUMMARY
+// ─────────────────────────────────────────────────────────────────────────────
+router.get('/summary', authenticate, tenantIsolation, async (req, res) => {
+  try {
+    let employeeId = req.query.employee_id;
+    if (req.user.role === 'employee') {
+      const empRes = await query('SELECT id FROM employees WHERE user_id = $1', [req.user.id]);
+      employeeId = empRes.rows[0]?.id || null;
+    }
+
+    const params = [req.companyId || null];
+    let employeeFilter = '';
+    if (employeeId) {
+      params.push(employeeId);
+      employeeFilter = ` AND lr.employee_id = $${params.length}`;
+    }
+
+    const result = await query(`
+      SELECT
+        COUNT(*)::int AS total_requests,
+        COUNT(*) FILTER (WHERE lr.status = 'pending')::int AS pending_count,
+        COUNT(*) FILTER (WHERE lr.status = 'approved')::int AS approved_count,
+        COUNT(*) FILTER (WHERE lr.status = 'rejected')::int AS rejected_count,
+        COUNT(*) FILTER (WHERE lr.status = 'cancelled')::int AS cancelled_count
+      FROM leave_requests lr
+      WHERE ($1::int IS NULL OR lr.company_id = $1)
+        ${employeeFilter}
+    `, params);
+
+    res.json(result.rows[0] || {
+      total_requests: 0,
+      pending_count: 0,
+      approved_count: 0,
+      rejected_count: 0,
+      cancelled_count: 0,
+    });
+  } catch (error) {
+    console.error('Error fetching leave summary:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
 // Get leave requests
 router.get('/requests', authenticate, tenantIsolation, async (req, res) => {
   const { status, employee_id } = req.query;
@@ -204,7 +247,7 @@ router.get('/requests', authenticate, tenantIsolation, async (req, res) => {
       LEFT JOIN users u ON lr.approved_by = u.id
       WHERE ($1::int IS NULL OR lr.company_id = $1)
     `;
-    const params = [req.companyId];
+    const params = [req.companyId || null];
 
     if (req.user.role === 'employee') {
       const empResult = await query('SELECT id FROM employees WHERE user_id = $1', [req.user.id]);

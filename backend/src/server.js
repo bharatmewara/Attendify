@@ -85,28 +85,6 @@ app.get('/api/health', (_req, res) => {
   res.json({ ok: true });
 });
 
-// SuperAdmin Dashboard APIs - Auth protected (real data)
-// REMOVED MOCK - Now uses real superadmin.routes.js /companies endpoint with JOINs
-// app.get('/api/superadmin/companies', authenticate, authorize('super_admin'), async (req, res) => { ... }
-
-app.get('/api/superadmin/analytics', (req, res) => {
-  res.json({
-    active_companies: 12,
-    total_companies: 15,
-    total_employees: 245,
-    active_users: 89,
-    monthly_revenue: 125000
-  });
-});
-
-app.get('/api/superadmin/expiring-subscriptions', (req, res) => {
-  res.json([]);
-});
-
-app.get('/api/superadmin/pending-payments', (req, res) => {
-  res.json([]);
-});
-
 app.use('/api/auth', authRoutes);
 app.use('/api/superadmin', superadminRoutes);
 app.use('/api/employees', employeesRoutes);
@@ -120,25 +98,6 @@ app.use('/api/network-policies', networkRoutes);
 app.use('/api/holidays', holidaysRoutes);
 app.use('/api/incentives', incentivesRoutes);
 app.use('/api/notifications', notificationsRoutes);
-
-// SuperAdmin Dashboard APIs (added for 404 fix)
-app.use('/api/superadmin/analytics', (req, res) => {
-  res.json({
-    active_companies: 12,
-    total_companies: 15,
-    total_employees: 245,
-    active_users: 89,
-    monthly_revenue: 125000
-  });
-});
-
-app.use('/api/superadmin/expiring-subscriptions', (req, res) => {
-  res.json([]);
-});
-
-app.use('/api/superadmin/pending-payments', (req, res) => {
-  res.json([]);
-});
 
 app.use('/api', (_req, res) => {
   res.status(404).json({ message: 'API route not found' });

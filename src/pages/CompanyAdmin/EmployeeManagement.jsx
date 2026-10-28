@@ -976,19 +976,19 @@ export default function EmployeeManagement() {
                     <Grid item xs={4}>
                       <Paper variant="outlined" sx={{ p: 2, textAlign: 'center' }}>
                         <Typography variant="caption" display="block" color="text.secondary">Present</Typography>
-                        <Typography variant="h5" fontWeight={700} color="success.main">{viewProfile.attendance.summary.present_count}</Typography>
+                        <Typography variant="h5" fontWeight={700} color="success.main">{viewProfile.attendance?.summary?.present_count ?? 0}</Typography>
                       </Paper>
                     </Grid>
                     <Grid item xs={4}>
                       <Paper variant="outlined" sx={{ p: 2, textAlign: 'center' }}>
                         <Typography variant="caption" display="block" color="text.secondary">Absent</Typography>
-                        <Typography variant="h5" fontWeight={700} color="error.main">{viewProfile.attendance.summary.absent_count}</Typography>
+                        <Typography variant="h5" fontWeight={700} color="error.main">{viewProfile.attendance?.summary?.absent_count ?? 0}</Typography>
                       </Paper>
                     </Grid>
                     <Grid item xs={4}>
                       <Paper variant="outlined" sx={{ p: 2, textAlign: 'center' }}>
                         <Typography variant="caption" display="block" color="text.secondary">On Leave</Typography>
-                        <Typography variant="h5" fontWeight={700} color="info.main">{viewProfile.attendance.summary.leave_count}</Typography>
+                        <Typography variant="h5" fontWeight={700} color="info.main">{viewProfile.attendance?.summary?.leave_count ?? 0}</Typography>
                       </Paper>
                     </Grid>
                   </Grid>

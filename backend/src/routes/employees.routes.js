@@ -82,9 +82,44 @@ router.get('/documents', authenticate, authorize('company_admin', 'super_admin')
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// GET EMPLOYEES SUMMARY
+// ─────────────────────────────────────────────────────────────────────────────
+router.get('/summary', authenticate, tenantIsolation, async (req, res) => {
+  try {
+    const result = await query(`
+      SELECT
+        COUNT(*)::int AS total_employees,
+        COUNT(*) FILTER (WHERE e.status = 'active' AND u.is_active = true)::int AS active_employees,
+        COUNT(*) FILTER (WHERE e.status = 'inactive' OR u.is_active = false)::int AS inactive_employees,
+        COUNT(*) FILTER (WHERE e.status = 'terminated')::int AS terminated_employees,
+        COUNT(*) FILTER (WHERE e.joining_date >= CURRENT_DATE - INTERVAL '30 days')::int AS new_employees
+      FROM employees e
+      JOIN users u ON e.user_id = u.id
+      WHERE ($1::int IS NULL OR e.company_id = $1)
+        AND e.deleted_at IS NULL
+    `, [req.companyId || null]);
+
+    res.json(result.rows[0] || {
+      total_employees: 0,
+      active_employees: 0,
+      inactive_employees: 0,
+      terminated_employees: 0,
+      new_employees: 0,
+    });
+  } catch (error) {
+    console.error('Error fetching employees summary:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // GET SINGLE EMPLOYEE
 // ─────────────────────────────────────────────────────────────────────────────
 router.get('/:id', authenticate, tenantIsolation, async (req, res) => {
+  const employeeId = Number(req.params.id);
+  if (!Number.isInteger(employeeId) || employeeId <= 0) {
+    return res.status(400).json({ message: 'Invalid employee ID' });
+  }
   try {
     const result = await query(`
       SELECT 
@@ -151,10 +186,12 @@ router.get('/:id/profile', authenticate, tenantIsolation, async (req, res) => {
       await Promise.all([
         query(
           `SELECT
-             COUNT(*) FILTER (WHERE status = 'present') as present_count,
-             COUNT(*) FILTER (WHERE status = 'absent') as absent_count,
-             COUNT(*) FILTER (WHERE status = 'on_leave') as leave_count,
-             COALESCE(SUM(late_minutes), 0) as total_late_minutes
+             COUNT(*) FILTER (WHERE status = 'present')::int as present_count,
+             COUNT(*) FILTER (WHERE status = 'absent')::int as absent_count,
+             COUNT(*) FILTER (WHERE status = 'half_day')::int as half_day_count,
+             COUNT(*) FILTER (WHERE status = 'on_leave')::int as leave_count,
+             COUNT(*)::int as total_records,
+             COALESCE(SUM(late_minutes), 0)::int as total_late_minutes
            FROM attendance_records
            WHERE employee_id = $1`,
           [employee.id],
@@ -224,10 +261,19 @@ router.get('/:id/profile', authenticate, tenantIsolation, async (req, res) => {
         ),
       ]);
 
+    const attRow = attendanceSummary.rows[0] || { present_count: 0, absent_count: 0, half_day_count: 0, leave_count: 0, total_records: 0, total_late_minutes: 0 };
+    const workingDays = Number(attRow.present_count || 0) + Number(attRow.absent_count || 0) + Number(attRow.half_day_count || 0);
+    const attendancePercentage = workingDays > 0
+      ? Math.round(((Number(attRow.present_count || 0) + Number(attRow.half_day_count || 0) * 0.5) / workingDays) * 100)
+      : 0;
+
     return res.json({
       employee,
       attendance: {
-        summary: attendanceSummary.rows[0],
+        summary: {
+          ...attRow,
+          attendance_percentage: attendancePercentage,
+        },
         records: attendanceRecords.rows,
       },
       leave: {
@@ -518,6 +564,22 @@ router.put('/:id', authenticate, authorize('company_admin', 'super_admin'), tena
       }
     }
 
+    const nextStatus = nullable(status) || 'active';
+    const isNextActive = nextStatus === 'active';
+    const explicitExitDate = req.body.exit_date ? String(req.body.exit_date) : null;
+
+    // Sync users.is_active based on employment status
+    const empUserRes = await query(
+      'SELECT u.id FROM users u JOIN employees e ON e.user_id = u.id WHERE e.id = $1',
+      [id],
+    );
+    if (empUserRes.rows.length > 0) {
+      await query(
+        'UPDATE users SET is_active = $1, updated_at = NOW() WHERE id = $2',
+        [isNextActive, empUserRes.rows[0].id],
+      );
+    }
+
     const result = await query(
       `UPDATE employees
        SET first_name = $1::text, last_name = $2::text, date_of_birth = $3::date, gender = $4::text, phone = $5::text,
@@ -527,16 +589,21 @@ router.put('/:id', authenticate, authorize('company_admin', 'super_admin'), tena
            aadhar_number = $18::text, pan_number = $19::text, bank_account_number = $20::text, bank_name = $21::text, bank_ifsc = $22::text,
            joining_date = COALESCE($23::date, joining_date),
            employee_code = COALESCE(NULLIF($24::text, ''), employee_code),
+           exit_date = CASE
+             WHEN $17::text = 'active' THEN NULL
+             ELSE COALESCE($27::date, exit_date, CURRENT_DATE)
+           END,
            updated_at = NOW()
        WHERE id = $25::int AND ($26::int IS NULL OR company_id = $26::int) AND deleted_at IS NULL
        RETURNING *`,
       [
         first_name, last_name, nullable(date_of_birth), nullable(gender), nullable(phone), nullable(emergency_contact),
         nullable(emergency_contact_name), nullable(address), nullable(city), nullable(state), nullable(country), nullable(postal_code),
-        nullable(department_id), nullable(designation_id), nullable(manager_id), nullable(employment_type), nullable(status) || 'active',
+        nullable(department_id), nullable(designation_id), nullable(manager_id), nullable(employment_type), nextStatus,
         nullable(aadhar_number), nullable(pan_number), nullable(bank_account_number), nullable(bank_name), nullable(bank_ifsc),
         nullable(joining_date), nullable(employee_code),
         id, req.companyId,
+        nullable(explicitExitDate),
       ],
     );
 
@@ -581,6 +648,16 @@ router.patch('/:id/toggle-active', authenticate, authorize('company_admin', 'sup
     await query(
       'UPDATE users SET is_active = $1, updated_at = NOW() WHERE id = $2',
       [newActive, emp.user_id],
+    );
+
+    // Sync status and exit_date on employees table
+    await query(
+      `UPDATE employees
+       SET status = $1,
+           exit_date = CASE WHEN $1 = 'active' THEN NULL ELSE COALESCE(exit_date, CURRENT_DATE) END,
+           updated_at = NOW()
+       WHERE id = $2`,
+      [newActive ? 'active' : 'inactive', emp.id],
     );
 
     await logAudit({
@@ -636,7 +713,7 @@ router.delete('/:id', authenticate, authorize('company_admin', 'super_admin'), t
 
     // 2. Soft-delete the employee record
     await client.query(
-      'UPDATE employees SET deleted_at = NOW(), status = $1, updated_at = NOW() WHERE id = $2',
+      'UPDATE employees SET deleted_at = NOW(), status = $1, exit_date = COALESCE(exit_date, CURRENT_DATE), updated_at = NOW() WHERE id = $2',
       ['terminated', req.params.id],
     );
 

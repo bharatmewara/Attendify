@@ -12,6 +12,13 @@ import {
   isProductActiveInRules,
   validateIncentiveRulesConfigV1,
 } from '../utils/incentive_rules.js';
+import {
+  getPerformanceStatistics,
+  getPerformanceHistory,
+  syncIncentiveStatus,
+  calculateIncentiveForSale,
+} from '../services/financialCalculationService.js';
+import { getHierarchicalClients } from '../services/clientAnalyticsService.js';
 
 const router = express.Router();
 
@@ -258,7 +265,7 @@ const calculateCompanyIncentiveAmount = async ({
   packageType,
 }) => {
   const config = await getCompanyIncentiveRulesConfig(companyId);
-  const fromRules = calculateIncentiveFromRules({
+  const calculated = calculateIncentiveForSale({
     config,
     productName,
     smsQuantity,
@@ -267,13 +274,7 @@ const calculateCompanyIncentiveAmount = async ({
     packageType,
   });
 
-  if (fromRules !== null && fromRules !== undefined) {
-    return { incentive: fromRules, config };
-  }
-
-  // fallback to legacy hardcoded rules
-  const legacy = calculateIncentive(productName, smsQuantity, rate, price, packageType);
-  return { incentive: legacy, config };
+  return { incentive: calculated, config };
 };
 
 router.get(
@@ -437,50 +438,33 @@ router.get('/my-clients', authenticate, tenantIsolation, async (req, res) => {
     const year  = req.query.year  ? Number(req.query.year)  : null;
     const status = req.query.status || null;
     const search = req.query.search || null;
+    const repeatOnly = req.query.repeat_only === 'true' || req.query.repeatOnly === 'true';
 
-    if (req.user.role !== 'employee') {
-      // Admins/HR: optionally filter by employee
-      const employeeFilter = req.query.employee_id ? Number(req.query.employee_id) : null;
-      const result = await query(
-        `SELECT sub.*, e.first_name, e.last_name, e.employee_code
-         FROM incentive_submissions sub
-         JOIN employees e ON e.id = sub.employee_id
-         WHERE ($1::int IS NULL OR sub.company_id = $1)
-           AND ($2::int IS NULL OR sub.employee_id = $2)
-           AND ($3::int IS NULL OR EXTRACT(MONTH FROM sub.submitted_at) = $3)
-           AND ($4::int IS NULL OR EXTRACT(YEAR  FROM sub.submitted_at) = $4)
-           AND ($5::text IS NULL OR sub.status = $5)
-           AND ($6::text IS NULL OR sub.client_name ILIKE '%' || $6 || '%' OR sub.product_name ILIKE '%' || $6 || '%')
-         ORDER BY sub.submitted_at DESC`,
-        [req.companyId, employeeFilter, month, year, status, search],
-      );
-      return res.json(result.rows);
+    let employeeId = null;
+    if (req.user.role === 'employee') {
+      employeeId = await resolveEmployeeIdForUser(req.user.id);
+      if (!employeeId) return res.json([]);
+    } else if (req.query.employee_id) {
+      employeeId = Number(req.query.employee_id);
     }
 
-    // Employee: only their own records, password fields stripped
-    const employeeId = await resolveEmployeeIdForUser(req.user.id);
-    if (!employeeId) return res.json([]);
+    const clients = await getHierarchicalClients({
+      companyId: req.companyId,
+      employeeId,
+      search,
+      month,
+      year,
+      status,
+      repeatOnly,
+    });
 
-    const result = await query(
-      `SELECT
-         sub.id, sub.submitted_at, sub.status,
-         sub.client_name, sub.client_mobile_1, sub.client_mobile_2,
-         sub.client_email, sub.client_username, sub.client_location,
-         sub.product_name, sub.package_type, sub.price, sub.price_gross, sub.gst_applied,
-         sub.incentive_amount, sub.company_id, sub.employee_id,
-         e.first_name, e.last_name, e.employee_code
-       FROM incentive_submissions sub
-       JOIN employees e ON e.id = sub.employee_id
-       WHERE sub.employee_id = $1
-         AND ($2::int IS NULL OR sub.company_id = $2)
-         AND ($3::int IS NULL OR EXTRACT(MONTH FROM sub.submitted_at) = $3)
-         AND ($4::int IS NULL OR EXTRACT(YEAR  FROM sub.submitted_at) = $4)
-         AND ($5::text IS NULL OR sub.status = $5)
-         AND ($6::text IS NULL OR sub.client_name ILIKE '%' || $6 || '%' OR sub.product_name ILIKE '%' || $6 || '%')
-       ORDER BY sub.submitted_at DESC`,
-      [employeeId, req.companyId, month, year, status, search],
-    );
-    return res.json(result.rows);
+    if (req.user.role === 'employee') {
+      for (const client of clients) {
+        delete client.client_panel_password;
+      }
+    }
+
+    return res.json(clients);
   } catch (error) {
     console.error('GET my-clients failed:', error.message);
     return res.status(500).json({ message: error.message });
@@ -626,9 +610,11 @@ router.post(
             client_location,
             incentive_amount,
             screenshot_path,
-            kyc_path
+            kyc_path,
+            performance_month,
+            performance_year
           )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
          RETURNING *`,
         [
           req.companyId,
@@ -652,6 +638,8 @@ router.post(
           incentive_amount,
           screenshot_path,
           req.files['kyc_file']?.[0] ? toUploadsRelativePath(req.files['kyc_file']?.[0]) : null,
+          new Date().getUTCMonth() + 1,
+          new Date().getUTCFullYear(),
         ],
       );
 
@@ -1131,155 +1119,14 @@ router.get(
         employeeId = req.query.employee_id ? Number(req.query.employee_id) : null;
       }
 
-      if (!employeeId) {
-        const list = await query(
-          `SELECT
-             e.id AS employee_id,
-             e.first_name,
-             e.last_name,
-             e.employee_code,
-             COALESCE(COUNT(s.id), 0)::int AS clients_total,
-             COALESCE(SUM(s.price), 0)::decimal(12,2) AS sales_total,
-             COALESCE(SUM(s.incentive_amount), 0)::decimal(12,2) AS incentives_total,
-             COALESCE(COUNT(s.id) FILTER (WHERE s.package_type = 'new'), 0)::int AS new_count,
-             COALESCE(COUNT(s.id) FILTER (WHERE s.package_type = 'renew'), 0)::int AS renew_count
-           FROM employees e
-           LEFT JOIN incentive_submissions s
-             ON s.employee_id = e.id
-            AND s.company_id = e.company_id
-            AND s.status = 'approved'
-            AND s.approved_at IS NOT NULL
-            AND EXTRACT(MONTH FROM s.approved_at) = $2
-            AND EXTRACT(YEAR FROM s.approved_at) = $3
-           WHERE e.company_id = $1::int
-           GROUP BY e.id
-           ORDER BY sales_total DESC`,
-          [req.companyId, month, year],
-        );
-
-        return res.json({ month, year, employees: list.rows });
-      }
-
-      const summaryResult = await query(
-        `SELECT
-           COALESCE(COUNT(*), 0)::int AS clients_total,
-           COALESCE(SUM(price), 0)::decimal(12,2) AS sales_total,
-           COALESCE(SUM(incentive_amount), 0)::decimal(12,2) AS incentives_total,
-           COALESCE(SUM(sms_quantity), 0)::bigint AS sms_total,
-           COALESCE(COUNT(*) FILTER (WHERE package_type = 'new'), 0)::int AS new_count,
-           COALESCE(COUNT(*) FILTER (WHERE package_type = 'renew'), 0)::int AS renew_count
-         FROM incentive_submissions
-         WHERE company_id = $1::int
-           AND employee_id = $2::int
-           AND status = 'approved'
-           AND approved_at IS NOT NULL
-           AND EXTRACT(MONTH FROM approved_at) = $3
-           AND EXTRACT(YEAR FROM approved_at) = $4`,
-        [req.companyId, employeeId, month, year],
-      );
-      const summary = summaryResult.rows[0];
-
-      const paymentsResult = await query(
-        `SELECT COALESCE(payment_mode, 'Unknown') AS payment_mode, COALESCE(SUM(price), 0)::decimal(12,2) AS total
-         FROM incentive_submissions
-         WHERE company_id = $1::int
-           AND employee_id = $2::int
-           AND status = 'approved'
-           AND approved_at IS NOT NULL
-           AND EXTRACT(MONTH FROM approved_at) = $3
-           AND EXTRACT(YEAR FROM approved_at) = $4
-         GROUP BY COALESCE(payment_mode, 'Unknown')
-         ORDER BY total DESC`,
-        [req.companyId, employeeId, month, year],
-      );
-
-      const detailsResult = await query(
-        `SELECT
-           id,
-           client_name,
-           product_name,
-           package_type,
-           payment_mode,
-           sms_quantity,
-           rate,
-           price,
-           incentive_amount,
-           client_location,
-           client_mobile_1,
-           client_mobile_2,
-           client_email,
-           client_panel_username,
-           client_panel_password,
-           approved_at,
-           submitted_at
-         FROM incentive_submissions
-         WHERE company_id = $1::int
-           AND employee_id = $2::int
-           AND status = 'approved'
-           AND approved_at IS NOT NULL
-           AND EXTRACT(MONTH FROM approved_at) = $3
-           AND EXTRACT(YEAR FROM approved_at) = $4
-         ORDER BY approved_at DESC`,
-        [req.companyId, employeeId, month, year],
-      );
-
-      const targetResult = await query(
-        `SELECT target_sales_amount
-         FROM employee_monthly_sales_targets
-         WHERE company_id = $1::int
-           AND employee_id = $2::int
-           AND month = $3::int
-           AND year = $4::int`,
-        [req.companyId, employeeId, month, year],
-      );
-      const target_sales_amount = targetResult.rows[0]?.target_sales_amount ?? null;
-      const targetSalesValue = target_sales_amount !== null && target_sales_amount !== undefined && target_sales_amount !== ''
-        ? Number(target_sales_amount)
-        : null;
-
-      const tierResult = await query(
-        `SELECT min_sales_amount, target_total_salary
-         FROM company_sales_target_tiers
-         WHERE company_id = $1::int
-           AND is_active = TRUE
-           AND min_sales_amount <= $2::decimal(12,2)
-         ORDER BY min_sales_amount DESC
-         LIMIT 1`,
-        [req.companyId, summary.sales_total || 0],
-      );
-
-      const tierAtTargetResult =
-        targetSalesValue !== null && Number.isFinite(targetSalesValue)
-          ? await query(
-              `SELECT min_sales_amount, target_total_salary
-               FROM company_sales_target_tiers
-               WHERE company_id = $1::int
-                 AND is_active = TRUE
-                 AND min_sales_amount <= $2::decimal(12,2)
-               ORDER BY min_sales_amount DESC
-               LIMIT 1`,
-              [req.companyId, targetSalesValue],
-            )
-          : { rows: [] };
-
-      const employeeResult = await query(
-        `SELECT id, first_name, last_name, employee_code
-         FROM employees
-         WHERE id = $1::int AND company_id = $2::int`,
-        [employeeId, req.companyId],
-      );
-
-      return res.json({
+      const result = await getPerformanceStatistics({
+        companyId: req.companyId,
+        employeeId,
         month,
         year,
-        employee: employeeResult.rows[0] || { id: employeeId },
-        target_sales_amount,
-        tier_applied: tierResult.rows[0] || null,
-        tier_at_target: tierAtTargetResult.rows[0] || null,
-        summary,
-        payment_breakdown: paymentsResult.rows,
-        details: detailsResult.rows,
       });
+
+      return res.json(result);
     } catch (error) {
       console.error('Performance fetch failed', error);
       return res.status(500).json({ message: error.message });
@@ -1313,73 +1160,20 @@ router.get(
         return res.status(400).json({ message: 'employee_id is required' });
       }
 
-      const rowsResult = await query(
-        `SELECT
-           EXTRACT(YEAR FROM approved_at)::int AS year,
-           EXTRACT(MONTH FROM approved_at)::int AS month,
-           id,
-           client_name,
-           product_name,
-           package_type,
-           payment_mode,
-           sms_quantity,
-           rate,
-           price,
-           incentive_amount,
-           client_location,
-           client_mobile_1,
-           client_mobile_2,
-           client_email,
-           client_panel_username,
-           client_panel_password,
-           approved_at
-         FROM incentive_submissions
-         WHERE company_id = $1::int
-           AND employee_id = $2::int
-           AND status = 'approved'
-           AND approved_at >= (date_trunc('month', NOW()) - (($3::int - 1) * INTERVAL '1 month'))
-           AND approved_at IS NOT NULL
-         ORDER BY approved_at DESC
-         LIMIT 5000`,
-        [req.companyId, employeeId, monthsBack],
-      );
-
-      const groupsMap = new Map();
-      for (const row of rowsResult.rows) {
-        const key = `${row.year}-${row.month}`;
-        if (!groupsMap.has(key)) {
-          groupsMap.set(key, {
-            year: row.year,
-            month: row.month,
-            summary: {
-              clients_total: 0,
-              sales_total: 0,
-              incentives_total: 0,
-              sms_total: 0,
-            },
-            details: [],
-          });
-        }
-        const group = groupsMap.get(key);
-        group.details.push(row);
-        group.summary.clients_total += 1;
-        group.summary.sales_total += Number(row.price || 0);
-        group.summary.incentives_total += Number(row.incentive_amount || 0);
-        group.summary.sms_total += Number(row.sms_quantity || 0);
-      }
-
-      const groups = Array.from(groupsMap.values()).sort((a, b) => {
-        if (a.year !== b.year) return b.year - a.year;
-        return b.month - a.month;
+      const result = await getPerformanceHistory({
+        companyId: req.companyId,
+        employeeId,
+        monthsBack,
       });
 
-      return res.json({ months_back: monthsBack, groups });
+      return res.json(result);
     } catch (error) {
       console.error('Performance history fetch failed', error);
       return res.status(500).json({ message: error.message });
     }
   },
 );
+
 router.get(
   '/clients',
   authenticate,
@@ -1389,138 +1183,30 @@ router.get(
   async (req, res) => {
     try {
       const q = req.query.q ? String(req.query.q).trim() : '';
-      const date_from_raw = req.query.date_from ?? req.query.dateFrom ?? '';
-      const date_to_raw = req.query.date_to ?? req.query.dateTo ?? '';
-      const date_from = date_from_raw ? String(date_from_raw).trim() : '';
-      const date_to = date_to_raw ? String(date_to_raw).trim() : '';
-
-      const isIsoDate = (value) => /^\d{4}-\d{2}-\d{2}$/.test(String(value || ''));
-      if (date_from && !isIsoDate(date_from)) {
-        return res.status(400).json({ message: 'date_from must be in YYYY-MM-DD format.' });
-      }
-      if (date_to && !isIsoDate(date_to)) {
-        return res.status(400).json({ message: 'date_to must be in YYYY-MM-DD format.' });
-      }
+      const date_from = req.query.date_from ? String(req.query.date_from).trim() : '';
+      const date_to = req.query.date_to ? String(req.query.date_to).trim() : '';
+      const repeatOnly = req.query.repeat_only === 'true' || req.query.repeatOnly === 'true';
 
       let employeeId = null;
       if (req.user.role === 'employee') {
         employeeId = await resolveEmployeeIdForUser(req.user.id);
         if (!employeeId) return res.status(404).json({ message: 'Employee profile not found' });
+      } else if (req.query.employee_id) {
+        employeeId = Number(req.query.employee_id);
       }
 
-      const result = await query(
-        `WITH base AS (
-          SELECT
-            COALESCE(NULLIF(client_mobile_1, ''), NULLIF(client_email, ''), CONCAT('submission:', id::text)) AS client_key,
-            *
-          FROM incentive_submissions
-          WHERE company_id = $1::int
-            AND ($3::date IS NULL OR COALESCE(approved_at::date, submitted_at::date) >= $3::date)
-            AND ($4::date IS NULL OR COALESCE(approved_at::date, submitted_at::date) <= $4::date)
-            AND ($5::int IS NULL OR employee_id = $5::int)
-        ),
-        ranked AS (
-          SELECT
-            b.*, 
-            ROW_NUMBER() OVER (
-              PARTITION BY b.client_key
-              ORDER BY b.approved_at DESC NULLS LAST, b.submitted_at DESC
-            ) AS rn
-          FROM base b
-        ),
-        agg AS (
-          SELECT
-            client_key,
-            COUNT(*)::int AS submissions_count,
-            COUNT(*) FILTER (WHERE status = 'approved')::int AS approved_count,
-            COALESCE(SUM(price) FILTER (WHERE status = 'approved'), 0)::decimal(12,2) AS total_sales,
-            COALESCE(
-              SUM(
-                CASE
-                  WHEN gst_applied = TRUE AND price_gross IS NOT NULL THEN price_gross
-                  WHEN gst_applied = TRUE AND price IS NOT NULL THEN ROUND((price * 1.18)::numeric, 2)
-                  ELSE price
-                END
-              ) FILTER (WHERE status = 'approved'),
-              0
-            )::decimal(12,2) AS total_received,
-            COALESCE(
-              SUM(
-                CASE
-                  WHEN gst_applied = TRUE AND price_gross IS NOT NULL AND price IS NOT NULL THEN (price_gross - price)
-                  WHEN gst_applied = TRUE AND price IS NOT NULL THEN ROUND((price * 0.18)::numeric, 2)
-                  ELSE 0
-                END
-              ) FILTER (WHERE status = 'approved'),
-              0
-            )::decimal(12,2) AS total_gst_amount,
-            COALESCE(SUM(incentive_amount) FILTER (WHERE status = 'approved'), 0)::decimal(12,2) AS total_incentive
-          FROM ranked
-          GROUP BY client_key
-        )
-        SELECT
-          r.client_key,
-          r.client_name,
-          r.client_mobile_1,
-          r.client_mobile_2,
-          r.client_email,
-          r.client_username,
-          r.client_panel_username,
-          r.client_panel_password,
-          r.rate AS last_rate,
-          r.package_type AS last_package_type,
-          r.kyc_path AS last_kyc_path,
-          r.screenshot_path AS last_screenshot_path,
-          r.product_name AS last_product,
-          r.sms_quantity AS last_sms_quantity,
-          r.gst_applied AS last_gst_applied,
-          r.price AS last_price_ex_gst,
-          r.price_gross AS last_price_inc_gst,
-          CASE
-            WHEN r.gst_applied = TRUE AND r.price_gross IS NOT NULL THEN r.price_gross
-            WHEN r.gst_applied = TRUE AND r.price IS NOT NULL THEN ROUND((r.price * 1.18)::numeric, 2)
-            ELSE r.price
-          END AS last_amount_received,
-          CASE
-            WHEN r.gst_applied = TRUE AND r.price_gross IS NOT NULL AND r.price IS NOT NULL THEN (r.price_gross - r.price)
-            WHEN r.gst_applied = TRUE AND r.price IS NOT NULL THEN ROUND((r.price * 0.18)::numeric, 2)
-            ELSE 0
-          END AS last_gst_amount,
-          r.payment_mode AS last_payment_mode,
-          r.client_location AS last_location,
-          r.id AS last_submission_id,
-          r.status AS last_status,
-          r.approved_at AS last_approved_at,
-          r.submitted_at AS last_submitted_at,
-          e.first_name,
-          e.last_name,
-          e.employee_code,
-          a.submissions_count,
-          a.approved_count,
-          a.total_sales,
-          a.total_received,
-          a.total_gst_amount,
-          a.total_incentive
-        FROM ranked r
-        JOIN agg a ON a.client_key = r.client_key
-        LEFT JOIN employees e ON e.id = r.employee_id
-        WHERE r.rn = 1
-          AND (
-            $2::text = ''
-            OR COALESCE(r.client_name, '') ILIKE ('%' || $2::text || '%')
-            OR COALESCE(r.client_mobile_1, '') ILIKE ('%' || $2::text || '%')
-            OR COALESCE(r.client_email, '') ILIKE ('%' || $2::text || '%')
-            OR COALESCE(r.client_username, '') ILIKE ('%' || $2::text || '%')
-            OR COALESCE(r.client_panel_username, '') ILIKE ('%' || $2::text || '%')
-          )
-        ORDER BY COALESCE(r.approved_at, r.submitted_at) DESC
-        LIMIT 500`,
-        [req.companyId, q, date_from || null, date_to || null, employeeId || null],
-      );
+      const clients = await getHierarchicalClients({
+        companyId: req.companyId,
+        employeeId,
+        search: q,
+        dateFrom: date_from,
+        dateTo: date_to,
+        repeatOnly,
+      });
 
-      return res.json(result.rows);
+      return res.json(clients);
     } catch (error) {
-      console.error('Clients list fetch failed', error);
+      console.error('Clients fetch failed', error);
       return res.status(500).json({ message: error.message });
     }
   },
@@ -1854,62 +1540,16 @@ router.put(
       const updated = result.rows[0];
 
       try {
-        if (updated.status === 'approved' && updated.approved_at) {
-          await query(
-            `INSERT INTO incentive_earnings (
-              company_id, employee_id, submission_id,
-              earned_month, earned_year, earned_at,
-              client_name, product_name, package_type, payment_mode, sms_quantity, price, incentive_amount, client_location,
-              submitted_at, approved_by, approved_at
-            )
-            VALUES (
-              $1::int, $2::int, $3::int,
-              EXTRACT(MONTH FROM $4::timestamptz)::int,
-              EXTRACT(YEAR FROM $4::timestamptz)::int,
-              $4::timestamptz,
-              $5, $6, $7, $8, $9::int, $10::decimal(10,2), $11::decimal(10,2), $12,
-              $13::timestamptz, $14::int, $15::timestamptz
-            )
-            ON CONFLICT (submission_id)
-            DO UPDATE SET
-              earned_month = EXCLUDED.earned_month,
-              earned_year = EXCLUDED.earned_year,
-              earned_at = EXCLUDED.earned_at,
-              client_name = EXCLUDED.client_name,
-              product_name = EXCLUDED.product_name,
-              package_type = EXCLUDED.package_type,
-              payment_mode = EXCLUDED.payment_mode,
-              sms_quantity = EXCLUDED.sms_quantity,
-              price = EXCLUDED.price,
-              incentive_amount = EXCLUDED.incentive_amount,
-              client_location = EXCLUDED.client_location,
-              approved_by = EXCLUDED.approved_by,
-              approved_at = EXCLUDED.approved_at`,
-            [
-              updated.company_id,
-              updated.employee_id,
-              updated.id,
-              updated.approved_at,
-              updated.client_name,
-              updated.product_name,
-              updated.package_type,
-              updated.payment_mode,
-              updated.sms_quantity || null,
-              updated.price || 0,
-              updated.incentive_amount,
-              updated.client_location,
-              updated.submitted_at,
-              updated.approved_by,
-              updated.approved_at,
-            ],
-          );
+        if (updated.status === 'approved') {
+          await syncIncentiveStatus({
+            submissionId,
+            companyId: req.companyId,
+            nextStatus: 'approved',
+            approvedByUserId: req.user.id,
+          });
 
-          const monthYearResult = await query(
-            `SELECT EXTRACT(MONTH FROM $1::timestamptz) AS month, EXTRACT(YEAR FROM $1::timestamptz) AS year`,
-            [updated.approved_at],
-          );
-          const month = Number(monthYearResult.rows[0]?.month);
-          const year = Number(monthYearResult.rows[0]?.year);
+          const month = Number(updated.performance_month || new Date(updated.submitted_at).getUTCMonth() + 1);
+          const year = Number(updated.performance_year || new Date(updated.submitted_at).getUTCFullYear());
 
           const totalResult = await query(
             `SELECT COALESCE(SUM(incentive_amount), 0) AS total
@@ -1917,12 +1557,12 @@ router.put(
              WHERE employee_id = $1
                AND company_id = $2
                AND status = 'approved'
-               AND approved_at IS NOT NULL
-               AND EXTRACT(MONTH FROM approved_at) = $3
-               AND EXTRACT(YEAR FROM approved_at) = $4`,
+               AND COALESCE(performance_month, EXTRACT(MONTH FROM submitted_at)::int) = $3
+               AND COALESCE(performance_year, EXTRACT(YEAR FROM submitted_at)::int) = $4`,
             [updated.employee_id, req.companyId, month, year],
           );
           const total = Number(totalResult.rows[0]?.total || 0);
+
           const payrollResult = await query(
             `SELECT id, basic_salary, total_allowances, total_deductions, late_penalties, early_leave_penalties, working_days, present_days
              FROM payroll_calculations
@@ -1942,12 +1582,10 @@ router.put(
                WHERE employee_id = $1
                  AND company_id = $2
                  AND status = 'approved'
-                 AND approved_at IS NOT NULL
-                 AND EXTRACT(MONTH FROM approved_at) = $3
-                 AND EXTRACT(YEAR FROM approved_at) = $4`,
+                 AND COALESCE(performance_month, EXTRACT(MONTH FROM submitted_at)::int) = $3
+                 AND COALESCE(performance_year, EXTRACT(YEAR FROM submitted_at)::int) = $4`,
               [updated.employee_id, req.companyId, month, year],
             );
-
             const salesTotal = Number(salesResult.rows[0]?.total || 0);
 
             const tierResult = await query(
@@ -2027,111 +1665,31 @@ router.put(
       }
       const before = beforeResult.rows[0];
 
-      const result = await query(
-        `UPDATE incentive_submissions
-         SET status = $1::varchar(20),
-             approved_by = CASE WHEN $1::varchar(20) = 'approved'::varchar(20) THEN $2::int ELSE NULL END,
-             approved_at = CASE WHEN $1::varchar(20) = 'approved'::varchar(20) THEN NOW() ELSE NULL END
-         WHERE id = $3::int
-           AND company_id = $4::int
-         RETURNING *`,
-        [nextStatus, req.user.id, submissionId, req.companyId],
-      );
+      const updated = await syncIncentiveStatus({
+        submissionId,
+        companyId: req.companyId,
+        nextStatus,
+        approvedByUserId: req.user.id,
+      });
 
-      const updated = result.rows[0];
-
-      // Keep monthly earnings table in sync with approved submissions.
+      // If payroll for the performance month was already processed, keep its incentive and sales totals in sync.
       try {
-        if (updated.status === 'approved') {
-          await query(
-            `INSERT INTO incentive_earnings (
-              company_id, employee_id, submission_id,
-              earned_month, earned_year, earned_at,
-              client_name, product_name, package_type, payment_mode, sms_quantity, price, incentive_amount, client_location,
-              submitted_at, approved_by, approved_at
-            )
-            SELECT
-              s.company_id,
-              s.employee_id,
-              s.id,
-              EXTRACT(MONTH FROM s.approved_at)::int,
-              EXTRACT(YEAR FROM s.approved_at)::int,
-              s.approved_at,
-              s.client_name,
-              s.product_name,
-              s.package_type,
-              s.payment_mode,
-              s.sms_quantity,
-              s.price,
-              s.incentive_amount,
-              s.client_location,
-              s.submitted_at,
-              s.approved_by,
-              s.approved_at
-            FROM incentive_submissions s
-            WHERE s.id = $1::int
-              AND s.company_id = $2::int
-              AND s.status = 'approved'
-              AND s.approved_at IS NOT NULL
-            ON CONFLICT (submission_id)
-            DO UPDATE SET
-              earned_month = EXCLUDED.earned_month,
-              earned_year = EXCLUDED.earned_year,
-              earned_at = EXCLUDED.earned_at,
-              package_type = EXCLUDED.package_type,
-              payment_mode = EXCLUDED.payment_mode,
-              sms_quantity = EXCLUDED.sms_quantity,
-              price = EXCLUDED.price,
-              incentive_amount = EXCLUDED.incentive_amount,
-              client_location = EXCLUDED.client_location,
-              approved_by = EXCLUDED.approved_by,
-              approved_at = EXCLUDED.approved_at`,
-            [submissionId, req.companyId],
-          );
-        } else {
-          await query(
-            `DELETE FROM incentive_earnings
-             WHERE submission_id = $1::int
-               AND company_id = $2::int`,
-            [submissionId, req.companyId],
-          );
-        }
-      } catch (earnError) {
-        console.error('Incentive earnings sync failed', earnError);
-      }
+        const perfMonth = Number(updated.performance_month || (updated.submitted_at ? new Date(updated.submitted_at).getUTCMonth() + 1 : null));
+        const perfYear = Number(updated.performance_year || (updated.submitted_at ? new Date(updated.submitted_at).getUTCFullYear() : null));
 
-      // If payroll for that month was already processed, keep its incentive total in sync.
-      try {
-        const monthsToSync = [];
-
-        if (before.status === 'approved' && before.approved_at) {
-          monthsToSync.push(before.approved_at);
-        }
-        if (updated.status === 'approved' && updated.approved_at) {
-          monthsToSync.push(updated.approved_at);
-        }
-
-        for (const stamp of monthsToSync) {
-          const monthYearResult = await query(
-            `SELECT EXTRACT(MONTH FROM $1::timestamptz) AS month, EXTRACT(YEAR FROM $1::timestamptz) AS year`,
-            [stamp],
-          );
-          const month = Number(monthYearResult.rows[0]?.month);
-          const year = Number(monthYearResult.rows[0]?.year);
-          if (!month || !year) continue;
-
+        if (perfMonth && perfYear) {
           const totalResult = await query(
             `SELECT COALESCE(SUM(incentive_amount), 0) AS total
              FROM incentive_submissions
              WHERE employee_id = $1
                AND company_id = $2
                AND status = 'approved'
-               AND approved_at IS NOT NULL
-               AND EXTRACT(MONTH FROM approved_at) = $3
-               AND EXTRACT(YEAR FROM approved_at) = $4`,
-            [updated.employee_id, req.companyId, month, year],
+               AND COALESCE(performance_month, EXTRACT(MONTH FROM submitted_at)::int) = $3
+               AND COALESCE(performance_year, EXTRACT(YEAR FROM submitted_at)::int) = $4`,
+            [updated.employee_id, req.companyId, perfMonth, perfYear],
           );
           const total = Number(totalResult.rows[0]?.total || 0);
+
           const payrollResult = await query(
             `SELECT id, basic_salary, total_allowances, total_deductions, late_penalties, early_leave_penalties, working_days, present_days
              FROM payroll_calculations
@@ -2140,7 +1698,7 @@ router.put(
                AND month = $3::int
                AND year = $4::int
              LIMIT 1`,
-            [updated.employee_id, req.companyId, month, year],
+            [updated.employee_id, req.companyId, perfMonth, perfYear],
           );
 
           const payroll = payrollResult.rows[0];
@@ -2151,10 +1709,9 @@ router.put(
                WHERE employee_id = $1
                  AND company_id = $2
                  AND status = 'approved'
-                 AND approved_at IS NOT NULL
-                 AND EXTRACT(MONTH FROM approved_at) = $3
-                 AND EXTRACT(YEAR FROM approved_at) = $4`,
-              [updated.employee_id, req.companyId, month, year],
+                 AND COALESCE(performance_month, EXTRACT(MONTH FROM submitted_at)::int) = $3
+                 AND COALESCE(performance_year, EXTRACT(YEAR FROM submitted_at)::int) = $4`,
+              [updated.employee_id, req.companyId, perfMonth, perfYear],
             );
 
             const salesTotal = Number(salesResult.rows[0]?.total || 0);

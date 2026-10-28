@@ -6,6 +6,11 @@ import { enforceOfficePunchIpForEmployee, isCompanyIpAllowedByPolicy } from '../
 import { getClientIp } from '../utils/network.js';
 import { autoMarkAbsent } from '../utils/attendanceHelper.js';
 import { sendEmail } from '../utils/email.js';
+import {
+  getAttendanceSummaryService,
+  getDayWiseGroupedAttendanceService,
+  autoMarkAbsentService,
+} from '../services/attendanceCalculationService.js';
 
 const router = express.Router();
 const ATTENDANCE_TZ_OFFSET = process.env.ATTENDANCE_TZ_OFFSET || '+05:30';
@@ -462,68 +467,73 @@ router.get('/records', authenticate, tenantIsolation, async (req, res) => {
 
 // Mark absent (admin only)
 router.post('/mark-absent', authenticate, authorize('company_admin', 'super_admin'), tenantIsolation, async (req, res) => {
-  const { work_date } = req.body;
+  const { work_date, employee_id } = req.body;
 
   try {
     if (!req.companyId) {
       return res.status(400).json({ message: 'company_id is required for mark-absent' });
     }
-    const result = await query(
-      `INSERT INTO attendance_records (employee_id, company_id, work_date, status)
-       SELECT e.id, $1::int, $2::date, 'absent'
-       FROM employees e
-       WHERE e.company_id = $1::int AND e.status = 'active'
-       AND NOT EXISTS (
-         SELECT 1 FROM attendance_records ar 
-         WHERE ar.employee_id = e.id AND ar.work_date = $2::date
-       )
-       RETURNING *`,
-      [req.companyId, work_date]
-    );
+    const count = await autoMarkAbsentService(req.companyId, employee_id || null, work_date, work_date);
 
-    res.json({ message: 'Absent marked successfully', count: result.rowCount });
+    res.json({ message: 'Absent marked successfully', count });
   } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Day-wise grouped attendance for Admin panel
+router.get('/daily-grouped', authenticate, tenantIsolation, async (req, res) => {
+  try {
+    const { start_date, end_date, month, year, department_id, search, status, page, limit } = req.query;
+
+    const result = await getDayWiseGroupedAttendanceService({
+      companyId: req.companyId,
+      startDate: start_date,
+      endDate: end_date,
+      month,
+      year,
+      departmentId: department_id,
+      search,
+      status,
+      page: page ? Number(page) : 1,
+      limit: limit ? Number(limit) : 31,
+    });
+
+    res.json(result);
+  } catch (error) {
+    console.error('Error fetching daily-grouped attendance:', error);
     res.status(500).json({ message: error.message });
   }
 });
 
 // Get attendance summary
 router.get('/summary', authenticate, tenantIsolation, async (req, res) => {
-  const { month, year } = req.query;
-
   try {
-    let queryText = `
-      SELECT 
-        COUNT(*) FILTER (WHERE status = 'present') as present_count,
-        COUNT(*) FILTER (WHERE status = 'absent') as absent_count,
-        COUNT(*) FILTER (WHERE status = 'on_leave') as leave_count,
-        COALESCE(SUM(late_minutes), 0) as total_late_minutes
-      FROM attendance_records
-      WHERE company_id = $1
-    `;
-    const params = [req.companyId];
+    const { date, start_date, end_date, month, year, department_id, employee_id } = req.query;
 
-    if (req.allowAllCompanies) {
-      queryText = `
-      SELECT 
-        COUNT(*) FILTER (WHERE status = 'present') as present_count,
-        COUNT(*) FILTER (WHERE status = 'absent') as absent_count,
-        COUNT(*) FILTER (WHERE status = 'on_leave') as leave_count,
-        COALESCE(SUM(late_minutes), 0) as total_late_minutes
-      FROM attendance_records
-      WHERE 1=1
-    `;
-      params.length = 0;
+    let targetEmpId = employee_id ? Number(employee_id) : null;
+    if (req.user.role === 'employee') {
+      const empResult = await query('SELECT id FROM employees WHERE user_id = $1', [req.user.id]);
+      targetEmpId = empResult.rows[0]?.id || null;
     }
 
-    if (month && year) {
-      queryText += ` AND EXTRACT(MONTH FROM work_date) = $${params.length + 1} AND EXTRACT(YEAR FROM work_date) = $${params.length + 2}`;
-      params.push(month, year);
-    }
+    // Determine target date: If date is explicitly passed or no parameters were given, default to today
+    const resolvedDate = date || (req.query.date_from || req.query.date_to ? null : (month || year || start_date ? null : 'today'));
 
-    const result = await query(queryText, params);
-    res.json(result.rows[0]);
+    const summary = await getAttendanceSummaryService({
+      companyId: req.companyId,
+      date: resolvedDate,
+      startDate: start_date || req.query.date_from,
+      endDate: end_date || req.query.date_to,
+      month,
+      year,
+      departmentId: department_id,
+      employeeId: targetEmpId,
+    });
+
+    res.json(summary);
   } catch (error) {
+    console.error('Error fetching attendance summary:', error);
     res.status(500).json({ message: error.message });
   }
 });

@@ -36,9 +36,10 @@ router.post('/login', async (req, res) => {
 
   try {
     const userResult = await query(
-      `SELECT u.*, COALESCE(e.company_id, u.company_id) AS company_id, e.first_name, e.last_name, e.employee_code
+      `SELECT u.*, COALESCE(e.company_id, u.company_id) AS company_id, e.first_name, e.last_name, e.employee_code,
+              e.status AS employee_status, e.deleted_at AS employee_deleted_at
        FROM users u
-       LEFT JOIN employees e ON u.id = e.user_id
+       LEFT JOIN employees e ON u.id = e.user_id AND e.deleted_at IS NULL
        WHERE u.email = $1 AND u.is_active = true
        LIMIT 1`,
       [email.toLowerCase()]
@@ -47,6 +48,10 @@ router.post('/login', async (req, res) => {
     const user = userResult.rows[0];
     if (!user) {
       return res.status(401).json({ message: 'Invalid credentials' });
+    }
+
+    if (user.role === 'employee' && (user.employee_deleted_at || (user.employee_status && user.employee_status !== 'active'))) {
+      return res.status(403).json({ message: 'Your employee account is inactive. Please contact your administrator.' });
     }
 
     const isValid = await bcrypt.compare(password, user.password_hash);

@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
   Box,
   Button,
   Card,
   CardContent,
   Chip,
+  CircularProgress,
   Grid,
   Paper,
   Stack,
@@ -35,60 +37,81 @@ const statCardSx = {
 export default function CompanyAdminDashboard() {
   const navigate = useNavigate();
   const [employees, setEmployees] = useState([]);
+  const [employeeSummary, setEmployeeSummary] = useState(null);
   const [attendance, setAttendance] = useState(null);
   const [leaveRequests, setLeaveRequests] = useState([]);
+  const [leaveSummary, setLeaveSummary] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
+    let isMounted = true;
     const loadData = async () => {
       try {
-        const [employeesData, attendanceData, leaveData] = await Promise.all([
+        setLoading(true);
+        const [empSummaryData, attendanceData, leaveSummaryData, employeesData, leaveData] = await Promise.all([
+          apiRequest('/employees/summary'),
+          apiRequest('/attendance/summary?date=today'),
+          apiRequest('/leave/summary'),
           apiRequest('/employees'),
-          apiRequest('/attendance/summary'),
           apiRequest('/leave/requests?status=pending'),
         ]);
-        setEmployees(employeesData);
-        setAttendance(attendanceData);
-        setLeaveRequests(leaveData);
-      } catch (error) {
-        console.error('Error loading company dashboard:', error);
+        if (isMounted) {
+          setEmployeeSummary(empSummaryData);
+          setAttendance(attendanceData);
+          setLeaveSummary(leaveSummaryData);
+          setEmployees(Array.isArray(employeesData) ? employeesData : []);
+          setLeaveRequests(Array.isArray(leaveData) ? leaveData : []);
+          setError(null);
+        }
+      } catch (err) {
+        console.error('Error loading company dashboard:', err);
+        if (isMounted) {
+          setError(err?.message || 'Failed to load dashboard data');
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     };
 
     loadData();
+    return () => { isMounted = false; };
   }, []);
 
   const statCards = useMemo(
     () => [
       {
         title: 'Total Employees',
-        value: employees.length,
-        helper: 'Active people in your workspace',
+        value: employeeSummary ? employeeSummary.active_employees : (loading ? '...' : 0),
+        helper: `${employeeSummary?.total_employees || 0} total registered (${employeeSummary?.inactive_employees || 0} inactive)`,
         icon: <Groups2 sx={{ fontSize: 34 }} />,
         color: '#2563EB',
       },
       {
         title: 'Present Today',
-        value: attendance?.present_count || 0,
-        helper: 'Employees marked present',
+        value: attendance ? attendance.present_count : (loading ? '...' : 0),
+        helper: attendance ? `${attendance.attendance_percentage}% daily attendance` : 'Employees marked present',
         icon: <CheckCircle sx={{ fontSize: 34 }} />,
         color: '#15803D',
       },
       {
         title: 'Absent Today',
-        value: attendance?.absent_count || 0,
-        helper: 'Attendance gaps to review',
+        value: attendance ? attendance.absent_count : (loading ? '...' : 0),
+        helper: attendance?.late_count ? `${attendance.late_count} late arrivals today` : 'Attendance gaps to review',
         icon: <HighlightOff sx={{ fontSize: 34 }} />,
         color: '#DC2626',
       },
       {
         title: 'Pending Leaves',
-        value: leaveRequests.length,
-        helper: 'Requests waiting for action',
+        value: leaveSummary ? leaveSummary.pending_count : (loading ? '...' : 0),
+        helper: leaveSummary ? `${leaveSummary.approved_count} approved this year` : 'Requests waiting for action',
         icon: <EventAvailable sx={{ fontSize: 34 }} />,
         color: '#EA580C',
       },
     ],
-    [attendance?.absent_count, attendance?.present_count, employees.length, leaveRequests.length],
+    [employeeSummary, attendance, leaveSummary, loading],
   );
 
   const recentEmployees = employees.slice(0, 5);
@@ -135,6 +158,12 @@ export default function CompanyAdminDashboard() {
             </Stack>
           </CardContent>
         </Card>
+
+        {error && (
+          <Alert severity="error" sx={{ mb: 3 }}>
+            {error}
+          </Alert>
+        )}
 
         <Grid container spacing={2.5} sx={{ mb: 3 }}>
           {statCards.map((stat) => (
